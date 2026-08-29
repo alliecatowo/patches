@@ -1,7 +1,7 @@
 # OpenCode project configuration and custom agents
 
-**Verified stack:** OpenCode CLI 1.18.23 on Linux; upstream OpenCode 1.18.23
-tagged source and current official documentation.  
+**Verified stack:** OpenCode CLI 1.18.25 on Linux; upstream OpenCode and the
+current official documentation.  
 **Verification date:** 2026-08-28
 
 ## Documented facts
@@ -104,6 +104,29 @@ permission:
 Run the requested checks and report the smallest useful failure output.
 ```
 
+### LSP servers
+
+- OpenCode enables LSP servers through the `lsp` key in `opencode.json`. Omit or
+  set to `false` to disable, `true` to enable built-ins, or an object to enable
+  built-ins with overrides. Each server entry supports `command`, `extensions`,
+  `env`, `initialization`, and `disabled`; LSP is disabled by default.
+  [Official LSP docs](https://opencode.ai/docs/lsp/)
+- A built-in `typescript` server exists for `.ts`/`.tsx`/`.js`/`.jsx` (and `.mjs`,
+  `.cjs`, `.mts`, `.cts`) and requires a `typescript` dependency in the project —
+  this monorepo has it as a root dev dependency, so the workspace/tsconfig
+  discovery tsserver performs (root `tsconfig.base.json` + per-package
+  `tsconfig.json`) just works.
+- The published JSON schema requires a `command` on non-disable server entries,
+  so enabling the TypeScript server with an explicit
+  `command: ["typescript-language-server", "--stdio"]` and the full extension
+  list is the schema-valid, TypeScript-only form (vs. `lsp: true`, which also
+  starts bash/astro/eslint/… and the LSP docs warn is memory-heavy).
+- The LSP tools OpenCode exposes — go-to-definition, references, hover,
+  implementation, document symbols, and diagnostics — are gated per-agent by the
+  `lsp` permission (`allow` in every `.opencode/agents/*.md`); granting the
+  permission without an `lsp` config leaves the tools enabled but with no server
+  behind them.
+
 ### Models and providers
 
 - Model IDs use `provider/model-id`, both globally and in agents. Examples in
@@ -155,6 +178,20 @@ claims:
 - `opencode debug config` inside this project reports the scalar `tools` and
   invalid `yellow` color errors shown by the user. It stops at the first invalid
   agent, so all agent files must be translated, not only `verifier.md`.
+
+- `node scripts/validate-opencode-config.mjs` exits 0 and reports the TypeScript
+  LSP enabled for `.ts`/`.tsx`/`.js`/`.jsx`/`.mjs`/`.cjs`/`.mts`/`.cts`.
+- `opencode debug config` (OpenCode 1.18.25) loads the merged config with the
+  `lsp.typescript` entry intact and exits 0.
+- `node scripts/smoke-opencode-lsp.mjs` spawns `typescript-language-server`,
+  opens `packages/domain/src/blocks.ts`, and returns a real
+  `textDocument/definition` for the exported `shortText` symbol
+  (`blocks.ts:28:16`). Opening the same server reports `definitionProvider`,
+  `hoverProvider`, `implementationProvider`, and `documentSymbolProvider` all
+  true — the navigation surface #391 wants is end-to-end present. In a bare
+  worktree the server needs a `typescript` install, so the smoke script takes
+  `--tsserver <path>`/`TYPESCRIPT_TSSERVER_PATH` (the `tsserver.path`
+  initialization option) and the committed config documents that fallback.
 
 ## Inferred conclusions
 
