@@ -240,10 +240,11 @@ export function isSafeHarnessRunDirectory(root: string, candidate: string): bool
 }
 
 export function databaseUrl(databaseName = DEFAULT_DATABASE_NAME): string {
-  if (!isHarnessDatabaseName(databaseName)) {
-    throw new Error(`refusing non-harness database name: ${databaseName}`);
+  const candidate = databaseName;
+  if (!isHarnessDatabaseName(candidate)) {
+    throw new Error(`refusing non-harness database name: ${candidate}`);
   }
-  return `postgres://patches:patches@127.0.0.1:5432/${databaseName}`;
+  return `postgres://patches:patches@127.0.0.1:5432/${candidate}`;
 }
 
 export function newRunId(): string {

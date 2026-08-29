@@ -37,8 +37,6 @@ import {
   DEFAULT_DATABASE_NAME,
   DEFAULT_GRPC_PORT,
   DEFAULT_HTTP_PORT,
-  MULTI_GRPC_BASE_PORT,
-  MULTI_HTTP_BASE_PORT,
   MAILPIT_HTTP_ORIGIN,
   allowlistedRuntimeEnvironment,
   allocateNodePorts,
@@ -537,7 +535,7 @@ async function startNodeProcesses(
       await cleanupProcessesAndState(
         rollbackEntries,
         (entry) => stopRecordedProcess(entry.process, entry.expectedScript, runId),
-        async () => undefined,
+        () => Promise.resolve(),
       );
     } catch (cleanupError) {
       throw new AggregateError(
@@ -558,14 +556,13 @@ async function upMultiNode(
   const paths = pathsFor(root);
   const previous = await readState(paths);
   if (previous !== undefined) {
-    if (
-      processEntries(previous).some(
-        async (entry) =>
-          (await inspectRecordedProcess(entry.process, entry.expectedScript, previous.runId)) ===
-          'owned-running',
+    for (const entry of processEntries(previous)) {
+      if (
+        (await inspectRecordedProcess(entry.process, entry.expectedScript, previous.runId)) ===
+        'owned-running'
       )
-    )
-      throw new Error('harness lab is already running; run `mise run lab:down` first');
+        throw new Error('harness lab is already running; run `mise run lab:down` first');
+    }
     await clearState(paths);
   }
   await prepareRunDirectory(paths);
@@ -682,8 +679,9 @@ async function reset(root: string): Promise<void> {
   );
   let dropped = 0;
   for (const name of stateDatabaseNames(state)) {
-    if (!isHarnessDatabaseName(name))
-      throw new Error(`refusing to drop non-harness database: ${name}`);
+    const dbName = name;
+    if (!isHarnessDatabaseName(dbName))
+      throw new Error(`refusing to drop non-harness database: ${dbName}`);
     const droppedResult = await command(
       'mise',
       [
