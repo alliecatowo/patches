@@ -155,6 +155,11 @@ export class ExportAccountHandler implements JobHandler {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ACCOUNT_EXPORT_EXPIRES_AFTER_DAYS * 86_400_000);
 
+    // Replaced archives' object keys. Collected inside the transaction but deleted only after
+    // it commits (ADR 0039 rule 1: no third-party network I/O inside a transaction — a DELETE
+    // holds the pooled connection across latency we don't control).
+    const replacedKeys: string[] = [];
+
     await this.dataSource.transaction(async (manager) => {
       await manager
         .getRepository(AccountExport)
@@ -166,12 +171,26 @@ export class ExportAccountHandler implements JobHandler {
         .find({ where: { actorId, status: 'READY' } });
       for (const prior of priorReady) {
         if (prior.id === exportId) continue;
-        if (prior.objectKey !== null) await this.storage.deleteObject(prior.objectKey);
+        if (prior.objectKey !== null) replacedKeys.push(prior.objectKey);
         await manager
           .getRepository(AccountExport)
           .update({ id: prior.id }, { status: 'EXPIRED', objectKey: null });
       }
     });
+
+    // Delete replaced archives' objects only after the transaction commits. The commit clears
+    // each prior row's objectKey first, so the DB never claims an object this step removes; a
+    // failed delete leaves only an orphaned object that nothing references, and the archive
+    // itself is already committed and valid, so we log and move on rather than fail the job.
+    for (const objectKey of replacedKeys) {
+      try {
+        await this.storage.deleteObject(objectKey);
+      } catch {
+        this.logger.warn(
+          JSON.stringify({ exportId, actorId, outcome: 'DELETE_OBJECT_FAILED', objectKey }),
+        );
+      }
+    }
 
     this.logger.log(JSON.stringify({ exportId, actorId, outcome: 'EXPORT_READY' }));
   }

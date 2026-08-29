@@ -3,7 +3,7 @@ import { createGunzip } from 'node:zlib';
 import type { AccountExport } from '@patches/database';
 import type { StorageClient } from '@patches/media';
 import { extract as tarExtract } from 'tar-stream';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 
 import { buildTarGz, ExportAccountHandler, type ArchiveFile } from './export-account.handler.js';
 
@@ -107,5 +107,57 @@ describe('ExportAccountHandler', () => {
     await handler.handle(payload, { jobId: '1', attempt: 1 });
 
     expect(storage.putObject).not.toHaveBeenCalled();
+  });
+
+  it('deletes replaced archives only after the transaction commits (ADR 0039 rule 1)', async () => {
+    const exportsRepo = {
+      findOne: vi.fn().mockResolvedValue({
+        id: payload.exportId,
+        actorId: payload.actorId,
+        status: 'PENDING',
+      }),
+      update: vi.fn().mockResolvedValue({ affected: 1 }),
+      find: vi.fn().mockResolvedValue([
+        {
+          id: 'prior-export',
+          actorId: payload.actorId,
+          status: 'READY',
+          objectKey: 'exports/actor/prior.tar.gz',
+        },
+      ]),
+    };
+
+    const storage = fakeStorage();
+    let insideTransaction = false;
+    (storage.deleteObject as Mock).mockImplementation((_objectKey: string) => {
+      // ADR 0039 rule 1: the DELETE must not run while a transaction holds the connection.
+      expect(insideTransaction).toBe(false);
+      return Promise.resolve(undefined);
+    });
+
+    const dataSource = {
+      getRepository: () => exportsRepo,
+      transaction: vi.fn((fn: (manager: unknown) => unknown) => {
+        insideTransaction = true;
+        const result = fn({ getRepository: () => exportsRepo });
+        insideTransaction = false;
+        return result;
+      }),
+    };
+
+    const handler = new ExportAccountHandler(dataSource as never, storage);
+    vi.spyOn(
+      handler as unknown as { buildArchiveFiles: () => Promise<ArchiveFile[]> },
+      'buildArchiveFiles',
+    ).mockResolvedValue([{ name: 'account.json', buffer: Buffer.from('{"a":1}', 'utf8') }]);
+
+    await handler.handle(payload, { jobId: '1', attempt: 1 });
+
+    expect(storage.deleteObject).toHaveBeenCalledTimes(1);
+    expect(storage.deleteObject).toHaveBeenCalledWith('exports/actor/prior.tar.gz');
+    expect(exportsRepo.update).toHaveBeenCalledWith(
+      { id: 'prior-export' },
+      { status: 'EXPIRED', objectKey: null },
+    );
   });
 });

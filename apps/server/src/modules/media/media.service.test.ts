@@ -252,6 +252,43 @@ describe('MediaService.finalizeMediaUpload', () => {
     );
     expect(mediaRepo.update).not.toHaveBeenCalled();
   });
+
+  it('performs the storage HEAD outside the transaction (ADR 0039 rule 1)', async () => {
+    mediaRepo.findOne.mockResolvedValue(pendingRow());
+    (storage.head as ReturnType<typeof vi.fn>).mockResolvedValue({
+      contentType: 'image/png',
+      contentLength: 2048,
+      etag: '"abc"',
+    });
+
+    const getRepository = (entity: unknown): unknown => {
+      if (entity === Media) return mediaRepo;
+      if (entity === OutboxJob) return jobsRepo;
+      throw new Error('unexpected entity');
+    };
+    const transaction = vi.fn(
+      (fn: (manager: { getRepository: typeof getRepository }) => unknown) => {
+        const headCallsAtEntry = (storage.head as ReturnType<typeof vi.fn>).mock.calls.length;
+        const result = fn({ getRepository });
+        // ADR 0039 rule 1: no third-party network I/O inside a transaction — the HEAD must
+        // have run before the transaction opened, never inside it.
+        expect((storage.head as ReturnType<typeof vi.fn>).mock.calls.length).toBe(headCallsAtEntry);
+        return result;
+      },
+    );
+
+    const svc = new MediaService(
+      { getRepository, transaction } as never,
+      storage,
+      fakeConfig(),
+      new RateLimitService(fakeDbRateLimitStore()),
+    );
+    const result = await svc.finalizeMediaUpload(ACTOR_ID, MEDIA_ID);
+
+    expect(result.state).toBe('PROCESSING');
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(storage.head).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('MediaService.getMediaDownload', () => {
