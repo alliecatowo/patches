@@ -68,38 +68,48 @@ export class MediaService {
     return { mediaId: id, uploadUrl: url, expiresAt };
   }
 
-  finalizeMediaUpload(actorId: string, mediaIdRaw: string): Promise<FinalizeMediaUploadResult> {
+  async finalizeMediaUpload(
+    actorId: string,
+    mediaIdRaw: string,
+  ): Promise<FinalizeMediaUploadResult> {
     const mediaId = parseInput(uuidInputSchema, mediaIdRaw);
 
+    // State + ownership are read before the transaction opens so the storage HEAD below can
+    // also run before it (ADR 0039 rule 1: no third-party network I/O inside a transaction —
+    // a HEAD holds the pooled connection across latency we don't control).
+    const repository = this.dataSource.getRepository(Media);
+    const media = await repository.findOne({ where: { id: mediaId } });
+    if (media === null || media.ownerActorId !== actorId) {
+      throw mediaNotFound();
+    }
+
+    if (media.state !== 'PENDING_UPLOAD') {
+      // Idempotent (`docs/architecture/jobs.md` §7): already finalized (or terminal) —
+      // report the current state rather than re-`HEAD`ing storage or double-enqueueing.
+      return { mediaId: media.id, state: media.state };
+    }
+
+    // Confirm the client's claimed upload before opening the transaction. Both the HEAD and
+    // the state read now see the same pre-transaction snapshot, so a missing object still
+    // aborts without touching the DB. The HEAD-commit gap (object deleted just after this
+    // check) doesn't matter: the PROCESS_MEDIA job re-fetches the real object and marks the
+    // row FAILED if it's gone.
+    const head = await this.storage.head(mediaOriginalKey(media.id));
+    if (head === null || head.contentLength === 0) {
+      throw AppError.validation('Uploaded object not found — finish the upload before finalizing.');
+    }
+
     return this.dataSource.transaction(async (manager) => {
-      const repository = manager.getRepository(Media);
-      const media = await repository.findOne({ where: { id: mediaId } });
-      if (media === null || media.ownerActorId !== actorId) {
-        throw mediaNotFound();
-      }
-
-      if (media.state !== 'PENDING_UPLOAD') {
-        // Idempotent (`docs/architecture/jobs.md` §7): already finalized (or terminal) —
-        // report the current state rather than re-`HEAD`ing storage or double-enqueueing.
-        return { mediaId: media.id, state: media.state };
-      }
-
-      const head = await this.storage.head(mediaOriginalKey(media.id));
-      if (head === null || head.contentLength === 0) {
-        throw AppError.validation(
-          'Uploaded object not found — finish the upload before finalizing.',
-        );
-      }
-
       // Conditional UPDATE, not a plain read-then-write: two concurrent `FinalizeMediaUpload`
       // calls for the same media must not both flip PENDING_UPLOAD → PROCESSING and both
       // enqueue a job.
-      const claim = await repository.update(
+      const repo = manager.getRepository(Media);
+      const claim = await repo.update(
         { id: media.id, state: 'PENDING_UPLOAD' },
         { state: 'PROCESSING' },
       );
       if (claim.affected !== 1) {
-        const current = await repository.findOneByOrFail({ id: media.id });
+        const current = await repo.findOneByOrFail({ id: media.id });
         return { mediaId: current.id, state: current.state };
       }
 
