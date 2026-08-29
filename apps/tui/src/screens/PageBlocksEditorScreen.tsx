@@ -8,11 +8,15 @@ import type { PatchesApi } from '../api/client.js';
 import { describeGrpcError } from '../api/errors.js';
 import {
   applyFieldText,
+  applyLinkListEntries,
   BLOCK_TYPE_SPECS,
+  blankLinkListEntry,
   cycleEnumValue,
   fieldValueToText,
   getBlockTypeSpec,
+  readLinkList,
   type BlockTypeSpec,
+  type LinkListEntry,
 } from '../pages/block-editor-schema.js';
 import type { PageDraftStore } from '../pages/draft-store.js';
 import { sanitizeForTerminal } from '../format/sanitize.js';
@@ -46,6 +50,14 @@ interface EditFieldsState {
   spec: BlockTypeSpec;
   texts: Record<string, string>;
   focus: number;
+  /** When `spec.fields[focus].kind === 'linkList'` (a `Links` block, B-119): the working
+   * array of entries and the active (entry, sub-field) slot being edited. Absent/ignored
+   * for scalar fields. */
+  links?: readonly LinkListEntry[];
+  entryIndex?: number;
+  entryFieldIndex?: number;
+  /** linkList delete confirmation — `x` sets it, `y`/`n`/Esc resolves it. */
+  linkDeletePending?: boolean;
 }
 
 type Mode =
@@ -158,14 +170,35 @@ export function PageBlocksEditorScreen({
     }
     const texts: Record<string, string> = {};
     for (const field of spec.fields) texts[field.key] = fieldValueToText(field, raw);
+    // Seed the linkList working array from the block's current value (B-119).
+    const linkListField = spec.fields.find((field) => field.kind === 'linkList');
     setError(undefined);
-    setMode({ mode: 'editFields', state: { index, spec, texts, focus: 0 } });
+    setMode({
+      mode: 'editFields',
+      state: {
+        index,
+        spec,
+        texts,
+        focus: 0,
+        ...(linkListField === undefined
+          ? {}
+          : {
+              links: readLinkList(raw, linkListField.key),
+              entryIndex: 0,
+              entryFieldIndex: 0,
+            }),
+      },
+    });
   }
 
   function commitFields(state: EditFieldsState): void {
     let nextRaw: RawBlock = { type: state.spec.type };
     for (const field of state.spec.fields) {
-      nextRaw = applyFieldText(field, nextRaw, state.texts[field.key] ?? '');
+      if (field.kind === 'linkList' && state.links !== undefined) {
+        nextRaw = applyLinkListEntries(nextRaw, field.key, state.links, field.maxItems);
+      } else {
+        nextRaw = applyFieldText(field, nextRaw, state.texts[field.key] ?? '');
+      }
     }
     setBlocks((current) =>
       current.map((block, index) => (index === state.index ? nextRaw : block)),
@@ -234,6 +267,120 @@ export function PageBlocksEditorScreen({
       setSaving(false);
       setError(describeGrpcError(saveError, api.target).title);
     }
+  }
+
+  // --------------------------------------------------------------------------------
+  // linkList field editing (B-119) — the `Links` block's entries are a structured list,
+  // not a scalar text field, so the block's `editFields` form gets a nested list editor:
+  // a linear cursor across (entry × sub-field) slots navigated with Tab/↑↓, `a` add,
+  // `x` delete (y/n confirm), `J`/`K` reorder, free text into the active slot. Every
+  // updater uses the functional `setMode((current) => ...)` form — several keys can fire
+  // in one tick (tests/fast typing) and each must build on the previous one's result.
+  // --------------------------------------------------------------------------------
+
+  function stepLinkSlot(delta: number): void {
+    setMode((current) => {
+      if (current.mode !== 'editFields') return current;
+      const field = current.state.spec.fields[current.state.focus];
+      const entryFields = field?.kind === 'linkList' ? field.entryFields : undefined;
+      if (entryFields === undefined || entryFields.length === 0) return current;
+      const entries = current.state.links ?? [];
+      const total = entries.length * entryFields.length;
+      if (total === 0) return current;
+      const entryIndex = current.state.entryIndex ?? 0;
+      const entryFieldIndex = current.state.entryFieldIndex ?? 0;
+      const nextSlot = (entryIndex * entryFields.length + entryFieldIndex + delta + total) % total;
+      return {
+        mode: 'editFields',
+        state: {
+          ...current.state,
+          entryIndex: Math.floor(nextSlot / entryFields.length),
+          entryFieldIndex: nextSlot % entryFields.length,
+        },
+      };
+    });
+  }
+
+  function typeOnLinkSlot(append: (current: string) => string): void {
+    setMode((current) => {
+      if (current.mode !== 'editFields') return current;
+      const field = current.state.spec.fields[current.state.focus];
+      const entryFields = field?.kind === 'linkList' ? field.entryFields : undefined;
+      if (entryFields === undefined) return current;
+      const entryIndex = current.state.entryIndex ?? 0;
+      const entryFieldIndex = current.state.entryFieldIndex ?? 0;
+      const sub = entryFields[entryFieldIndex];
+      const entries = [...(current.state.links ?? [])];
+      const entry = entries[entryIndex];
+      if (sub === undefined || entry === undefined) return current;
+      const key = sub.key as keyof LinkListEntry;
+      const limit = sub.kind === 'string' ? sub.maxChars : undefined;
+      if (limit !== undefined && entry[key].length >= limit) return current;
+      entries[entryIndex] = { ...entry, [key]: append(entry[key]) };
+      return { mode: 'editFields', state: { ...current.state, links: entries } };
+    });
+  }
+
+  function addLinkEntry(): void {
+    setMode((current) => {
+      if (current.mode !== 'editFields') return current;
+      const field = current.state.spec.fields[current.state.focus];
+      if (field?.kind !== 'linkList') return current;
+      const entries = current.state.links ?? [];
+      if (field.maxItems !== undefined && entries.length >= field.maxItems) return current;
+      const insertAt = (current.state.entryIndex ?? 0) + 1;
+      const next = [
+        ...entries.slice(0, insertAt),
+        blankLinkListEntry(),
+        ...entries.slice(insertAt),
+      ];
+      return {
+        mode: 'editFields',
+        state: { ...current.state, links: next, entryIndex: insertAt, entryFieldIndex: 0 },
+      };
+    });
+  }
+
+  function moveLinkEntry(delta: number): void {
+    setMode((current) => {
+      if (current.mode !== 'editFields') return current;
+      const field = current.state.spec.fields[current.state.focus];
+      if (field?.kind !== 'linkList') return current;
+      const entries = current.state.links ?? [];
+      const from = current.state.entryIndex ?? 0;
+      const to = from + delta;
+      if (to < 0 || to >= entries.length) return current;
+      const next = [...entries];
+      const a = next[from];
+      const b = next[to];
+      if (a === undefined || b === undefined) return current;
+      next[from] = b;
+      next[to] = a;
+      return { mode: 'editFields', state: { ...current.state, links: next, entryIndex: to } };
+    });
+  }
+
+  function deleteLinkEntry(confirmed: boolean): void {
+    setMode((current) => {
+      if (current.mode !== 'editFields') return current;
+      const field = current.state.spec.fields[current.state.focus];
+      if (field?.kind !== 'linkList') return current;
+      if (!confirmed) {
+        return { mode: 'editFields', state: { ...current.state, linkDeletePending: true } };
+      }
+      const entries = current.state.links ?? [];
+      const index = current.state.entryIndex ?? 0;
+      const next = entries.filter((_, i) => i !== index);
+      return {
+        mode: 'editFields',
+        state: {
+          ...current.state,
+          links: next,
+          linkDeletePending: false,
+          entryIndex: next.length === 0 ? 0 : Math.min(index, next.length - 1),
+        },
+      };
+    });
   }
 
   useInput(
@@ -310,6 +457,74 @@ export function PageBlocksEditorScreen({
         if (state.spec.fields.length === 0) return;
         const field = state.spec.fields[state.focus];
         if (field === undefined) return;
+
+        // A `'linkList'` field (a `Links` block's `{label, href, group}` entries, B-119)
+        // gets a nested list editor instead of a scalar text field: a linear cursor over
+        // (entry × sub-field) slots, free text into the active slot, `J`/`K` reorder the
+        // entry, `N` adds a blank entry, `X` deletes it (y/n confirms). Uppercase letters
+        // are treated as commands here — matching the block-list mode's `J`/`K` reorder
+        // convention — so they can't be typed into a slot; that's an acceptable tradeoff,
+        // since arranging entries is the point of this field.
+        if (field.kind === 'linkList') {
+          if (state.linkDeletePending) {
+            if (input === 'y') {
+              deleteLinkEntry(true);
+              return;
+            }
+            if (input === 'n' || key.escape) {
+              setMode((current) =>
+                current.mode === 'editFields'
+                  ? { mode: 'editFields', state: { ...current.state, linkDeletePending: false } }
+                  : current,
+              );
+              return;
+            }
+            return;
+          }
+          if (key.tab && key.shift) {
+            stepLinkSlot(-1);
+            return;
+          }
+          if (key.tab || key.downArrow) {
+            stepLinkSlot(1);
+            return;
+          }
+          if (key.upArrow) {
+            stepLinkSlot(-1);
+            return;
+          }
+          if (input === 'J') {
+            moveLinkEntry(1);
+            return;
+          }
+          if (input === 'K') {
+            moveLinkEntry(-1);
+            return;
+          }
+          if (input === 'N') {
+            addLinkEntry();
+            return;
+          }
+          if (input === 'X') {
+            deleteLinkEntry(false);
+            return;
+          }
+          if (key.return) {
+            stepLinkSlot(1);
+            return;
+          }
+          if (key.backspace || key.delete) {
+            typeOnLinkSlot((value) => value.slice(0, -1));
+            return;
+          }
+          if (key.ctrl || key.meta) return;
+          if (input.length > 0) {
+            typeOnLinkSlot((value) => value + input);
+            return;
+          }
+          return;
+        }
+
         if (field.kind === 'enum') {
           if (key.return || key.rightArrow) {
             updateFieldText((value) => cycleEnumValue(field, value, 1));
@@ -391,6 +606,49 @@ export function PageBlocksEditorScreen({
     { isActive },
   );
 
+  // A `'linkList'` field (a `Links` block's entries, B-119) is rendered as a nested
+  // list — one row per sub-field, the active (entry, sub-field) slot highlighted — instead
+  // of the scalar text input the other field kinds get. Pure over `state`, matching how
+  // the rest of this screen renders from `mode.state`.
+  function renderLinkList(state: EditFieldsState) {
+    const field = state.spec.fields.find((f) => f.kind === 'linkList');
+    const entryFields = field?.entryFields;
+    const entries = state.links ?? [];
+    if (field === undefined || entryFields === undefined) {
+      return <Text color={theme.warn}>Link list not editable here.</Text>;
+    }
+    const editing = state.spec.fields[state.focus]?.kind === 'linkList';
+    const entryIndex = state.entryIndex ?? 0;
+    const entryFieldIndex = state.entryFieldIndex ?? 0;
+    return (
+      <Box flexDirection="column">
+        {entries.length === 0 ? (
+          <Text color={theme.muted}>(no links — press N to add one)</Text>
+        ) : (
+          entries.map((entry, i) => (
+            <Box key={i} flexDirection="column" marginTop={1}>
+              {entryFields.map((sub, j) => {
+                const active = editing && i === entryIndex && j === entryFieldIndex;
+                const value = entry[sub.key as keyof LinkListEntry] ?? '';
+                return (
+                  <Box key={sub.key} flexDirection="column">
+                    <Text color={active ? theme.accent : theme.muted} bold={active}>
+                      {i + 1}.{j + 1} {sub.label}:
+                    </Text>
+                    <Text wrap="wrap">
+                      {sanitizeForTerminal(value === '' ? '(empty)' : value)}
+                      {active ? <Text color={theme.accent}>█</Text> : null}
+                    </Text>
+                  </Box>
+                );
+              })}
+            </Box>
+          ))
+        )}
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column">
       <Text color={theme.accent}>
@@ -421,6 +679,24 @@ export function PageBlocksEditorScreen({
           ) : (
             mode.state.spec.fields.map((field, index) => {
               const focused = index === mode.state.focus;
+              if (field.kind === 'linkList') {
+                return (
+                  <Box key={field.key} flexDirection="column" marginBottom={1}>
+                    <Text color={focused ? theme.accent : theme.muted} bold={focused}>
+                      {field.label}
+                    </Text>
+                    {renderLinkList(mode.state)}
+                    {mode.state.linkDeletePending ? (
+                      <Text color={theme.warn}>Delete this link? y/n</Text>
+                    ) : null}
+                    {focused ? (
+                      <Text color={theme.muted}>
+                        Tab/↑↓ move · J/K reorder · N add · X delete · type edits the slot
+                      </Text>
+                    ) : null}
+                  </Box>
+                );
+              }
               const text = mode.state.texts[field.key] ?? '';
               return (
                 <Box key={field.key} flexDirection="column" marginBottom={1}>

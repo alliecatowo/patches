@@ -221,4 +221,102 @@ describe('Structured Pages block editor (B-023)', () => {
     expect(lastFrame() ?? '').toContain('Edit blocks');
     unmount();
   });
+
+  it('edits a Links block’s label/href/group and the group survives a commit (B-119)', async () => {
+    const fake = createFakeApi();
+    fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    const doc: PatchesPage = { version: 1, pages: [{ slug: 'index', title: 'Home', blocks: [] }] };
+    fake.addPage('alice', 'index', doc);
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+    await loginAs(press, lastFrame, 'alice', 'x');
+    await openOwnPage(press);
+    await openBlocksEditor(press, lastFrame);
+
+    // Add a Links block (index 3 in the picker: Text, Markdown, Image, Links).
+    press('a');
+    await expectFrame(lastFrame, 'Add a block:');
+    press('j');
+    press('j');
+    press('j');
+    await expectFrame(lastFrame, '› Links');
+    press(KEY.enter);
+    await expectFrame(lastFrame, 'Links — 1 link');
+
+    // Open the field form — the linkList editor shows the seeded blank entry's slots.
+    press(KEY.enter);
+    await expectFrame(lastFrame, '1.1 Label:');
+
+    // (0,0) label slot is active on open; each value renders on its own line under the
+    // slot label, so assert on the unique value strings rather than joined lines.
+    press('My Link');
+    await expectFrame(lastFrame, 'My Link');
+
+    press(KEY.tab); // -> (0,1) URL
+    press('https://b119.example/grouped');
+    await expectFrame(lastFrame, 'https://b119.example/grouped');
+
+    press(KEY.tab); // -> (0,2) Group
+    press('Resources');
+    await expectFrame(lastFrame, 'Resources');
+
+    // Commit the field form back to the block.
+    press(KEY.ctrlS);
+    await expectFrame(lastFrame, 'Links — 1 link');
+
+    // Re-open the editor: the group we typed must have persisted through the commit.
+    press(KEY.enter);
+    await expectFrame(lastFrame, 'Resources');
+    unmount();
+  });
+
+  it('N adds, J/K reorders, and X/y deletes a Links entry (B-119)', async () => {
+    const fake = createFakeApi();
+    fake.addUser({ handle: 'alice', password: 'x', displayName: '', bio: '' });
+    const doc: PatchesPage = { version: 1, pages: [{ slug: 'index', title: 'Home', blocks: [] }] };
+    fake.addPage('alice', 'index', doc);
+
+    const { press, lastFrame, unmount } = renderApp({ fake });
+    await flush();
+    await loginAs(press, lastFrame, 'alice', 'x');
+    await openOwnPage(press);
+    await openBlocksEditor(press, lastFrame);
+
+    press('a');
+    await expectFrame(lastFrame, 'Add a block:');
+    press('j');
+    press('j');
+    press('j');
+    await expectFrame(lastFrame, '› Links');
+    press(KEY.enter);
+    await expectFrame(lastFrame, 'Links — 1 link');
+
+    press(KEY.enter);
+    await expectFrame(lastFrame, '1.1 Label:');
+    press('First Link');
+    await expectFrame(lastFrame, 'First Link');
+
+    // N adds a blank second entry and moves the cursor to its Label slot.
+    press('N');
+    press('Second Link');
+    await expectFrame(lastFrame, 'Second Link');
+    expect(lastFrame() ?? '').toContain('First Link');
+
+    // K moves the active (second) entry up above the first.
+    press('K');
+    await flush();
+    const reordered = lastFrame() ?? '';
+    expect(reordered.indexOf('Second Link')).toBeLessThan(reordered.indexOf('First Link'));
+
+    // X deletes the active (now-first) entry after a y confirm.
+    press('X');
+    await expectFrame(lastFrame, 'Delete this link? y/n');
+    press('y');
+    await flush();
+    const after = lastFrame() ?? '';
+    expect(after).not.toContain('Second Link');
+    expect(after).toContain('First Link');
+    unmount();
+  });
 });
