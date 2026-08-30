@@ -4,6 +4,7 @@ import type { JSX } from 'react';
 import { Link } from 'react-router-dom';
 
 import { api } from '../api/client.js';
+import { Button, EmptyState } from '../components/ui/index.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
 import { formatRelativeTime } from '../lib/format.js';
 import styles from './NotificationsRoute.module.css';
@@ -90,9 +91,14 @@ export function NotificationsRoute(): JSX.Element {
     <div>
       <div className={styles['header']}>
         <h1>Notifications</h1>
-        <button type="button" onClick={() => markAllRead.mutate()} disabled={markAllRead.isPending}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => markAllRead.mutate()}
+          loading={markAllRead.isPending}
+        >
           Mark all read
-        </button>
+        </Button>
       </div>
       {followRequestsQuery.data && followRequestsQuery.data.requests.length > 0 ? (
         <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid var(--border)' }}>
@@ -103,27 +109,34 @@ export function NotificationsRoute(): JSX.Element {
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0' }}
             >
               <Link to={`/@${request.actor?.handle ?? ''}`}>@{request.actor?.handle}</Link>
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={() => request.actor && acceptRequest.mutate(request.actor.id)}
-                disabled={acceptRequest.isPending}
+                loading={acceptRequest.isPending && acceptRequest.variables === request.actor?.id}
+                disabled={acceptRequest.isPending || rejectRequest.isPending}
               >
                 Accept
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => request.actor && rejectRequest.mutate(request.actor.id)}
-                disabled={rejectRequest.isPending}
+                loading={rejectRequest.isPending && rejectRequest.variables === request.actor?.id}
+                disabled={acceptRequest.isPending || rejectRequest.isPending}
               >
                 Reject
-              </button>
+              </Button>
             </div>
           ))}
         </div>
       ) : null}
-      {query.isPending ? <p style={{ padding: '1rem' }}>Loading…</p> : null}
+      {query.isPending ? <EmptyState compact title="Loading…" /> : null}
       {notifications.length === 0 && !query.isPending ? (
-        <p style={{ padding: '1rem', color: 'var(--fg-muted)' }}>No notifications yet.</p>
+        <EmptyState
+          title="No notifications yet"
+          description="When people interact with your posts or follow you, you'll see it here."
+        />
       ) : null}
       {notifications.map((notification) => (
         <Link
@@ -136,13 +149,14 @@ export function NotificationsRoute(): JSX.Element {
         </Link>
       ))}
       {query.hasNextPage ? (
-        <button
-          type="button"
-          className={styles['loadMore']}
+        <Button
+          variant="ghost"
+          fullWidth
           onClick={() => void query.fetchNextPage()}
+          loading={query.isFetchingNextPage}
         >
-          {query.isFetchingNextPage ? 'Loading…' : 'Load more'}
-        </button>
+          Load more
+        </Button>
       ) : null}
     </div>
   );
