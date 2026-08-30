@@ -58,6 +58,23 @@ export {
 export { containsUnsafeBytes, sanitizeText, utf8ByteLength } from './sanitize.js';
 export type { SanitizeTextOptions } from './sanitize.js';
 
+export {
+  MCP_DECISIONS,
+  MCP_RISK_TIERS,
+  McpApprovalGate,
+  computeMcpArgsDigest,
+  evaluateMcpRisk,
+} from './mcp/approval.js';
+export type {
+  McpApprovalDecision,
+  McpApprovalPrompt,
+  McpApprovalRecorder,
+  McpApprovalRecord,
+  McpDecision,
+  McpRiskTier,
+  McpToolRequest,
+} from './mcp/approval.js';
+
 // Identity cosmetic packs (B-117 / #241) — the shared, capability-aware catalog both the web
 // and TUI collate against, so per-client cosmetic decisions stop drifting apart.
 export {
