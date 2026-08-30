@@ -194,8 +194,9 @@ jobs:
             --project-id "$NEON_PROJECT_ID" \
             --database-name neondb --role-name neondb_owner --no-color 2>"$RUNNER_TEMP/neon-conn-err.txt" \
             | sed 's/&channel_binding=require//' > "$RUNNER_TEMP/neon-conn-url.txt"; then
-            if grep -q "not found" "$RUNNER_TEMP/neon-conn-err.txt"; then
+            if grep -qi "not found" "$RUNNER_TEMP/neon-conn-err.txt" || grep -qi "limit" "$RUNNER_TEMP/neon-conn-err.txt"; then
               echo 'Neon branch not found (likely limit exceeded during branch creation); skipping connection string fetch.'
+              echo "DATABASE_URL=" >> "$GITHUB_ENV"
               exit 0
             else
               cat "$RUNNER_TEMP/neon-conn-err.txt" >&2
@@ -203,7 +204,11 @@ jobs:
             fi
           fi
           url="$(cat "$RUNNER_TEMP/neon-conn-url.txt")"
-          [ -n "$url" ] || { echo "Neon returned an empty connection string" >&2; exit 1; }
+          if [ -z "$url" ]; then
+            echo 'Neon connection string empty (branch absent); setting empty DATABASE_URL.'
+            echo "DATABASE_URL=" >> "$GITHUB_ENV"
+            exit 0
+          fi
           echo "::add-mask::$url"
           echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
 
@@ -298,7 +303,7 @@ jobs:
       - name: Set Fly secrets (branch DATABASE_URL + throwaway keys + optional R2)
         run: |
           set -euo pipefail
-          args=(DATABASE_URL="$DATABASE_URL" DATABASE_SSL=true
+          args=(DATABASE_URL="${DATABASE_URL:-}" DATABASE_SSL=true
             JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY"
             AUTH_CODE_DELIVERY_ACTIVE_KEY_ID="$AUTH_CODE_DELIVERY_ACTIVE_KEY_ID"
             AUTH_CODE_DELIVERY_KEYS="$AUTH_CODE_DELIVERY_KEYS")
