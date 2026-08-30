@@ -35,3 +35,7 @@
 - 2026-08-30: Rechecked PR #424. It remains OPEN and mergeable, with no review submissions or
   unresolved inline review threads. The current head `56515702468405bf087d5dee57bac86862222fcd`
   reports a successful `NestJS Doctor` status; the earlier CI-failure note is stale.
+- 2026-08-30: PR automation exposed a disposable preview node and web preview, but this
+  workspace cannot resolve `patches-pr-424.fly.dev`; health-check probing failed at DNS before
+  any authentication request. The preview reports console email delivery and no supplied test
+  credentials, so credentialed login/refresh/logout flows remain unclaimed.

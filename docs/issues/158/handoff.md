@@ -21,5 +21,7 @@
 
 - Disposable-node exercise and package checks: application checkout and node credentials are
   unavailable, so live authentication flows and package-level checks cannot be executed here.
+- Preview health probing also stopped at workspace DNS resolution (`curl: (6) Could not resolve
+  host: patches-pr-424.fly.dev`); no authentication request was sent.
 - The earlier remote CI failure/pending-run note is superseded: PR #424's current reported check
   is successful, and its review sweep has no actionable feedback.
