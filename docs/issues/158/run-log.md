@@ -8,7 +8,7 @@
 - 2026-08-30: Workspace is `agent/polyphony-_158` at `f500cfd`, equal to `origin/main`; an existing
   unrelated untracked file `docs/issues/_158/run-log.md` was preserved.
 - 2026-08-30: The required pull/sync fallback, `git -c core.fsmonitor=false pull --ff-only origin
-  main`, failed before changing source because `.git/FETCH_HEAD` is read-only. No code edits were
+main`, failed before changing source because `.git/FETCH_HEAD` is read-only. No code edits were
   made before recording this evidence.
 - 2026-08-30: Corrected the prior stale audit assumption: `apps/mobile` exists with Expo screens,
   SecureStore credential storage, session restore, and device-flow login. It has no verification,
@@ -22,3 +22,15 @@
   scan and required-file checks.
 - 2026-08-30: Wrote `audit.md`, `plan.md`, `run-log.md`, and `handoff.md` under the required
   `docs/issues/158/` directory. No application source was changed.
+- 2026-08-30: Retry #2 resumed at delivered commit `5b0bd2d` with supplied failures for quality,
+  aggregate `ci-ok`, and the Fly/Neon preview deploy. No remote polling was performed.
+- 2026-08-30: Reproduced the quality failure using cached Prettier with Node 24: only
+  `docs/issues/158/audit.md` and `run-log.md` failed formatting. Formatted precisely those files;
+  a follow-up Prettier check and `git diff --check` passed.
+- 2026-08-30: Static actionlint passed for CI and preview workflows when pointed at the cached
+  shellcheck binary. `make-preview-config.mjs --pr 428` rendered a fully substituted temporary
+  config; the generated file was removed after the smoke check.
+- 2026-08-30: The delivered commit changes only issue documentation; it does not modify the preview
+  workflow, preview template/generator, or preview operations document. With no CI step log and no
+  live Neon/Fly credentials, the deploy failure is recorded as an external infrastructure/secret
+  boundary, not a speculative workflow change.

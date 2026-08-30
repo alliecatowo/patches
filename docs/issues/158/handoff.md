@@ -18,6 +18,10 @@
 - Preview evidence: gRPC/HTTP/web/worker/Neon are advertised live; real email is off and no test
   credentials are supplied.
 - Browser validation was attempted once and denied by browser permission policy before navigation.
+- Retry #2 quality evidence: cached Prettier under Node 24 reproduced formatting failures in only
+  `audit.md` and `run-log.md`; both are formatted in the current workspace.
+- Retry #2 preview evidence: the delivered commit contains no preview workflow/configuration change;
+  static actionlint and the per-PR config generator both pass locally.
 
 ## Validation
 
@@ -26,6 +30,11 @@
 - `mise run check mobile` — blocked during mise trust setup because the filesystem is read-only;
   direct pnpm test/typecheck fallbacks hit the same untrusted-config guard; no package check result
   is claimed.
+- Cached Prettier check for `docs/issues/158` — passed after formatting the two files that caused
+  CI quality to fail.
+- `git diff --check` — passed.
+- Static `actionlint .github/workflows/preview.yml .github/workflows/ci.yml` plus
+  `make-preview-config.mjs --pr 428` — passed using cached tools.
 
 ## Blockers
 
@@ -36,3 +45,6 @@
 - Mobile parity findings (verification/reset/recovery-code/credential management/all-sessions and
   server-side logout UI) and `PASSWORD_AUTH=required` enforcement remain separately scoped product
   gaps; they were documented, not silently implemented in this audit slice.
+- The remaining preview deploy failure cannot be diagnosed to an exact step locally: the supplied
+  check summary has no step logs, this diff does not change preview code/configuration, and the
+  workflow requires live Neon/Fly credentials and infrastructure unavailable in the workspace.

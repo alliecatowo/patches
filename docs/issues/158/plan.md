@@ -37,3 +37,14 @@ authentication invariants.
 - [x] Run documentation whitespace validation and review artifact consistency.
 - [ ] Exercise a disposable node with credentials and email delivery; blocked by preview access,
       disabled email, and absent test credentials.
+
+## Retry #2 delivery correction
+
+- [x] Reproduce the supplied quality failure with Prettier under the cached Node 24 toolchain.
+- [x] Format the two failing issue artifacts only (`audit.md` and `run-log.md`).
+- [x] Re-check all issue-158 artifacts with Prettier and Git whitespace checks.
+- [x] Confirm CI/preview workflow and preview generator are unchanged by the delivered commit and
+      pass static actionlint/generator validation.
+- [x] Classify the preview deploy failure as external to this formatting-only diff: the supplied
+      summary has no failing step log, while the workflow needs live Neon/Fly credentials and
+      infrastructure that cannot be exercised locally.
