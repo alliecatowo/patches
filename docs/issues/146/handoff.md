@@ -21,3 +21,9 @@
 The issue remains security-blocked: no independent cryptographic review or external security audit
 evidence is present in the repository or issue record. This slice therefore does not enable or
 change `E2EE_V1`; it leaves the workspace changes for the harness to deliver.
+
+## Retry attempt #1
+
+The existing artifact slice was revalidated at workspace `HEAD=25fe4a3`; no new code changes were
+needed. The unrelated `docs/issues/_146/run-log.md` modification remains preserved. The external
+review blocker is unchanged.
