@@ -21,9 +21,11 @@ this retry checkout, so implementation changes are limited to issue evidence.
 
 - [x] Read the committed authentication architecture and route/client contract from Git.
 - [x] Confirm the current checkout, commit, and absence of application source files.
-- [ ] Live disposable-node exercise: blocked by unavailable node credentials/configuration.
+- [ ] Live disposable-node exercise: preview is advertised as live, but browser permission was
+      denied before navigation; credentials and email delivery are unavailable.
 - [ ] Full package checks: blocked because this checkout has no package manifests/source tree.
 - [x] Commit/PR publication: completed through the repository connector; PR #424 is open and
       labeled `polyphony`.
 - [x] Remote PR check sweep: current head check is successful; no review submissions or
       unresolved inline review threads remain.
+- [x] Refresh the audit after the preview became available and record the browser-access blocker.

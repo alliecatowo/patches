@@ -3,9 +3,9 @@
 ## Result
 
 The committed authentication contract covers the requested flows for the web and terminal
-clients. The evidence is documentation-level, not a live-node exercise: this retry workspace
-does not contain the application checkout, and no disposable-node credentials/configuration are
-available.
+clients. The PR preview automation now reports a live disposable stack, but this retry workspace
+could not complete a live-node exercise: browser permission was denied before the preview loaded,
+and no disposable-node credentials or email delivery are available.
 
 ## Inventory
 
@@ -43,15 +43,20 @@ available.
 2. **External blocker — production GitHub/OIDC exercise.** The committed contract records
    `GITHUB_CLIENT_ID` as unset on the production node. Live login/linking cannot be claimed
    until the OAuth app and node secrets exist.
-3. **Intentional limitations.** Browser SSH private-key use and TUI passkey use are N/A by
+3. **External validation blocker — preview access.** The PR preview comment reports live gRPC,
+   HTTP, web, worker, and database components, but browser access was denied before navigation,
+   so no runtime UI behavior or authentication request can be claimed. Real email is disabled
+   and no test credentials are supplied.
+4. **Intentional limitations.** Browser SSH private-key use and TUI passkey use are N/A by
    design, not defects. The documented closed-node behavior is also a capability policy, not a
    client-side bypass opportunity.
 
 ## Validation boundary
 
-Validated by reading `HEAD:docs/architecture/auth.md` and checking the checkout contents and
-commit identity. Live disposable-node flows, app launch checks, and package tests remain
-unexecuted because their required source/configuration is unavailable.
+Validated by reading `docs/architecture/auth.md`, checking the checkout contents and commit
+identity, and reviewing the PR preview capability report. Live disposable-node flows and app
+launch checks remain unexecuted because browser access was denied before navigation; package
+tests remain unavailable because the application source/configuration is not checked out.
 
 ## End-to-end acceptance path
 

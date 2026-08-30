@@ -39,3 +39,6 @@
   workspace cannot resolve `patches-pr-424.fly.dev`; health-check probing failed at DNS before
   any authentication request. The preview reports console email delivery and no supplied test
   credentials, so credentialed login/refresh/logout flows remain unclaimed.
+- 2026-08-30: PR preview automation reports a live gRPC/HTTP/web/worker/database stack for commit `a1900814`; its capability report says real email is off and no test credentials are supplied.
+- 2026-08-30: Browser launch validation was attempted against the advertised web preview. Browser permission was denied before navigation, so no UI state or authentication request was observed; no alternate browser/API workaround was attempted.
+- 2026-08-30: Updated the audit, plan, run-log, and handoff wording to replace the stale DNS-only blocker with the current preview-access evidence.
