@@ -25,6 +25,7 @@ import { GraphModule } from './modules/graph/graph.module.js';
 import { LabelsModule } from './modules/labels/labels.module.js';
 import { MediaModule } from './modules/media/media.module.js';
 import { MessagesModule } from './modules/messages/messages.module.js';
+import { McpModule } from './modules/mcp/mcp.module.js';
 import { ModerationModule } from './modules/moderation/moderation.module.js';
 import { NotificationsModule } from './modules/notifications/notification.module.js';
 import { WebVitalsModule } from './modules/observability/web-vitals.module.js';
@@ -73,6 +74,7 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     AppealModule,
     MediaModule,
     MessagesModule,
+    McpModule,
     E2eeModule,
     PagesModule,
     TagsModule,

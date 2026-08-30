@@ -42,6 +42,11 @@ export class AppConfigService {
     return this.get('PUBLIC_ORIGIN');
   }
 
+  /** OAuth authorization server advertised in MCP Protected Resource Metadata. */
+  get mcpAuthorizationServer(): string | undefined {
+    return this.get('MCP_AUTHORIZATION_SERVER');
+  }
+
   get instanceName(): string {
     return this.get('INSTANCE_NAME');
   }
