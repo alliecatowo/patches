@@ -442,6 +442,8 @@ fly secrets set --config infra/fly/fly.toml \
   R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com" \
   RESEND_API_KEY="..." \
   EMAIL_FROM="Patches <noreply@updates.allisons.dev>" \
+  GITHUB_CLIENT_ID="<client-id>" \
+  GITHUB_CLIENT_SECRET="<client-secret>" \
   INVITE_ONLY="true"
 ```
 
@@ -516,6 +518,32 @@ password-carrying `Register`, and `AddCredential(PASSWORD)` then reject with
 `FAILED_PRECONDITION`/`PASSWORD_AUTH_DISABLED`, and `AuthService.GetAuthPolicy` tells clients
 to hide password UI. `required` is accepted but not yet enforced — see
 `docs/architecture/auth.md` §10.
+
+**`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` (Status: deployed 2026-08-30, #147):** create an
+OAuth App at `github.com/settings/applications/new` (**"Enable Device Flow"** must be checked;
+homepage and callback set to `https://patches-web.pages.dev`; OAuth Apps have no create-API so
+the web form is the only path), then set both values on the app:
+
+```bash
+fly secrets set GITHUB_CLIENT_ID=<client-id> GITHUB_CLIENT_SECRET=<client-secret> -a patches-social
+```
+
+Fly rolls/restarts the server machine automatically — no separate deploy step needed. The web
+client requires no separate secret because the device flow (`BeginGitHubLogin` /
+`PollGitHubLogin` in `patches.v1.auth`) runs entirely server-side. Verification confirmed via:
+
+```bash
+curl -s -X POST https://patches-social.fly.dev/patches.v1.AuthService/GetAuthPolicy \
+  -H 'content-type: application/json' -d '{}'
+# → {"passwordAuth":"PASSWORD_AUTH_MODE_OPTIONAL","githubAuth":true}
+```
+
+**User-visible behavior:** the web login page shows a GitHub button (anonymous = login or
+first-time register); a logged-in user links GitHub at **Settings → Credentials** ("Link another
+account"); in the TUI, the Accounts screen's add-account flow offers GitHub and runs the same
+device flow. Starting the device flow while
+authenticated _links_ the credential to the current account; anonymously it logs in or
+registers. See also `docs/architecture/auth.md` §10 for the policy endpoint shape.
 
 ## Error monitoring
 
