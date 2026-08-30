@@ -32,3 +32,6 @@
 - 2026-08-29: Refined the audit to explicitly cover the absent mobile client and to state the
   registration → verification → login → refresh → logout/all-sessions acceptance path without
   claiming runtime execution. Rechecked the write boundary before attempting publication.
+- 2026-08-30: Rechecked PR #424. It remains OPEN and mergeable, with no review submissions or
+  unresolved inline review threads. The current head `56515702468405bf087d5dee57bac86862222fcd`
+  reports a successful `NestJS Doctor` status; the earlier CI-failure note is stale.

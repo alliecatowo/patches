@@ -23,6 +23,7 @@ this retry checkout, so implementation changes are limited to issue evidence.
 - [x] Confirm the current checkout, commit, and absence of application source files.
 - [ ] Live disposable-node exercise: blocked by unavailable node credentials/configuration.
 - [ ] Full package checks: blocked because this checkout has no package manifests/source tree.
-- [ ] Commit/PR publication: blocked after both the shared index and isolated temporary-index
-      commit paths hit the read-only filesystem; GitHub connector writes require unavailable
-      approval.
+- [x] Commit/PR publication: completed through the repository connector; PR #424 is open and
+      labeled `polyphony`.
+- [x] Remote PR check sweep: current head check is successful; no review submissions or
+      unresolved inline review threads remain.

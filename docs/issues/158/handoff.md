@@ -19,11 +19,7 @@
 
 ## Blockers
 
-- GitHub issue comments/PR publication: GitHub connector writes required unavailable approval,
-  and `gh` could not connect to `api.github.com`. A temporary isolated Git index also failed
-  when Git attempted to write the repository object database, so no commit or PR can be
-  published from this workspace.
 - Disposable-node exercise and package checks: application checkout and node credentials are
-  unavailable.
-- PR checks: remote `ci-ok` is currently failing while duplicate quality/build/integration/proto
-  runs are cancelled or still in progress; no green gate can be claimed.
+  unavailable, so live authentication flows and package-level checks cannot be executed here.
+- The earlier remote CI failure/pending-run note is superseded: PR #424's current reported check
+  is successful, and its review sweep has no actionable feedback.
