@@ -21,10 +21,10 @@ describe('PostRow media attachment model (B-084)', () => {
     });
 
     expect(post.media).toHaveLength(2);
-    expect(post.media[0].mediaId).toBe('m-123');
-    expect(post.media[0].altText).toBe('Sunset photo');
-    expect(post.media[1].mediaId).toBe('m-456');
-    expect(post.media[1].altText).toBe('Cat photo');
+    expect(post.media[0]?.mediaId).toBe('m-123');
+    expect(post.media[0]?.altText).toBe('Sunset photo');
+    expect(post.media[1]?.mediaId).toBe('m-456');
+    expect(post.media[1]?.altText).toBe('Cat photo');
   });
 
   it('handles posts with empty media list', () => {

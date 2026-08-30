@@ -23,11 +23,7 @@ export interface PostRowProps {
  * `GetMediaDownload`, validates the URL with `safePageHref` (http/https only),
  * and displays the image or placeholder if loading/failed.
  */
-export function PostMediaAttachmentView({
-  media,
-}: {
-  media: MediaAttachment;
-}): JSX.Element {
+export function PostMediaAttachmentView({ media }: { media: MediaAttachment }): JSX.Element {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
