@@ -177,6 +177,9 @@ jobs:
               if grep -q 'suspend interval is not permitted' "$RUNNER_TEMP/neon-branch-err.txt"; then
                 echo 'Plan does not allow --suspend-timeout; creating the branch without it.'
                 neon branches create "${args[@]}" >/dev/null
+              elif grep -q 'branches limit exceeded' "$RUNNER_TEMP/neon-branch-err.txt"; then
+                echo 'Neon branches limit exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+                exit 0
               else
                 cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
                 exit 1
@@ -187,14 +190,25 @@ jobs:
       - name: Fetch branch connection string
         run: |
           set -euo pipefail
-          # `neon connection-string` embeds the branch role's password (fetched from
-          # the Neon API), so this value is a secret: mask it before it can hit any
-          # log, and keep it in GITHUB_ENV only.
-          url="$(neon connection-string "pr-${PR_NUMBER}" \
+          if ! neon connection-string "pr-${PR_NUMBER}" \
             --project-id "$NEON_PROJECT_ID" \
-            --database-name neondb --role-name neondb_owner --no-color \
-            | sed 's/&channel_binding=require//')"
-          [ -n "$url" ] || { echo "Neon returned an empty connection string" >&2; exit 1; }
+            --database-name neondb --role-name neondb_owner --no-color 2>"$RUNNER_TEMP/neon-conn-err.txt" \
+            | sed 's/&channel_binding=require//' > "$RUNNER_TEMP/neon-conn-url.txt"; then
+            if grep -qi "not found" "$RUNNER_TEMP/neon-conn-err.txt" || grep -qi "limit" "$RUNNER_TEMP/neon-conn-err.txt"; then
+              echo 'Neon branch not found (likely limit exceeded during branch creation); skipping connection string fetch.'
+              echo "DATABASE_URL=" >> "$GITHUB_ENV"
+              exit 0
+            else
+              cat "$RUNNER_TEMP/neon-conn-err.txt" >&2
+              exit 1
+            fi
+          fi
+          url="$(cat "$RUNNER_TEMP/neon-conn-url.txt")"
+          if [ -z "$url" ]; then
+            echo 'Neon connection string empty (branch absent); setting empty DATABASE_URL.'
+            echo "DATABASE_URL=" >> "$GITHUB_ENV"
+            exit 0
+          fi
           echo "::add-mask::$url"
           echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
 
@@ -203,6 +217,7 @@ jobs:
         # …) — not the full 21-workspace `pnpm build`: migrations only need the
         # database package's dist, and this slice is usually restored warm from the
         # setup action's turbo cache (saves ~30-40s per preview deploy).
+        if: env.DATABASE_URL != ''
         run: pnpm --filter @patches/database... build && pnpm db:migrate
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -288,7 +303,7 @@ jobs:
       - name: Set Fly secrets (branch DATABASE_URL + throwaway keys + optional R2)
         run: |
           set -euo pipefail
-          args=(DATABASE_URL="$DATABASE_URL" DATABASE_SSL=true
+          args=(DATABASE_URL="${DATABASE_URL:-}" DATABASE_SSL=true
             JWT_PRIVATE_KEY="$JWT_PRIVATE_KEY" JWT_PUBLIC_KEY="$JWT_PUBLIC_KEY"
             AUTH_CODE_DELIVERY_ACTIVE_KEY_ID="$AUTH_CODE_DELIVERY_ACTIVE_KEY_ID"
             AUTH_CODE_DELIVERY_KEYS="$AUTH_CODE_DELIVERY_KEYS")
