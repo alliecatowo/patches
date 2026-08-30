@@ -145,6 +145,7 @@ node at all, before any auth flow. `GetServerInfo`/`Ping` are exercised by
 | `LogoutAllSessions`    | revokes all sessions for the user                                              |
 | `RequestPasswordReset` | issues a `password_reset_codes` row                                            |
 | `ResetPassword`        | consumes the reset code                                                        |
+| `ChangePassword`       | authenticated; verifies the current password, replaces the password credential, and revokes other sessions |
 | `GetCurrentSession`    | returns session/actor info for the current access token                        |
 
 Added by Amendment A (§168), implemented in `auth.proto`. Every login RPC returns the **same
@@ -178,6 +179,9 @@ Notes:
   pass through a password.
 - `VerifyEmail`, `RequestPasswordReset`, `ResetPassword` apply only to accounts with a
   verified recovery email (§165).
+- `ChangePassword` is the authenticated path for a known password and does not require a
+  recovery email; a wrong current password returns the same generic invalid-credentials error
+  as password login.
 - Flows, the signed-blob composition, and the no-enumeration rule are in
   [`auth.md`](./auth.md).
 

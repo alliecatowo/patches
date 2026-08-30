@@ -40,6 +40,8 @@ import type {
   CompletePasskeyRegistrationResponse,
   CompleteSshLoginRequest,
   CompleteSshLoginResponse,
+  ChangePasswordRequest,
+  ChangePasswordResponse,
   GenerateRecoveryCodesRequest,
   GenerateRecoveryCodesResponse,
   GetAuthPolicyRequest,
@@ -466,6 +468,7 @@ export interface AuthGrpcClient extends Client {
   logoutAllSessions: GrpcUnaryCall<LogoutAllSessionsRequest, LogoutAllSessionsResponse>;
   requestPasswordReset: GrpcUnaryCall<RequestPasswordResetRequest, RequestPasswordResetResponse>;
   resetPassword: GrpcUnaryCall<ResetPasswordRequest, ResetPasswordResponse>;
+  changePassword: GrpcUnaryCall<ChangePasswordRequest, ChangePasswordResponse>;
   getCurrentSession: GrpcUnaryCall<GetCurrentSessionRequest, GetCurrentSessionResponse>;
   beginSshLogin: GrpcUnaryCall<BeginSshLoginRequest, BeginSshLoginResponse>;
   completeSshLogin: GrpcUnaryCall<CompleteSshLoginRequest, CompleteSshLoginResponse>;

@@ -58,6 +58,10 @@ service AuthService {
   // Consumes a single-use `password_reset_codes` row.
   rpc ResetPassword(ResetPasswordRequest) returns (ResetPasswordResponse);
 
+  // Replaces the authenticated caller's PASSWORD credential after verifying the current
+  // password. On success, all other live sessions are revoked.
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+
   // Returns session/actor info for the caller's current access token.
   rpc GetCurrentSession(GetCurrentSessionRequest) returns (GetCurrentSessionResponse);
 
@@ -280,6 +284,13 @@ message ResetPasswordRequest {
 }
 
 message ResetPasswordResponse {}
+
+message ChangePasswordRequest {
+  string current_password = 1;
+  string new_password = 2;
+}
+
+message ChangePasswordResponse {}
 
 message GetCurrentSessionRequest {}
 

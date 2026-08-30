@@ -13,7 +13,7 @@ import { selectIdentity } from '../auth/ssh-login.js';
 import { createApi, openCredentialStore, reportAuthError } from './auth-shared.js';
 import type { CliIo } from './io.js';
 
-const USAGE = `Usage: patches keys <add|list|remove> [options]
+const USAGE = `Usage: patches keys <add|list|remove|password> [options]
 
 Manages the SSH-key credentials on the signed-in account (spec §165–166).
 
@@ -30,6 +30,9 @@ Manages the SSH-key credentials on the signed-in account (spec §165–166).
     no fingerprint (\`identifier\` is empty), so it can also be matched by
     its credential id, as shown by \`patches keys list\`. The server refuses
     to revoke an account's last remaining credential.
+
+  patches keys password
+    Changes the signed-in account password. Prompts for the current password and replacement.
 
 Options:
   --node, --server <host:port>  node to act against
@@ -56,8 +59,43 @@ export async function runKeys(rest: readonly string[], deps: KeysDeps): Promise<
   if (sub === 'add') return runKeysAdd(rem, deps);
   if (sub === 'list') return runKeysList(rem, deps);
   if (sub === 'remove') return runKeysRemove(rem, deps);
+  if (sub === 'password') return runKeysPassword(rem, deps);
   deps.io.stderr(`Unknown keys subcommand: ${sub}\n\n${USAGE}`);
   return 1;
+}
+
+async function runKeysPassword(rest: readonly string[], deps: KeysDeps): Promise<number> {
+  const { io } = deps;
+  if (rest.length > 0) {
+    io.stderr('keys password does not accept options.\n');
+    return 1;
+  }
+  if (!io.isTTY) {
+    io.stderr('Changing a password requires an interactive terminal.\n');
+    return 1;
+  }
+  const session = await currentAccessToken(deps, rest);
+  if ('error' in session) {
+    io.stderr(`${session.error}\n`);
+    return 1;
+  }
+  try {
+    const currentPassword = await io.promptPassword('current password: ');
+    const newPassword = await io.promptPassword('new password: ');
+    const confirmation = await io.promptPassword('confirm new password: ');
+    if (newPassword !== confirmation) {
+      io.stderr('New passwords do not match.\n');
+      return 1;
+    }
+    await session.api.changePassword({ currentPassword, newPassword }, session.accessToken);
+    io.stdout('Password changed. Other sessions have been signed out.\n');
+    return 0;
+  } catch (error) {
+    reportAuthError(io, error, deps.target, 'credentials');
+    return 1;
+  } finally {
+    session.close();
+  }
 }
 
 /** Opens the session manager and resolves an access token, or explains why not. */

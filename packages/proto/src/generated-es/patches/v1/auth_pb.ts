@@ -438,6 +438,23 @@ export const ResetPasswordResponseSchema: GenMessage<ResetPasswordResponse> =
   /*@__PURE__*/
   messageDesc(file_patches_v1_auth, 18);
 
+/** @generated from message patches.v1.ChangePasswordRequest */
+export type ChangePasswordRequest = Message<'patches.v1.ChangePasswordRequest'> & {
+  currentPassword: string;
+  newPassword: string;
+};
+
+export const ChangePasswordRequestSchema: GenMessage<ChangePasswordRequest> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 19);
+
+/** @generated from message patches.v1.ChangePasswordResponse */
+export type ChangePasswordResponse = Message<'patches.v1.ChangePasswordResponse'> & {};
+
+export const ChangePasswordResponseSchema: GenMessage<ChangePasswordResponse> =
+  /*@__PURE__*/
+  messageDesc(file_patches_v1_auth, 20);
+
 /**
  * @generated from message patches.v1.GetCurrentSessionRequest
  */
@@ -1913,6 +1930,11 @@ export const AuthService: GenService<{
     methodKind: 'unary';
     input: typeof ResetPasswordRequestSchema;
     output: typeof ResetPasswordResponseSchema;
+  };
+  changePassword: {
+    methodKind: 'unary';
+    input: typeof ChangePasswordRequestSchema;
+    output: typeof ChangePasswordResponseSchema;
   };
   /**
    * Returns session/actor info for the caller's current access token.

@@ -100,6 +100,11 @@ export const resetPasswordInputSchema = z.object({
   newPassword: passwordSchema,
 });
 
+export const changePasswordInputSchema = z.object({
+  currentPassword: passwordSchema,
+  newPassword: passwordSchema,
+});
+
 export const requestPasswordResetInputSchema = z.object({ email: emailSchema });
 
 export const addCredentialInputSchema = z.object({

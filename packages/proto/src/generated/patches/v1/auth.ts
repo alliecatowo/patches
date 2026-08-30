@@ -204,6 +204,13 @@ export interface ResetPasswordRequest {
 
 export interface ResetPasswordResponse {}
 
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordResponse {}
+
 export interface GetCurrentSessionRequest {}
 
 export interface GetCurrentSessionResponse {
@@ -663,6 +670,11 @@ export interface AuthServiceClient {
     metadata?: Metadata,
   ): Observable<ResetPasswordResponse>;
 
+  changePassword(
+    request: ChangePasswordRequest,
+    metadata?: Metadata,
+  ): Observable<ChangePasswordResponse>;
+
   /** Returns session/actor info for the caller's current access token. */
 
   getCurrentSession(
@@ -998,6 +1010,11 @@ export interface AuthServiceController {
     metadata?: Metadata,
   ): Promise<ResetPasswordResponse> | Observable<ResetPasswordResponse> | ResetPasswordResponse;
 
+  changePassword(
+    request: ChangePasswordRequest,
+    metadata?: Metadata,
+  ): Promise<ChangePasswordResponse> | Observable<ChangePasswordResponse> | ChangePasswordResponse;
+
   /** Returns session/actor info for the caller's current access token. */
 
   getCurrentSession(
@@ -1269,6 +1286,7 @@ export function AuthServiceControllerMethods() {
       'logoutAllSessions',
       'requestPasswordReset',
       'resetPassword',
+      'changePassword',
       'getCurrentSession',
       'beginSshLogin',
       'completeSshLogin',

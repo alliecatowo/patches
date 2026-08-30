@@ -29,6 +29,8 @@ import {
   type CompletePasskeyRegistrationResponse,
   type CompleteSshLoginRequest,
   type CompleteSshLoginResponse,
+  type ChangePasswordRequest,
+  type ChangePasswordResponse,
   CredentialType,
   type GenerateRecoveryCodesRequest,
   type GenerateRecoveryCodesResponse,
@@ -186,6 +188,16 @@ export class AuthController implements AuthServiceController {
 
   async resetPassword(@Payload() request: ResetPasswordRequest): Promise<ResetPasswordResponse> {
     await this.auth.resetPassword(request.code, request.newPassword);
+    return {};
+  }
+
+  @UseGuards(AuthGuard)
+  async changePassword(
+    @Payload() request: ChangePasswordRequest,
+    @Ctx() _metadata?: Metadata,
+    @CurrentSession() session?: AccessTokenClaims,
+  ): Promise<ChangePasswordResponse> {
+    await this.auth.changePassword(requireSession(session), request.currentPassword, request.newPassword);
     return {};
   }
 
