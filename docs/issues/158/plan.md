@@ -15,6 +15,7 @@ this retry checkout, so implementation changes are limited to issue evidence.
 - [x] Preserve uniform errors, rate limits, token rotation/storage, proof-of-possession, and
       capability policy in the audit conclusions.
 - [x] Record external blockers and actionable follow-up items without claiming live validation.
+- [x] Add explicit mobile coverage and a client-visible end-to-end acceptance path.
 
 ## Validation plan
 

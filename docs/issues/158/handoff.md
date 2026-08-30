@@ -4,6 +4,8 @@
 
 - Added [audit.md](./audit.md), a bounded cross-client authentication audit derived from the
   committed architecture contract.
+- Added explicit mobile coverage and a concrete end-to-end acceptance path for a future configured
+  node exercise.
 - Recorded the two concrete blockers and the single actionable product gap without weakening
   authentication invariants.
 

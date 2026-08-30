@@ -29,3 +29,6 @@
   `unable to create temporary file: Read-only file system`; no commit object was created.
 - 2026-08-30: GitHub connector comment/commit writes require unavailable approval, so the
   required single-workpad update and PR publication cannot be completed in this environment.
+- 2026-08-29: Refined the audit to explicitly cover the absent mobile client and to state the
+  registration → verification → login → refresh → logout/all-sessions acceptance path without
+  claiming runtime execution. Rechecked the write boundary before attempting publication.

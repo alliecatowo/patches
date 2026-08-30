@@ -22,6 +22,7 @@ available.
 | GitHub/OIDC | Configured path | Device flow path | Linking requires an authenticated Patches session; provider tokens are discarded. |
 | Credential management | Yes | Yes | List/revoke parity is documented; add operations follow possession/capability constraints. |
 | Closed node / password policy | Yes | Yes | Closed or password-disabled nodes hide password UI and explain the supported path. |
+| Mobile client | No checked-out client | No checked-out client | No mobile source or manifest is present in this checkout; no mobile behavior is claimed. |
 
 ## Security conclusions
 
@@ -51,3 +52,12 @@ available.
 Validated by reading `HEAD:docs/architecture/auth.md` and checking the checkout contents and
 commit identity. Live disposable-node flows, app launch checks, and package tests remain
 unexecuted because their required source/configuration is unavailable.
+
+## End-to-end acceptance path
+
+For a configured node, the supported client path is: open registration, acknowledge the privacy
+notice, submit credentials, follow the generic verification result, sign in, refresh once, sign
+out locally, then use the all-sessions action and confirm the current session is rejected. A
+password-disabled or closed node must instead show the supported non-password method without
+revealing node state through a method-specific authentication error. This path is a validation
+requirement, not a result claimed from this sparse checkout.
