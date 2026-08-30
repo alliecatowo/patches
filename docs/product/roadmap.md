@@ -560,8 +560,10 @@ And administrators can:
 
 ### MVP deployment checklist
 
-- [ ] production domain configured _(node is live at `patches-social.fly.dev`; the intended
-      custom domain `patches.social` is still planned — `docs/operations/deployment.md`)_,
+- [ ] production domain configured _(canonical application origin is now configured as
+      `https://patches.social`; DNS and Fly certificate proof remain pending —
+      `docs/decisions/0039-canonical-federation-origin.md` and
+      `docs/operations/deployment.md`)_,
 - [x] TLS works _(Fly-terminated TLS on 443, confirmed by `patches ping` over TLS against the
       live node)_,
 - [x] gRPC through Fly works _(confirmed live — `h2_backend`, verified end to end with real
@@ -602,7 +604,8 @@ And administrators can:
 
 Do not publicly enable federation until:
 
-- [ ] stable canonical domain selected, _(no deployed node has a fixed canonical domain yet: `patches-social.fly.dev` is provisional and the intended `patches.social` remains planned — `docs/operations/deployment.md`; the MVP deployment checklist's `production domain configured` box is also still open)_
+- [x] stable canonical domain selected, _(`https://patches.social`, with no federation
+      subdomain split; ADR 0039)_
 - [x] WebFinger works, _(local lab, P8-001 — `apps/server/src/modules/federation/http/webfinger.controller.ts` + `services/webfinger.service.ts`)_
 - [x] actors serialize correctly, _(local lab, P8-001 — `activitystreams/documents.ts` + `services/actor-document.service.ts`; covered by `activitystreams/documents.test.ts`)_
 - [ ] ActivityStreams objects validate, _(no formal AS2/JSON-LD schema validation — shape-checked only, e.g. `id`/`type`/`actor` presence; `services/inbox.service.ts` + `security/bounded-json.ts`)_
