@@ -166,8 +166,8 @@ export function RegisterScreen({ onSwitchToLogin }: RegisterScreenProps): JSX.El
         {privacyNoticeSummary || 'This node has not published a privacy notice.'}
       </Text>
       <Text style={styles.note}>
-        Direct messages on this node are server-visible, not end-to-end encrypted — operators can
-        read them.
+        Direct messages are end-to-end encrypted when available; this client currently does not offer
+        direct messages and never falls back to plaintext.
       </Text>
       <View style={styles.row}>
         <Switch value={noticeAcknowledged} onValueChange={setNoticeAcknowledged} />

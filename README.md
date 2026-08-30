@@ -34,11 +34,9 @@ web client is a full peer, not an afterthought.
 - **The web client (`apps/web`) is a full responsive peer**, not a cut-down mirror: theming,
   PWA install + app badging, profile wall editing, and the same chronological/no-scores rules
   as the TUI.
-- **Direct messages do not work yet.** The protocol (per-device identity, session setup,
-  message fanout) is implemented and integration-tested, but two real accounts still cannot
-  complete a session handshake with each other (tracked as B-124 in
-  [`tasks.md`](tasks.md)). v0 DMs are **server-visible**, not encrypted, secure, or private —
-  see "Messaging (E2EE — in progress)" below.
+- **Direct messages are E2EE-only.** The terminal client supports the shipped protocol; web
+  remains honest about its current lack of local encryption keys and directs users to the terminal
+  client rather than offering a misleading plaintext fallback. See "Messaging (E2EE)" below.
 - **Federation is a local two-node lab only** (`mise run fed:lab`); the flagship node does not
   federate with the outside world yet.
 
@@ -132,23 +130,19 @@ More: [`docs/operations/web.md`](docs/operations/web.md), [`apps/web/README.md`]
 </details>
 
 <details>
-<summary><strong>Messaging (E2EE — in progress)</strong></summary>
+<summary><strong>Messaging (E2EE)</strong></summary>
 
 <p>
   <img src="docs/media/web/desktop-messages.png" alt="Web: messages screen (desktop)" width="49%" />
   <img src="docs/media/web/mobile-messages.png" alt="Web: messages screen (mobile)" width="16%" />
 </p>
 
-**v0 direct messages are server-visible, never encrypted, secure, or private** — this project
-never calls them otherwise (spec §183.1, CLAUDE.md Amendment B). The real end-to-end-encrypted
-protocol (per-device identity, X3DH-class session setup, Signal-style Double Ratchet with
-encrypted headers, franking for abuse reports) is designed and largely built —
-[`docs/architecture/e2ee.md`](docs/architecture/e2ee.md) documents the actual, current state —
-but two real accounts cannot yet complete a session handshake with each other end to end
-(blocked on B-124, a client identity-transcript unification, tracked in
-[`tasks.md`](tasks.md)). No client, live or local, can currently send a working DM. When this
-ships, it will be described specifically (protocol name, what it protects, what the node can
-still see), never as a generic "secure messaging" claim.
+Direct messages use the E2EE-only protocol (per-device identity, X3DH-class session setup,
+Signal-style Double Ratchet with encrypted headers, and franking for abuse reports). The node
+routes ciphertext and can still observe delivery metadata, but cannot read message bodies. Web
+currently has no local encryption keys, so its UI explains that limitation and directs users to the
+terminal client; it never downgrades to plaintext. See
+[`docs/architecture/e2ee.md`](docs/architecture/e2ee.md) and [ADR 0039](docs/decisions/0039-e2ee-only-direct-messages-and-honest-copy.md).
 
 </details>
 
