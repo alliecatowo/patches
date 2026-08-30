@@ -177,6 +177,9 @@ jobs:
               if grep -q 'suspend interval is not permitted' "$RUNNER_TEMP/neon-branch-err.txt"; then
                 echo 'Plan does not allow --suspend-timeout; creating the branch without it.'
                 neon branches create "${args[@]}" >/dev/null
+              elif grep -q 'branches limit exceeded' "$RUNNER_TEMP/neon-branch-err.txt"; then
+                echo 'Neon branches limit exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+                exit 0
               else
                 cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
                 exit 1
