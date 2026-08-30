@@ -1,8 +1,8 @@
 ---
 description: Implements one scoped task from the GitHub Project board end-to-end in a disjoint file set — code, migrations, tests, docs — and leaves the repo passing `pnpm verify`. Default cheap leaf worker via DeepSeek Flash. Give it the Task ID, exact owned/forbidden paths, and acceptance criteria.
 mode: subagent
-model: llmgateway/deepseek-v4-flash
-steps: 100
+model: opencode/muse-spark-1.2-contributor-free
+steps: 160
 color: success
 permission:
   '*': deny
@@ -14,11 +14,18 @@ permission:
   lsp: allow
   webfetch: allow
   websearch: allow
+  task: allow
 ---
 
-# Default leaf worker: llmgateway/deepseek-v4-flash (140k effective, standard tier: $0.22/M in / $0.66/M out off-peak, $0.007/M cache hit). Peak 01-04 + 06-10 UTC is 2x. Strongest cheap high-throughput lane — consumes ~90% of worker tokens. Fallback: qwen3.7-flash ($0.03/M) if Flash unavailable.
+# Default leaf worker: free OpenCode model. If unavailable or incapable, retry with DevPass
 
-# You start fresh per task with a bounded packet — inspect the repo yourself, don't expect the driver to paste full history. No recursive spawning (you may spawn researcher once for docs lookup, nothing else). Return a concise ≤20-line handoff and terminate.
+# DeepSeek Flash, then Qwen Flash, then Mid/Terra according to the routing ladder.
+
+# You start fresh per task with a bounded packet. You may spawn up to four disjoint leaf or
+
+# researcher agents when the packet contains independent slices; you own integration and the
+
+# final scoped check. Never spawn agents for overlapping files, and stop spawning when complete.
 
 You implement one scoped, well-defined task in the Patches monorepo. `INITIAL_VISION.md` is the
 authoritative spec; CLAUDE.md governs tooling, hard rules, and tool discipline. Your brief is
@@ -42,7 +49,7 @@ preserve unrelated work, stage only your owned paths, and report the branch name
 
 ## Finishing
 
-- Verify with `mise run check <workspace>` for every package touched; fix failures yourself — never hand back red. Spawn `verifier` for a full-gate run when your change crosses package boundaries; spawn `researcher` for unverified API facts. Don't spawn implementer/reviewer/architect.
+- Verify with `mise run check <workspace>` for every package touched; fix failures yourself — never hand back red. Spawn `verifier` for a full-gate run when your change crosses package boundaries and `researcher` for unverified API facts. Do not spawn another squad lead or the goal driver.
 - Commit as soon as one coherent slice is green, and keep going. Stage only your assigned paths (never `git add -A`), Conventional Commits scoped to the package. If your task ID is a real GitHub issue, reference it in the PR (`Fixes #<n>`) so Status moves to Done automatically on merge. Update affected docs in the same change; you can't reach the GitHub Project board yourself (`mcp__*` is disallowed), so report the task ID (and issue number, if any) as done and let the orchestrator set its Status if it wasn't a `Fixes #N` issue.
 - Can't finish: commit what's green and report done / left / paths you own / next concrete step — a partial, honest handoff beats grinding on.
 

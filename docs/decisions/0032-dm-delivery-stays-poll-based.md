@@ -1,6 +1,6 @@
 # 0032. DM delivery stays poll-based, with a stated freshness SLA and a measured re-open gate
 
-**Status:** Accepted
+**Status:** Superseded by [0039](./0039-realtime-invalidation-stream.md)
 **Date:** 2026-08-25
 **Decides:** P19-011 ("DM realtime decision")
 **Relates to:** [0016](./0016-connect-transport-and-client-sdk.md) (unary-only Connect edge; two of
@@ -8,6 +8,14 @@ its factual premises corrected below), [0020](./0020-e2ee-direct-messages.md),
 [0029](./0029-scale-path-banned-tech-language.md) (measurement-gated escalation),
 [0030](./0030-pre-alpha-consolidation-policy.md); `INITIAL_VISION.md` §4.2, §12, §56, §183.3,
 §194, §195
+
+> **Later note (2026-08-29):** the owner answered this ADR's "Routed to the owner" question the
+> same day it landed — Patches should be realtime. [0039](./0039-realtime-invalidation-stream.md)
+> supersedes the _deferral_ (Decision §1–§2: no streaming RPC, reconsider only if T1/T2/T3 trip).
+> It does **not** erase this file. The client-state defects (facts 1–5), the published poll SLA
+> (now the mandatory fallback), the presence / typing / read-receipt exclusion, the rejection of
+> `LISTEN` / `NOTIFY`, and the T3 platform-push deferral all still stand. The body below is the
+> dated record of why polling was the default; leave it unedited.
 
 ## Context
 

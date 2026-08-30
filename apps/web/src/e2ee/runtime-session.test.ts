@@ -268,6 +268,52 @@ function queueMailbox(
   return { transport, state };
 }
 
+/** A page-bound mailbox that reflects acknowledgements by removing acked envelopes, so a
+ * subsequent poll redelivers exactly what was left unacknowledged — models the real node's
+ * mailbox cursor + ack semantics at a small fixed page size. Tracked state proves how far
+ * paging got (`pageFetches`) and exactly which envelopes were acknowledged. */
+function pagedMailbox(
+  envelopes: readonly E2eeMailboxEnvelopeLike[],
+  rosterByActor: ReadonlyMap<string, LocalDeviceIdentity>,
+  pageSize = 2,
+): {
+  transport: E2eeMailboxTransport;
+  state: { acked: string[]; ackCalls: number; pageFetches: number };
+  box: E2eeMailboxEnvelopeLike[];
+} {
+  const box = [...envelopes];
+  const state = { acked: [] as string[], ackCalls: 0, pageFetches: 0 };
+  const transport: E2eeMailboxTransport = {
+    listMailboxPage: (cursor) => {
+      state.pageFetches += 1;
+      const start = cursor === '' ? 0 : Number(cursor);
+      const page = box.slice(start, start + pageSize);
+      const next = start + page.length;
+      return Promise.resolve({
+        envelopes: page,
+        nextCursor: next < box.length ? String(next) : '',
+      });
+    },
+    acknowledge: (ids) => {
+      state.ackCalls += 1;
+      state.acked.push(...ids);
+      const doomed = new Set(ids);
+      for (let index = box.length - 1; index >= 0; index -= 1) {
+        const envelope = box[index];
+        if (envelope !== undefined && doomed.has(envelope.envelopeId)) box.splice(index, 1);
+      }
+      return Promise.resolve(undefined);
+    },
+    loadPeerRoster: (actorId) => {
+      const identity = rosterByActor.get(actorId);
+      if (identity === undefined)
+        return Promise.reject(new Error(`no roster fixture for ${actorId}`));
+      return Promise.resolve(identity.ownRoster);
+    },
+  };
+  return { transport, state, box };
+}
+
 /** Seals a real initial (X3DH-carrying) envelope from `sender` to `recipient`. Binds one fixed
  * `oneTimePreKeys[0]` bundle from `recipient` regardless of what a fake node's own claim
  * bookkeeping currently offers — callers reconstructing a "reused claim" pass the recipient
@@ -280,10 +326,17 @@ function sealInitialEnvelope(params: {
   readonly envelopeId: string;
   readonly conversationId?: string;
   readonly nowMs?: number;
+  /** Binds a distinct one-time prekey from `recipient` (defaults to `oneTimePreKeys[0]`),
+   * so a test can seal multiple initial envelopes against the same recipient, each naming a
+   * different unconsumed prekey. */
+  readonly recipientPrekeyId?: number | undefined;
 }): E2eeMailboxEnvelopeLike {
   const nowMs = params.nowMs ?? NOW;
   const conversationId = params.conversationId ?? CONVERSATION_ID;
-  const recipientOneTime = params.recipient.oneTimePreKeys[0];
+  const recipientOneTime =
+    params.recipientPrekeyId === undefined
+      ? params.recipient.oneTimePreKeys[0]
+      : params.recipient.oneTimePreKeys.find((prekey) => prekey.id === params.recipientPrekeyId);
   const established = establishInitiatorSession({
     identity: params.sender,
     peerBundle: selfPrekeyBundle(
@@ -714,6 +767,135 @@ describe('E2eeSessionRuntime.pollMailbox', () => {
     expect(result.rows).toEqual([]);
     expect(result.error).toBe(E2EE_RECEIVE_UNAVAILABLE_COPY);
     expect(acked).toEqual([]);
+    vault.close();
+  });
+
+  it('stops paging before a later page on a local vault fault after committing an earlier envelope, acknowledging only that earlier envelope, and redelivers the rest on a subsequent poll', async () => {
+    const baseSelf = buildIdentity('erin-b193', 'dev-e-b193');
+    const alice = buildIdentity('alice-b193', 'dev-a-b193');
+    const carol = buildIdentity('carol-b193', 'dev-c-b193');
+    const dave = buildIdentity('dave-b193', 'dev-d-b193');
+    // `buildIdentity` leaves the recipient with a single one-time prekey; each envelope here
+    // must bind a DISTINCT one (naming the same prekey twice models a reused claim and is
+    // rejected as malformed before any ratchet step), so widen the recipient's key set.
+    const self: LocalDeviceIdentity = {
+      ...baseSelf,
+      oneTimePreKeys: [
+        { id: 1, keyPair: generateKeyAgreementKeyPair() },
+        { id: 2, keyPair: generateKeyAgreementKeyPair() },
+        { id: 3, keyPair: generateKeyAgreementKeyPair() },
+      ],
+    };
+    const good = sealInitialEnvelope({
+      sender: alice,
+      recipient: self,
+      body: 'good',
+      envelopeId: 'env-good',
+      recipientPrekeyId: 1,
+    });
+    const failing = sealInitialEnvelope({
+      sender: carol,
+      recipient: self,
+      body: 'failing',
+      envelopeId: 'env-failing',
+      recipientPrekeyId: 2,
+    });
+    const later = sealInitialEnvelope({
+      sender: dave,
+      recipient: self,
+      body: 'later',
+      envelopeId: 'env-later',
+      recipientPrekeyId: 3,
+    });
+
+    const vault = await openVault();
+    // `applyUpdate` commits the responder session once per envelope opened. Succeed for the
+    // earlier envelope, fail on the one after it (a transient local vault fault), then succeed
+    // again so a subsequent poll recovers.
+    let applyUpdates = 0;
+    // `TypedRatchetVault` carries its methods on the prototype, so a `{...vault}` spread would
+    // drop every method but the overridden `applyUpdate` and send any envelope that calls
+    // `getOpaqueRecord`/`getSession` straight to a "not a function" vault fault. Forward every
+    // method explicitly, overriding only `applyUpdate`.
+    const flakyVault: RatchetSessionVault = {
+      open: () => vault.open(),
+      listSessions: () => vault.listSessions(),
+      getSession: (sessionId) => vault.getSession(sessionId),
+      stageSend: (sessionId, next) => vault.stageSend(sessionId, next),
+      confirmSend: (sessionId, successor) => vault.confirmSend(sessionId, successor),
+      applyUpdate: (sessionId, next) => {
+        applyUpdates += 1;
+        if (applyUpdates === 2) return Promise.reject(new Error('vault I/O exploded'));
+        return vault.applyUpdate(sessionId, next);
+      },
+      deleteSession: (sessionId) => vault.deleteSession(sessionId),
+      getOpaqueRecord: (key) => vault.getOpaqueRecord(key),
+      putOpaqueRecord: (key, value) => vault.putOpaqueRecord(key, value),
+      wipe: () => vault.wipe(),
+      close: () => vault.close(),
+    };
+
+    const rosterByActor = new Map<string, LocalDeviceIdentity>([
+      [alice.actorId, alice],
+      [carol.actorId, carol],
+      [dave.actorId, dave],
+    ]);
+    // Page 1 (non-final) holds the earlier good envelope then the local-vault-faulting one;
+    // page 2 holds a later envelope that a drain buggy past the fault would wrongly fetch.
+    const mailbox = pagedMailbox([good, failing, later], rosterByActor, 2);
+    const runtime = new E2eeSessionRuntime({
+      vault: flakyVault,
+      identity: self,
+      sendTransport: deadSendTransport(),
+      mailboxTransport: mailbox.transport,
+      nowMs: () => NOW,
+    });
+
+    const first = await runtime.pollMailbox();
+
+    // A fault local to this device fail-stops the drain; only the earlier envelope survives.
+    expect(first.error).toBe(E2EE_RECEIVE_UNAVAILABLE_COPY);
+    expect(first.rows).toEqual([
+      {
+        kind: 'message',
+        id: 'env-good',
+        senderLabel: `@${alice.actorId}`,
+        body: 'good',
+        sentByViewer: false,
+      },
+    ]);
+    // Acknowledged exactly the earlier, durably committed envelope — never the faulting one,
+    // and never the later page.
+    expect(mailbox.state.acked).toEqual(['env-good']);
+    // Paging stopped before the later page: page 2 was never requested.
+    expect(mailbox.state.pageFetches).toBe(1);
+    // The faulting and later envelopes stay in the mailbox unacknowledged.
+    expect(mailbox.box.map((envelope) => envelope.envelopeId)).toEqual([
+      'env-failing',
+      'env-later',
+    ]);
+
+    // Once the transient vault fault clears, a subsequent poll redelivers exactly those two.
+    const second = await runtime.pollMailbox();
+    expect(second.error).toBeUndefined();
+    expect(second.rows).toEqual([
+      {
+        kind: 'message',
+        id: 'env-failing',
+        senderLabel: `@${carol.actorId}`,
+        body: 'failing',
+        sentByViewer: false,
+      },
+      {
+        kind: 'message',
+        id: 'env-later',
+        senderLabel: `@${dave.actorId}`,
+        body: 'later',
+        sentByViewer: false,
+      },
+    ]);
+    expect(mailbox.state.acked).toEqual(['env-good', 'env-failing', 'env-later']);
+    expect(mailbox.box).toEqual([]);
     vault.close();
   });
 

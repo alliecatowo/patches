@@ -52,13 +52,14 @@ deliberately does **not** authorize without owner sign-off.
 | [0029](./0029-scale-path-banned-tech-language.md)                     | Scale path, banned-tech review, and language choice — measurement-gated escalation                    | Accepted           |
 | [0030](./0030-pre-alpha-consolidation-policy.md)                      | Pre-alpha consolidation policy: no legacy grace periods before production (applies to legacy DMs now) | Accepted           |
 | [0031](./0031-e2ee-retention-and-prekey-reuse.md)                     | Safe E2EE retention cleanup and one-time-prekey reuse prevention                                      | Accepted           |
-| [0032](./0032-dm-delivery-stays-poll-based.md)                        | DM delivery stays poll-based, with a stated freshness SLA and a measured re-open gate                 | Accepted           |
+| [0032](./0032-dm-delivery-stays-poll-based.md)                        | DM delivery stays poll-based, with a stated freshness SLA and a measured re-open gate                 | Superseded by 0039 |
 | [0033](./0033-one-e2ee-identity-transcript-family.md)                 | One E2EE identity transcript family, owned by `@patches/crypto` (amends ADR 0020 §14.1)               | Accepted           |
 | [0034](./0034-shared-client-e2ee-runtime.md)                          | The duplicated client E2EE runtime is hoisted into `@patches/e2ee-client`, but only after B-124       | Accepted           |
 | [0035](./0035-reserve-e2ee-conversation-before-first-message.md)      | An E2EE conversation is reserved before its first message, never with it                              | Accepted           |
 | [0036](./0036-shipping-e2ee-conditions-capability-states-and-copy.md) | Shipping E2EE: the conditions, the capability ladder, and the copy that survives it                   | Accepted           |
 | [0037](./0037-e2ee-device-linking-and-root-rotation.md)               | E2EE device linking (SAS-authenticated, authority-signed) and client-reachable root rotation          | Accepted           |
 | [0038](./0038-api-versioning-policy.md)                               | API versioning policy: `patches.v1` is additive-only, a `v2` is a sibling package                     | Accepted           |
+| [0039](./0039-realtime-invalidation-stream.md)                        | Realtime is a server-streaming invalidation channel, with unary poll as the mandatory fallback        | Accepted (design)  |
 
 ## Template
 
