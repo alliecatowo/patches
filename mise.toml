@@ -95,6 +95,11 @@ pnpm --filter @patches/tui build >/dev/null
 snapshot="${XDG_CACHE_HOME:-$HOME/.cache}/patches/tui-$$"
 rm -rf "$snapshot" && mkdir -p "$snapshot"
 cp -R apps/tui/dist/. "$snapshot/"
+# Snapshot mirrors the published-package layout: cli.js reads package.json next
+# to itself (src/version.ts), and ink/react/etc stay external in the build, so
+# node_modules must be reachable by walking up from cli.js.
+cp apps/tui/package.json "$snapshot/"
+ln -s "$PWD/apps/tui/node_modules" "$snapshot/node_modules"
 trap 'rm -rf "$snapshot"' EXIT
 node "$snapshot/cli.js" --server "${PATCHES_SERVER:-127.0.0.1:50051}" --insecure "$@"
 """
@@ -124,6 +129,9 @@ pnpm --filter @patches/tui build >/dev/null
 snapshot="${XDG_CACHE_HOME:-$HOME/.cache}/patches/tui-$$"
 rm -rf "$snapshot" && mkdir -p "$snapshot"
 cp -R apps/tui/dist/. "$snapshot/"
+# Same published-layout reason as `mise run tui` above.
+cp apps/tui/package.json "$snapshot/"
+ln -s "$PWD/apps/tui/node_modules" "$snapshot/node_modules"
 trap 'rm -rf "$snapshot"' EXIT
 node "$snapshot/cli.js" --server "${PATCHES_SERVER:-patches-social.fly.dev:443}" "$@"
 """
