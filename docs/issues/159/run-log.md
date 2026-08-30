@@ -8,3 +8,5 @@
 - 2026-08-29: Commit attempt failed because `/home/allie/develop/patches/.git/index.lock` cannot be created (`Read-only file system`).
 - 2026-08-30: Reconciled the verification record against PR #415's reported head `26b2a06`; added explicit distinction between deadline handling and client cancellation, protocol-version gap, and concrete pre-rollout obligations for every requested category.
 - 2026-08-30: No source or test claims were added locally because this checkout still contains only the documentation workpad paths; no independent MCP client or deployment secret is available to exercise.
+- 2026-08-30: Published commit `2492587a` and PR #425 through authenticated GitHub GraphQL after the local shared Git metadata rejected lock creation.
+- 2026-08-30: PR #425 plan and doctor checks passed; preview deployment failed before application steps because Neon returned `branches limit exceeded`.

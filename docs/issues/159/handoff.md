@@ -1,22 +1,20 @@
 # Issue #159 handoff
 
-Status: blocked by checkout, execution, and GitHub publication permissions.
+Status: implementation published; review readiness blocked by external CI preview capacity.
 
 ## Completed
 
-- Baseline and existing PR source identified.
-- Adversarial evidence matrix updated; it distinguishes exercised guarantees
-  from rollout-blocking gaps in the existing source branch and records the
-  exact proof obligations for all requested categories.
+- Published the four issue artifacts under `docs/issues/159/` in commit `2492587a`.
+- Opened PR #425, cross-referenced to issue #159, and applied the `polyphony` label.
+- Recorded exercised raw HTTP transport evidence and explicit rollout blockers for protocol mismatch, OAuth audience/scope, approval bypass, SSRF, replay, cancellation, subscription isolation, sensitive output, audit provenance, and independent-client interoperability.
+- Performed the PR feedback sweep; PR #425 has no reviews or review comments.
 
-## Remaining
+## Validation
 
-- The application checkout is sparse and contains no source paths, so the
-  implementation branch cannot be applied here.
-- The available evidence does not include an independent MCP client run or
-  deployed non-transport security fixtures; rollout therefore remains blocked
-  for those categories.
-- `.git` is read-only, preventing commit/cherry-pick; `gh` authentication is
-  invalid, preventing PR publication through the CLI.
-- `mise run check server` cannot execute because the sparse checkout has no
-  package tree and the harness receives `spawnSync /bin/sh EPERM`.
+- Local `mise run check server` could not start because this sparse checkout lacks the package tree and the harness reports `spawnSync /bin/sh EPERM`.
+- PR plan and doctor checks passed; the preview workflow failed before deployment when Neon reported `branches limit exceeded`.
+- The documentation intentionally does not claim absent adversarial or independent-client tests passed.
+
+## Blocker
+
+PR checks cannot reach a green terminal state until the external Neon preview branch quota is available for a rerun.
