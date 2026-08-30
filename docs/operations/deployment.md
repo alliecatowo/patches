@@ -287,8 +287,8 @@ node apps/tui/dist/cli.js ping
 - [x] Resend API key and verified `updates.allisons.dev` sending domain configured.
 - [ ] Deploy workflow exercised through CI (**planned** — configuration is present, but the
       latest `main` CI run failed before the deploy gate; prior deploys were manual).
-- [ ] Custom domain `patches.social` (**planned** — node currently only reachable at
-      `patches-social.fly.dev`).
+- [ ] Custom domain `patches.social` (**configured in application settings; DNS and Fly
+      certificate evidence still required** — see the Domains section below).
 - [x] Neon switch (production `DATABASE_URL` migrated off Fly Postgres 2026-08-18, A-041 —
       see "Production database" above).
 - [ ] Autoscaling / `[[vm]]` sizing tuned for real traffic (**planned** — default single
@@ -572,7 +572,15 @@ infrastructure:
 
 ## Domains
 
-Per `INITIAL_VISION.md` §91:
+Per `INITIAL_VISION.md` §91 and [ADR 0039](../decisions/0039-canonical-federation-origin.md),
+the permanent canonical federation origin is `https://patches.social`. There is no
+federation subdomain split; `PUBLIC_ORIGIN` and `NODE_DOMAIN` are both `patches.social`.
+
+The production Fly hostname `patches-social.fly.dev` is only a pre-alpha deployment address.
+Identifiers minted there are throwaway under ADR 0030's zero-user consolidation policy and
+will not be migrated or aliased.
+
+The planned routing shape remains:
 
 ```text
 patches.social              marketing/docs
@@ -581,8 +589,9 @@ grpc.patches.social         gRPC
 social.patches.social       federation origin if desired
 ```
 
-**Status: planned** — no domain purchased/configured from this environment.
-`fly certs add grpc.patches.social --config infra/fly/fly.toml` provisions a Fly-managed
+**Status: DNS/TLS pending external provisioning** — application configuration is committed,
+but this runner cannot provision or verify owner DNS or Fly certificates.
+`fly certs add patches.social --config infra/fly/fly.toml` provisions a Fly-managed
 TLS cert once DNS points at the app; confirm the current `fly certs` flags against
 `fly certs --help` at setup time (not independently re-verified for this note).
 

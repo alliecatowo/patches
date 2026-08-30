@@ -26,8 +26,8 @@ kill_timeout = "30s"
   GRPC_PORT = "50051"
   HTTP_PORT = "8080"
   METRICS_PORT = "9090"
-  PUBLIC_ORIGIN = "https://patches-social.fly.dev"
-  NODE_DOMAIN = "patches-social.fly.dev"
+  PUBLIC_ORIGIN = "https://patches.social"
+  NODE_DOMAIN = "patches.social"
   INVITE_ONLY = "true"
   PUBLIC_READ = "false"
   # ADR 0016 §6: bare `scheme://host[:port]` origins allowed to call the Connect edge
@@ -44,7 +44,7 @@ kill_timeout = "30s"
   # itself, since there is no separate ToS page yet. Direct messaging copy is §183.1-honest:
   # E2EE conversations hide message bodies from this node but never metadata; legacy
   # conversations are fully readable by the operators; both facts are stated.
-  PRIVACY_NOTICE_SUMMARY = "This node (patches-social.fly.dev) stores your account, profile, posts, and direct-message ciphertext in a Postgres database (Neon, aws-us-east-2); uploaded images are stored in Cloudflare R2. Public posts and profile fields are visible to anyone who can reach this node. Direct messages are either end-to-end encrypted (this node cannot read those message bodies, but it can always see who you message and when) or legacy server-visible conversations, which the operators can read in full. Reporting a message shares its content with the operators as evidence. Deleting a post tombstones it for thread integrity; deleting your account starts a 30-day grace period, after which your content is purged except records tied to an open report or appeal. Export or delete your data any time from the privacy screen. Full policy and contact details: see the terms link and operator identity below."
+  PRIVACY_NOTICE_SUMMARY = "This node (patches.social) stores your account, profile, posts, and direct-message ciphertext in a Postgres database (Neon, aws-us-east-2); uploaded images are stored in Cloudflare R2. Public posts and profile fields are visible to anyone who can reach this node. Direct messages are either end-to-end encrypted (this node cannot read those message bodies, but it can always see who you message and when) or legacy server-visible conversations, which the operators can read in full. Reporting a message shares its content with the operators as evidence. Deleting a post tombstones it for thread integrity; deleting your account starts a 30-day grace period, after which your content is purged except records tied to an open report or appeal. Export or delete your data any time from the privacy screen. Full policy and contact details: see the terms link and operator identity below."
   TERMS_URL = "https://github.com/alliecatowo/patches/blob/main/docs/product/privacy.md"
   APPEAL_INSTRUCTIONS = "Use the in-client appeal flow (the Appeals screen / patches appeal) within the appeal window shown on your notice, or email allisonemilycoleman@gmail.com with your handle, the notice ID, and why you believe it was wrong. One appeal per notice."
   OPERATOR_CONTACT = "Operated by Allison Coleman (allisonemilycoleman@gmail.com) — a solo self-hosted instance, not a company."

@@ -44,6 +44,8 @@ kill_timeout = "30s"
   GRPC_PORT = "50051"
   HTTP_PORT = "8080"
   METRICS_PORT = "9090"
+  # Preview origins are intentionally ephemeral and must never mint production federation
+  # identifiers. The canonical production origin is https://patches.social (ADR 0039).
   PUBLIC_ORIGIN = "https://patches-pr-__PR__.fly.dev"
   NODE_DOMAIN = "patches-pr-__PR__.fly.dev"
   INVITE_ONLY = "true"
