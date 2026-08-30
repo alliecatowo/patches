@@ -8,6 +8,5 @@ import { McpResourceServer } from './mcp-resource-server.js';
   imports: [AuthModule],
   controllers: [McpMetadataController],
   providers: [McpResourceServer],
-  exports: [McpResourceServer],
 })
 export class McpModule {}
