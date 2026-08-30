@@ -25,3 +25,14 @@
   `docs/issues/_146/run-log.md` was preserved.
 - Lightweight consistency validation passed: required artifact files exist, internal link targets
   exist, and the E2EE lab shell script remains syntactically valid.
+
+## Retry attempt #3 — 2026-08-30
+
+- Supplied delivery evidence identified failed `ci-ok` and `quality (format, lint, typecheck)`
+  checks at commit `5897eb6fca4063eb8b2b4b610b3e13351ffddc85` (PR #437).
+- The pinned `mise exec -- pnpm format:check` could not run because `mise` cannot write its
+  trusted-config state in this workspace. `pnpm format:check` has the same trust restriction.
+- Fallback reproduction invoked the installed Prettier 3.9.6 directly with the system Node. It
+  reported only `docs/issues/146/plan.md` and `docs/issues/146/security-review.md` as unformatted.
+- Ran Prettier only on those two files. The same direct `--check docs/issues/146` now passes, and
+  `git diff --check` passes. No application or deployment file changed.

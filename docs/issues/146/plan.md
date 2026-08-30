@@ -18,9 +18,15 @@ change application or deployment code and does not claim independent approval.
 
 ## Acceptance mapping
 
-| Requirement | Evidence |
-| --- | --- |
-| Independent review is explicit | [security-review.md](./security-review.md) |
-| Interop path is repeatable | [interop-lab.md](./interop-lab.md) |
-| Enablement and rollback are reversible | [runbook.md](./runbook.md) |
-| Required per-issue workpads exist | `plan.md`, `run-log.md`, `handoff.md` |
+| Requirement                            | Evidence                                   |
+| -------------------------------------- | ------------------------------------------ |
+| Independent review is explicit         | [security-review.md](./security-review.md) |
+| Interop path is repeatable             | [interop-lab.md](./interop-lab.md)         |
+| Enablement and rollback are reversible | [runbook.md](./runbook.md)                 |
+| Required per-issue workpads exist      | `plan.md`, `run-log.md`, `handoff.md`      |
+
+## Retry attempt #3 — CI quality correction
+
+- [x] Reproduce the supplied `quality (format, lint, typecheck)` failure locally.
+- [x] Format only the affected issue artifacts.
+- [x] Re-run the matching Prettier check and inspect the diff for whitespace errors.

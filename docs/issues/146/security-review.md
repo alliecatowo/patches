@@ -9,16 +9,16 @@ scope-matched report is attached to the issue and each finding below has an owne
 
 ## Gate matrix
 
-| Area | Required evidence | Current repository evidence | Disposition |
-| --- | --- | --- | --- |
-| Identity binding | Root/device certificate vectors, roster rollback tests | ADR 0020 §2–3; domain and server tests | Engineering evidence; external review pending |
-| X3DH setup | Canonical transcript, one-time-prekey exhaustion and replay tests | ADR 0020 §5; crypto test suites | Engineering evidence; external review pending |
-| Double Ratchet | Header encryption, skipped-key bounds, crash/rollback tests | ADR 0020 §6; `packages/crypto/` tests | Engineering evidence; external review pending |
-| Vault safety | Atomic send/receive persistence and keychain/passphrase boundary | ADR 0020 §4; client vault code/tests | Engineering evidence; external review pending |
-| Fanout/groups | Exact active-device coverage and epoch conflict tests | ADR 0020 §7; E2EE server tests | Engineering evidence; external review pending |
-| Franking | Commitment/opening construction, sender/receiver binding, key rotation | ADR 0020 §9 explicitly requires review | **Open security blocker** |
-| Abuse evidence | Reporter consent, verification failure behavior, no body in telemetry | ADR 0020 §9; report-evidence implementation | Engineering evidence; external review pending |
-| Metadata/disclosure | Client copy accurately names node-visible metadata | `docs/architecture/e2ee.md`; product/privacy docs | Copy review required with external report |
+| Area                | Required evidence                                                      | Current repository evidence                       | Disposition                                   |
+| ------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------- |
+| Identity binding    | Root/device certificate vectors, roster rollback tests                 | ADR 0020 §2–3; domain and server tests            | Engineering evidence; external review pending |
+| X3DH setup          | Canonical transcript, one-time-prekey exhaustion and replay tests      | ADR 0020 §5; crypto test suites                   | Engineering evidence; external review pending |
+| Double Ratchet      | Header encryption, skipped-key bounds, crash/rollback tests            | ADR 0020 §6; `packages/crypto/` tests             | Engineering evidence; external review pending |
+| Vault safety        | Atomic send/receive persistence and keychain/passphrase boundary       | ADR 0020 §4; client vault code/tests              | Engineering evidence; external review pending |
+| Fanout/groups       | Exact active-device coverage and epoch conflict tests                  | ADR 0020 §7; E2EE server tests                    | Engineering evidence; external review pending |
+| Franking            | Commitment/opening construction, sender/receiver binding, key rotation | ADR 0020 §9 explicitly requires review            | **Open security blocker**                     |
+| Abuse evidence      | Reporter consent, verification failure behavior, no body in telemetry  | ADR 0020 §9; report-evidence implementation       | Engineering evidence; external review pending |
+| Metadata/disclosure | Client copy accurately names node-visible metadata                     | `docs/architecture/e2ee.md`; product/privacy docs | Copy review required with external report     |
 
 ## Remediation rule
 
