@@ -29,3 +29,11 @@ The prior delivery failed before lint/typecheck because Prettier reported four n
 Storybook smoke suite also failed when the domain barrel bundled `node:crypto` into browser code.
 The retry formats those files and keeps the Node-only approval implementation out of the shared
 runtime barrel while preserving browser-safe request/risk types.
+
+## Retry #2 outcome
+
+The delivered retry correction is present at `9ac242c`. Static inspection confirms that the web
+barrel only imports MCP request/risk types, while the Node-only approval implementation remains
+outside it. The environment cannot create mise's trust record or pnpm's project registration, so
+the package quality commands remain unavailable locally; `git diff --check` and
+`git diff-tree --check` both pass.
