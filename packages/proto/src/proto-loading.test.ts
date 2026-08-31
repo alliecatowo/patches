@@ -77,6 +77,7 @@ describe('proto files', () => {
         'BeginPasskeyRegistration',
         'BeginSshEnrollment',
         'BeginSshLogin',
+        'ChangePassword',
         'CompletePasskeyLogin',
         'CompletePasskeyRegistration',
         'CompleteSshLogin',

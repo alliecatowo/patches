@@ -29,3 +29,11 @@
 - Retry #3 validation limitation: `mise run check proto` reaches the pinned Node but the managed
   sandbox rejects its workspace-resolution subprocess with `spawnSync /bin/sh EPERM`; pnpm also
   cannot repair dependencies because its home store is read-only and registry access is absent.
+- Retry #14: inspected the latest `build-test` check annotation for commit `07723d7`; CI failed
+  only because `packages/proto/src/proto-loading.test.ts` still expected the pre-change AuthService
+  RPC list and reported `ChangePassword` as an unexpected method.
+- Retry #14: added `ChangePassword` to that sorted contract expectation. The exact failing test
+  passed (9/9), the complete proto unit-test suite passed (3 files, 39/39), and the changed test
+  passed Prettier.
+- Retry #14: temporarily reconstructed cached dependencies solely to run the tests, then removed
+  the reconstructed dependency/build state and restored the workspace's original `node_modules`.

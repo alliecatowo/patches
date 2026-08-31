@@ -9,5 +9,6 @@
       including the protobuf-es descriptor and shifted message indexes.
 - [x] Retry #3: repair formatting failures in the server controller, web settings form, and API
       documentation.
-- [ ] Run workspace typecheck/tests through `mise run check`; the managed sandbox denies the
-      subprocess that resolves the pnpm workspace (`spawnSync /bin/sh EPERM`).
+- [x] Retry #14: diagnose the persisted `build-test` failure from its check annotation and add
+      `ChangePassword` to the explicit AuthService RPC contract expectation.
+- [x] Retry #14: rerun the failing proto-loading test and the complete proto unit-test suite.
