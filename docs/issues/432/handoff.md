@@ -9,3 +9,5 @@ tooling. `buf lint`, `buf format -d --exit-code`, and `git diff --check` pass. A
 was attempted using `/tmp/patches-pnpm-store`, but registry downloads failed with `EAI_AGAIN`;
 the protobuf-es generator remains unavailable and full typechecks cannot run. Workspace changes
 are preserved for the delivery harness.
+
+No source files changed during retry #1; only this handoff and run log were updated.

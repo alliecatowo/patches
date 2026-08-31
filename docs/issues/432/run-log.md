@@ -11,3 +11,5 @@
   failed with `EAI_AGAIN` because registry network access is unavailable.
 - Retry #1: `buf lint`, `buf format -d --exit-code`, and `git diff --check` pass. Typecheck cannot
   run because the recovered dependency wrappers are incomplete.
+- Retry #1: attempted cached-layer Prettier/typecheck recovery; wrappers resolve through the
+  protected mise installation and still cannot execute. No source files changed during retry.
