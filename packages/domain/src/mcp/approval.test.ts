@@ -33,8 +33,11 @@ describe('MCP approval gate', () => {
   it('records approvals without persisting argument contents', async () => {
     const records: unknown[] = [];
     const result = await new McpApprovalGate(
-      async (value) => records.push(value),
-      async () => ({ approved: true, approverPrincipal: 'actor-1' }),
+      (value) => {
+        records.push(value);
+        return Promise.resolve();
+      },
+      () => Promise.resolve({ approved: true, approverPrincipal: 'actor-1' }),
       () => '2026-08-30T00:00:00.000Z',
     ).authorize(request);
 
