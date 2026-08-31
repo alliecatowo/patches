@@ -1,5 +1,5 @@
 import type { PatchesApi } from '@patches/client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { fetchSafeMediaUrl } from './attachment.js';
 
 type MediaClient = PatchesApi['media'];
