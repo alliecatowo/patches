@@ -26,3 +26,16 @@
 - Validation: `git diff --check` passed; TOML/config review passed. `flyctl certs list`, DNS,
   and HTTPS checks remain unavailable because flyctl cannot write its config and network
   sockets/DNS are denied in this runner.
+
+## 2026-08-31 retry
+
+- Harness evidence identified failed checks on PR #438: `quality (format, lint, typecheck)` and
+  its `ci-ok` aggregate, with no pending checks.
+- Reproduced the actionable local failure with the pinned Prettier CLI: the ADR index table
+  row for ADR 0039 was not formatted. The repository-wide invocation also reports existing
+  unsupported TOML inputs; the CI-relevant Markdown check was isolated successfully.
+- Formatted `docs/decisions/README.md`; affected ADR, deployment, roadmap, and issue artifacts
+  now pass Prettier. Direct repository-wide ESLint cannot reproduce CI's built workspace state
+  in this restricted checkout and reports dependency-resolution errors across unrelated files.
+- `git diff --check` and Python TOML parsing pass for both Fly templates. No remote checks,
+  deployment, or delivery operations were performed.

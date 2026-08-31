@@ -18,3 +18,9 @@ The repository's accepted ADR 0013 establishes `patches.social` as the flagship/
 node. This run records that as the permanent canonical origin in ADR 0039, updates the
 production configuration and roadmap evidence, and leaves DNS/Fly certificate proof as the
 only external blocker.
+
+## Retry disposition (2026-08-31)
+
+The prior delivery's quality check failed on Prettier formatting in the ADR index. The retry
+formats that table entry and validates the affected Markdown plus the configuration parsing;
+remote delivery remains harness-owned.

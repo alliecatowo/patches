@@ -21,3 +21,9 @@ open, and federation remains disabled.
 
 - No commit or PR was created; the harness owns delivery.
 - Evidence is in [run-log.md](./run-log.md) and the single GitHub `## Codex Workpad` comment.
+
+## Retry validation
+
+- Corrected the Prettier failure in `docs/decisions/README.md`.
+- Affected Markdown passes Prettier; `git diff --check` and both Fly TOML parses pass.
+- The external DNS/Fly certificate blocker is unchanged.
