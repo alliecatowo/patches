@@ -14,3 +14,15 @@
   updated the ADR index, and created these issue artifacts.
 - Focused validation passed: required design terms and references are present;
   changed files are documentation-only.
+
+## Retry attempt #1
+
+- Confirmed the focused slice is committed at `b06be15` on `agent/polyphony-_151`.
+- Confirmed PR #440 is OPEN, contains only the focused ADR/index/workpad files,
+  and has no actionable review comments or review summaries.
+- Preserved the unrelated working-tree change in `docs/issues/_151/run-log.md`.
+- Revalidated with `git diff --check`, artifact existence tests, and shell
+  built-in content assertions for the RPC, fallback, rollout, and B-093 rules:
+  PASS.
+- `rg`, `grep`, and a final `git log` display were unavailable in the retry
+  shell; no required validation depended on them.

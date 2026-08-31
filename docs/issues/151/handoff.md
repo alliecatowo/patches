@@ -20,3 +20,10 @@
 
 Workspace changes are intentionally uncommitted and unpushed for the delivery
 harness. No CI or remote review was polled.
+
+## Retry attempt #1
+
+The focused slice is already committed at `b06be15` and published on the
+current branch with open PR #440. Its one-time review sweep found no actionable
+feedback. Minimal local validation passed; the unrelated
+`docs/issues/_151/run-log.md` modification remains preserved.
