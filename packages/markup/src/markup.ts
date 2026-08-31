@@ -105,6 +105,9 @@ const TAG_PATTERN = /#([a-zA-Z0-9_]{1,64})\b/gu;
 /** Bare URLs become links so a pasted address is still activatable. */
 const AUTOLINK_PATTERN = /https?:\/\/[^\s<>()]+/gu;
 
+/** Fast-path check: if text contains no trigger characters for any inline markup rule, skip scanning. */
+const MARKUP_TRIGGER_PATTERN = /[_*`[@#]|https?:/iu;
+
 interface Mark {
   start: number;
   end: number;
@@ -122,6 +125,11 @@ function pushMark(marks: Mark[], mark: Mark): void {
  * mentions and tags. Never un-escapes anything — it only decides what each run *is*.
  */
 export function parseInline(text: string): InlineNode[] {
+  // Fast path: plain text without any formatting symbols avoids running 7 regex scans.
+  if (!MARKUP_TRIGGER_PATTERN.test(text)) {
+    return [{ role: 'text', text }];
+  }
+
   const marks: Mark[] = [];
 
   // Each pattern scans a copy in which already-claimed spans are blanked out with
