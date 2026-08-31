@@ -56,7 +56,9 @@ function canonicalize(value: unknown): unknown {
 
 /** Hashes arguments for audit correlation without retaining their contents. */
 export function computeMcpArgsDigest(args: Record<string, unknown>): string {
-  return createHash('sha256').update(JSON.stringify(canonicalize(args))).digest('hex');
+  return createHash('sha256')
+    .update(JSON.stringify(canonicalize(args)))
+    .digest('hex');
 }
 
 /** Risk is derived from the operation, never from untrusted tool annotations. */

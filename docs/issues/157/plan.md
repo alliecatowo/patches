@@ -37,3 +37,11 @@ barrel only imports MCP request/risk types, while the Node-only approval impleme
 outside it. The environment cannot create mise's trust record or pnpm's project registration, so
 the package quality commands remain unavailable locally; `git diff --check` and
 `git diff-tree --check` both pass.
+
+## Retry #4 correction
+
+The persisted `quality (format, lint, typecheck)` failure at `17dcb9e` was reproduced with the
+pinned Prettier 3.9.6 binary. Two files still differed from repository formatting:
+`apps/web/src/components/McpApprovalCard.tsx` and `packages/domain/src/mcp/approval.ts`.
+Retry #4 applies only those mechanical formatting changes. The prior `Promise<void>` test fix was
+already present at the delivered head.

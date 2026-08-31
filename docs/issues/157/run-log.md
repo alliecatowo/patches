@@ -14,3 +14,13 @@
 - 2026-08-31: Direct pnpm 11.22.0 invocation bypassed the mise trust stop but pnpm could not
   register this workspace in its read-only shared store (`EROFS`); no dependencies or source files
   were changed. This prevents the targeted Prettier/package checks in this sandbox.
+- 2026-08-31: Retry #4 confirmed issue #157 and PR #441 remain open, Project status is In
+  Progress, and no reviewer feedback is outstanding. All CI checks except quality/its `ci-ok`
+  aggregate passed at `17dcb9e`.
+- 2026-08-31: Reproduced the quality failure with pinned Prettier 3.9.6: only
+  `McpApprovalCard.tsx` and `approval.ts` required formatting. Applied those mechanical changes.
+- 2026-08-31: Validation passed: full-repo Prettier, full-repo ESLint, domain and web TypeScript,
+  domain approval tests (4/4), web approval-card test (1/1), and `git diff --check`.
+- 2026-08-31: Local checks used temporary writable dependency links backed by the existing main
+  checkout because pnpm's shared project registry is read-only. The temporary links and generated
+  build output were removed after validation; tracked source was not affected by the workaround.

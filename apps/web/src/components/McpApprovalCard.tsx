@@ -28,7 +28,9 @@ export function McpApprovalCard({
           <p className={styles['eyebrow']}>MCP mutation approval</p>
           <h2 id={`mcp-request-${request.requestId}`}>{request.toolName}</h2>
         </div>
-        <span className={`${styles['risk']} ${styles[riskTier.toLowerCase()]}`}>{riskTier} risk</span>
+        <span className={`${styles['risk']} ${styles[riskTier.toLowerCase()]}`}>
+          {riskTier} risk
+        </span>
       </div>
 
       <p className={styles['warning']}>
@@ -43,7 +45,9 @@ export function McpApprovalCard({
         </div>
         <div>
           <dt>Principal</dt>
-          <dd><code>{request.principalId}</code></dd>
+          <dd>
+            <code>{request.principalId}</code>
+          </dd>
         </div>
         <div>
           <dt>Scopes</dt>
