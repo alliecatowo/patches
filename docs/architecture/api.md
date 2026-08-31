@@ -133,20 +133,20 @@ node at all, before any auth flow. `GetServerInfo`/`Ping` are exercised by
 
 ### AuthService (§48) — implemented in `auth.proto`
 
-| RPC                    | Notes                                                                          |
-| ---------------------- | ------------------------------------------------------------------------------ |
-| `GetAuthPolicy`        | unauthenticated; `password_auth` (P15-002) — call before rendering password UI |
-| `Register`             | invite-gated in v0; carries `privacy_notice_version_acknowledged` (§204.2)     |
-| `VerifyEmail`          | consumes an `email_verification_codes` row                                     |
-| `ResendVerification`   | authenticated; re-issues a fresh `email_verification_codes` row                |
-| `Login`                | issues access + refresh token                                                  |
-| `RefreshSession`       | rotates refresh token; reuse triggers family revocation                        |
-| `Logout`               | revokes current session                                                        |
-| `LogoutAllSessions`    | revokes all sessions for the user                                              |
-| `RequestPasswordReset` | issues a `password_reset_codes` row                                            |
-| `ResetPassword`        | consumes the reset code                                                        |
+| RPC                    | Notes                                                                                                      |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GetAuthPolicy`        | unauthenticated; `password_auth` (P15-002) — call before rendering password UI                             |
+| `Register`             | invite-gated in v0; carries `privacy_notice_version_acknowledged` (§204.2)                                 |
+| `VerifyEmail`          | consumes an `email_verification_codes` row                                                                 |
+| `ResendVerification`   | authenticated; re-issues a fresh `email_verification_codes` row                                            |
+| `Login`                | issues access + refresh token                                                                              |
+| `RefreshSession`       | rotates refresh token; reuse triggers family revocation                                                    |
+| `Logout`               | revokes current session                                                                                    |
+| `LogoutAllSessions`    | revokes all sessions for the user                                                                          |
+| `RequestPasswordReset` | issues a `password_reset_codes` row                                                                        |
+| `ResetPassword`        | consumes the reset code                                                                                    |
 | `ChangePassword`       | authenticated; verifies the current password, replaces the password credential, and revokes other sessions |
-| `GetCurrentSession`    | returns session/actor info for the current access token                        |
+| `GetCurrentSession`    | returns session/actor info for the current access token                                                    |
 
 Added by Amendment A (§168), implemented in `auth.proto`. Every login RPC returns the **same
 session envelope**, so client session handling is identical regardless of credential type.

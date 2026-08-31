@@ -125,19 +125,43 @@ export function CredentialsRoute(): JSX.Element {
         {changePasswordMutation.isSuccess ? <p>Password changed successfully.</p> : null}
         <div className={styles['field']}>
           <label htmlFor="current-password">Current password</label>
-          <input id="current-password" type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} />
+          <input
+            id="current-password"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+          />
         </div>
         <div className={styles['field']}>
           <label htmlFor="new-password">New password</label>
-          <input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+          <input
+            id="new-password"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
         </div>
         <div className={styles['field']}>
           <label htmlFor="confirm-password">Confirm new password</label>
-          <input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          <input
+            id="confirm-password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+          />
         </div>
-        <button type="button" className={styles['submit']} style={{ width: 'auto' }}
+        <button
+          type="button"
+          className={styles['submit']}
+          style={{ width: 'auto' }}
           onClick={() => changePasswordMutation.mutate()}
-          disabled={changePasswordMutation.isPending || newPassword !== confirmPassword || currentPassword === '' || newPassword === ''}>
+          disabled={
+            changePasswordMutation.isPending ||
+            newPassword !== confirmPassword ||
+            currentPassword === '' ||
+            newPassword === ''
+          }
+        >
           {changePasswordMutation.isPending ? 'Changing…' : 'Change password'}
         </button>
       </section>

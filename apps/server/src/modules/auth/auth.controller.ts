@@ -197,7 +197,11 @@ export class AuthController implements AuthServiceController {
     @Ctx() _metadata?: Metadata,
     @CurrentSession() session?: AccessTokenClaims,
   ): Promise<ChangePasswordResponse> {
-    await this.auth.changePassword(requireSession(session), request.currentPassword, request.newPassword);
+    await this.auth.changePassword(
+      requireSession(session),
+      request.currentPassword,
+      request.newPassword,
+    );
     return {};
   }
 

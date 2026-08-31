@@ -13,3 +13,19 @@
   run because the recovered dependency wrappers are incomplete.
 - Retry #1: attempted cached-layer Prettier/typecheck recovery; wrappers resolve through the
   protected mise installation and still cannot execute. No source files changed during retry.
+- Retry #3: reproduced generated-code freshness defects: the checked-in protobuf-es descriptor
+  omitted `ChangePassword`, and every following `messageDesc` index still referenced the old
+  schema order.
+- Retry #3: regenerated ts-proto output with the cached generator and rebuilt the protobuf-es
+  compact descriptor from Buf output. The compacting procedure was verified byte-for-byte
+  against the previously generated descriptor before applying the new schema.
+- Retry #3: corrected all protobuf-es message indexes after the two new messages and added the
+  generator-emitted RPC documentation to both generated families.
+- Retry #3: reproduced and fixed Prettier failures in `auth.controller.ts`,
+  `CredentialsRoute.tsx`, and `docs/architecture/api.md`.
+- Retry #3 validation passed: direct Buf format, Buf lint, Buf breaking against `main`, generated
+  ts-proto comparison (exact except the cached generator's version header), changed-file
+  Prettier check, and `git diff --check`.
+- Retry #3 validation limitation: `mise run check proto` reaches the pinned Node but the managed
+  sandbox rejects its workspace-resolution subprocess with `spawnSync /bin/sh EPERM`; pnpm also
+  cannot repair dependencies because its home store is read-only and registry access is absent.

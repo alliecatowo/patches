@@ -670,6 +670,11 @@ export interface AuthServiceClient {
     metadata?: Metadata,
   ): Observable<ResetPasswordResponse>;
 
+  /**
+   * Replaces the authenticated caller's PASSWORD credential after verifying the current
+   * password. On success, all other live sessions are revoked.
+   */
+
   changePassword(
     request: ChangePasswordRequest,
     metadata?: Metadata,
@@ -1009,6 +1014,11 @@ export interface AuthServiceController {
     request: ResetPasswordRequest,
     metadata?: Metadata,
   ): Promise<ResetPasswordResponse> | Observable<ResetPasswordResponse> | ResetPasswordResponse;
+
+  /**
+   * Replaces the authenticated caller's PASSWORD credential after verifying the current
+   * password. On success, all other live sessions are revoked.
+   */
 
   changePassword(
     request: ChangePasswordRequest,
