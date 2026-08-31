@@ -1,5 +1,5 @@
 import { parseMarkup, type BlockNode, type InlineNode } from '@patches/markup';
-import type { JSX } from 'react';
+import { memo, useMemo, type JSX } from 'react';
 import { Link } from 'react-router-dom';
 
 export interface RichBodyProps {
@@ -14,10 +14,14 @@ export interface RichBodyProps {
  * once inside `parseMarkup`; this component only ever maps trusted AST nodes to React
  * elements — never `dangerouslySetInnerHTML`, so there is no HTML-injection surface.
  */
-export function RichBody({ source }: RichBodyProps): JSX.Element {
-  const blocks = parseMarkup(source);
+function RichBodyImpl({ source }: RichBodyProps): JSX.Element {
+  // Memoize AST generation so re-renders of parent components (e.g. PostCard, PostTimeline)
+  // do not re-run full markup parsing for identical source strings.
+  const blocks = useMemo(() => parseMarkup(source), [source]);
   return <>{blocks.map((block, index) => renderBlock(block, index))}</>;
 }
+
+export const RichBody = memo(RichBodyImpl);
 
 function renderBlock(block: BlockNode, key: number): JSX.Element {
   switch (block.kind) {
