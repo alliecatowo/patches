@@ -14,16 +14,22 @@ export const LIMITS = Object.freeze({
   outputTokenWarn: 12_000,
 });
 
-const EXCLUDED = /(^|\/)(?:node_modules|dist|build|coverage|\.git|\.turbo)(?:\/|$)|(?:^|\/)(?:tasks\.md|INITIAL_VISION\.md|pnpm-lock\.yaml)$|\.(?:zip|tgz|gz|tar|7z)$/i;
+const EXCLUDED =
+  /(^|\/)(?:node_modules|dist|build|coverage|\.git|\.turbo)(?:\/|$)|(?:^|\/)(?:tasks\.md|INITIAL_VISION\.md|pnpm-lock\.yaml)$|\.(?:zip|tgz|gz|tar|7z)$/i;
 
 function bounded(value, limit = LIMITS.fieldChars) {
   const text = typeof value === 'string' ? value : value == null ? '' : JSON.stringify(value);
-  return text.length <= limit ? text : `${text.slice(0, limit)}\n[… truncated; ${text.length - limit} chars omitted]`;
+  if (text.length <= limit) return text;
+  const marker = `\n[… truncated; ${text.length - limit} chars omitted]`;
+  return `${text.slice(0, Math.max(0, limit - marker.length))}${marker}`;
 }
 
 function listChangedFiles(files) {
   if (!Array.isArray(files)) return [];
-  return files.filter((file) => typeof file === 'string' && !EXCLUDED.test(file)).slice(0, 80);
+  return files
+    .filter((file) => typeof file === 'string' && !EXCLUDED.test(file))
+    .slice(0, 80)
+    .map((file) => bounded(file, 500));
 }
 
 function checks(checks) {
@@ -38,13 +44,27 @@ function checks(checks) {
 function fitPacket(packet) {
   while (JSON.stringify(packet).length > LIMITS.contextChars) {
     if (packet.commandOutput.length > 256) {
-      packet.commandOutput = bounded(packet.commandOutput, Math.floor(packet.commandOutput.length / 2));
+      packet.commandOutput = bounded(
+        packet.commandOutput,
+        Math.floor(packet.commandOutput.length / 2),
+      );
     } else if (packet.failingChecks.length > 1) {
       packet.failingChecks.pop();
     } else if (packet.workpad.length > 256) {
       packet.workpad = bounded(packet.workpad, Math.floor(packet.workpad.length / 2));
+    } else if (packet.targetedCommands.length > 1) {
+      packet.targetedCommands.pop();
+    } else if (packet.targetedCommands[0]?.length > 256) {
+      packet.targetedCommands[0] = bounded(packet.targetedCommands[0], 256);
+    } else if (packet.changedFiles.length > 1) {
+      packet.changedFiles.pop();
+    } else if (packet.changedFiles[0]?.length > 256) {
+      packet.changedFiles[0] = bounded(packet.changedFiles[0], 256);
     } else {
-      packet.issue = bounded(packet.issue, Math.max(256, Math.floor(packet.issue.length / 2)));
+      packet.changedFiles = [];
+      packet.targetedCommands = [];
+      packet.workpad = '';
+      packet.issue = bounded(packet.issue, 256);
     }
   }
   return packet;
@@ -66,7 +86,10 @@ export function buildWorkerContext(input) {
         }
       : undefined,
     targetedCommands: Array.isArray(input?.targetedCommands)
-      ? input.targetedCommands.filter((command) => typeof command === 'string').slice(0, 12)
+      ? input.targetedCommands
+          .filter((command) => typeof command === 'string')
+          .slice(0, 12)
+          .map((command) => bounded(command, 1_000))
       : [],
     commandOutput: bounded(input?.commandOutput, LIMITS.commandChars),
   };
@@ -75,13 +98,20 @@ export function buildWorkerContext(input) {
   const telemetry = input?.telemetry ?? {};
   const inputTokens = Number.isFinite(telemetry.inputTokens) ? telemetry.inputTokens : undefined;
   const outputTokens = Number.isFinite(telemetry.outputTokens) ? telemetry.outputTokens : undefined;
-  const action = inputTokens !== undefined && inputTokens >= LIMITS.inputTokenStop ? 'stop' : inputTokens !== undefined && inputTokens >= LIMITS.inputTokenWarn ? 'warn' : 'ok';
+  const action =
+    inputTokens !== undefined && inputTokens >= LIMITS.inputTokenStop
+      ? 'stop'
+      : inputTokens !== undefined && inputTokens >= LIMITS.inputTokenWarn
+        ? 'warn'
+        : 'ok';
   return {
     ...packet,
     telemetry: {
       inputTokens,
       outputTokens,
-      transcriptBytes: Number.isFinite(telemetry.transcriptBytes) ? telemetry.transcriptBytes : undefined,
+      transcriptBytes: Number.isFinite(telemetry.transcriptBytes)
+        ? telemetry.transcriptBytes
+        : undefined,
       contextChars: json.length,
       action,
       outputWarning: outputTokens !== undefined && outputTokens >= LIMITS.outputTokenWarn,
@@ -92,14 +122,18 @@ export function buildWorkerContext(input) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   let source = '';
   process.stdin.setEncoding('utf8');
-  process.stdin.on('data', (chunk) => { source += chunk; });
+  process.stdin.on('data', (chunk) => {
+    source += chunk;
+  });
   process.stdin.on('end', () => {
     try {
       const result = buildWorkerContext(JSON.parse(source));
       process.stdout.write(JSON.stringify(result));
       process.exitCode = result.telemetry.action === 'stop' ? 2 : 0;
     } catch (error) {
-      process.stderr.write(`worker-context: invalid JSON input (${error instanceof Error ? error.message : 'unknown error'})\n`);
+      process.stderr.write(
+        `worker-context: invalid JSON input (${error instanceof Error ? error.message : 'unknown error'})\n`,
+      );
       process.exitCode = 1;
     }
   });
