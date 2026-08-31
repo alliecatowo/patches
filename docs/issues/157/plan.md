@@ -20,3 +20,12 @@ trusted pending requests; it does not fabricate a request or execute a mutation.
 
 - `mise run check domain`
 - `mise run check web`
+- `pnpm --filter @patches/web storybook:build`
+- `git diff --check`
+
+## Retry correction
+
+The prior delivery failed before lint/typecheck because Prettier reported four new files. Its
+Storybook smoke suite also failed when the domain barrel bundled `node:crypto` into browser code.
+The retry formats those files and keeps the Node-only approval implementation out of the shared
+runtime barrel while preserving browser-safe request/risk types.

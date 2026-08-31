@@ -36,7 +36,10 @@ export interface McpApprovalDecision {
   approverPrincipal: string;
 }
 
-export type McpApprovalPrompt = (request: McpToolRequest, riskTier: McpRiskTier) => Promise<McpApprovalDecision>;
+export type McpApprovalPrompt = (
+  request: McpToolRequest,
+  riskTier: McpRiskTier,
+) => Promise<McpApprovalDecision>;
 export type McpApprovalRecorder = (record: McpApprovalRecord) => Promise<void>;
 
 function canonicalize(value: unknown): unknown {
@@ -57,10 +60,14 @@ export function computeMcpArgsDigest(args: Record<string, unknown>): string {
 }
 
 /** Risk is derived from the operation, never from untrusted tool annotations. */
-export function evaluateMcpRisk(request: Pick<McpToolRequest, 'toolName' | 'isMutation'>): McpRiskTier {
+export function evaluateMcpRisk(
+  request: Pick<McpToolRequest, 'toolName' | 'isMutation'>,
+): McpRiskTier {
   if (!request.isMutation) return 'LOW';
   const criticalNames = ['delete', 'drop', 'execute', 'revoke', 'write'];
-  if (criticalNames.some((name) => request.toolName.toLowerCase().includes(name))) return 'CRITICAL';
+  if (criticalNames.some((name) => request.toolName.toLowerCase().includes(name))) {
+    return 'CRITICAL';
+  }
   return 'HIGH';
 }
 
@@ -71,7 +78,9 @@ export class McpApprovalGate {
     private readonly now: () => string = () => new Date().toISOString(),
   ) {}
 
-  public async authorize(request: McpToolRequest): Promise<{ proceed: boolean; record: McpApprovalRecord }> {
+  public async authorize(
+    request: McpToolRequest,
+  ): Promise<{ proceed: boolean; record: McpApprovalRecord }> {
     const riskTier = evaluateMcpRisk(request);
     const decision = await this.prompt(request, riskTier);
     const record: McpApprovalRecord = {

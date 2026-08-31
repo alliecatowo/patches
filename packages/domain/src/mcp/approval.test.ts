@@ -17,11 +17,17 @@ describe('MCP approval gate', () => {
   it('requires an explicit decision even when annotations claim read-only', async () => {
     const record = vi.fn().mockResolvedValue(undefined);
     const prompt = vi.fn().mockResolvedValue({ approved: false, approverPrincipal: 'actor-1' });
-    const result = await new McpApprovalGate(record, prompt, () => '2026-08-30T00:00:00.000Z').authorize(request);
+    const result = await new McpApprovalGate(
+      record,
+      prompt,
+      () => '2026-08-30T00:00:00.000Z',
+    ).authorize(request);
 
     expect(prompt).toHaveBeenCalledWith(request, 'CRITICAL');
     expect(result.proceed).toBe(false);
-    expect(record).toHaveBeenCalledWith(expect.objectContaining({ decision: 'DENIED', riskTier: 'CRITICAL' }));
+    expect(record).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: 'DENIED', riskTier: 'CRITICAL' }),
+    );
   });
 
   it('records approvals without persisting argument contents', async () => {

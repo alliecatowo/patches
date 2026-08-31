@@ -37,15 +37,38 @@ export function McpApprovalCard({
       </p>
 
       <dl className={styles['details']}>
-        <div><dt>Requesting client</dt><dd>{request.clientName}</dd></div>
-        <div><dt>Principal</dt><dd><code>{request.principalId}</code></dd></div>
-        <div><dt>Scopes</dt><dd>{request.scopes.length > 0 ? request.scopes.join(', ') : 'None declared'}</dd></div>
-        <div><dt>Arguments</dt><dd><pre>{JSON.stringify(request.args, null, 2)}</pre></dd></div>
+        <div>
+          <dt>Requesting client</dt>
+          <dd>{request.clientName}</dd>
+        </div>
+        <div>
+          <dt>Principal</dt>
+          <dd><code>{request.principalId}</code></dd>
+        </div>
+        <div>
+          <dt>Scopes</dt>
+          <dd>{request.scopes.length > 0 ? request.scopes.join(', ') : 'None declared'}</dd>
+        </div>
+        <div>
+          <dt>Arguments</dt>
+          <dd>
+            <pre>{JSON.stringify(request.args, null, 2)}</pre>
+          </dd>
+        </div>
       </dl>
 
       <div className={styles['actions']}>
-        <button type="button" onClick={() => onDecision(false)} disabled={disabled}>Deny</button>
-        <button type="button" className={styles['approve']} onClick={() => onDecision(true)} disabled={disabled}>Approve</button>
+        <button type="button" onClick={() => onDecision(false)} disabled={disabled}>
+          Deny
+        </button>
+        <button
+          type="button"
+          className={styles['approve']}
+          onClick={() => onDecision(true)}
+          disabled={disabled}
+        >
+          Approve
+        </button>
       </div>
     </article>
   );
