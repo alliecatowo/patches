@@ -27,6 +27,9 @@ import styles from '../AuthForm.module.css';
 export function CredentialsRoute(): JSX.Element {
   const queryClient = useQueryClient();
   const [label, setLabel] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   const credentialsQuery = useQuery({
     queryKey: ['credentials'],
@@ -67,6 +70,15 @@ export function CredentialsRoute(): JSX.Element {
     onSuccess: invalidate,
   });
 
+  const changePasswordMutation = useMutation({
+    mutationFn: () => api.auth.changePassword({ currentPassword, newPassword }),
+    onSuccess: () => {
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    },
+  });
+
   return (
     <div className={styles['wrap']} style={{ margin: 0, maxWidth: 'none' }}>
       <h1>Sign-in methods</h1>
@@ -102,6 +114,56 @@ export function CredentialsRoute(): JSX.Element {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section style={{ marginTop: '1.5rem' }}>
+        <h2>Change password</h2>
+        <p>Enter your current password and choose a new one. Other sessions will be signed out.</p>
+        {changePasswordMutation.isError ? (
+          <p className={styles['error']}>{describeError(changePasswordMutation.error).message}</p>
+        ) : null}
+        {changePasswordMutation.isSuccess ? <p>Password changed successfully.</p> : null}
+        <div className={styles['field']}>
+          <label htmlFor="current-password">Current password</label>
+          <input
+            id="current-password"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+          />
+        </div>
+        <div className={styles['field']}>
+          <label htmlFor="new-password">New password</label>
+          <input
+            id="new-password"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+        </div>
+        <div className={styles['field']}>
+          <label htmlFor="confirm-password">Confirm new password</label>
+          <input
+            id="confirm-password"
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          className={styles['submit']}
+          style={{ width: 'auto' }}
+          onClick={() => changePasswordMutation.mutate()}
+          disabled={
+            changePasswordMutation.isPending ||
+            newPassword !== confirmPassword ||
+            currentPassword === '' ||
+            newPassword === ''
+          }
+        >
+          {changePasswordMutation.isPending ? 'Changing…' : 'Change password'}
+        </button>
       </section>
 
       <section style={{ marginTop: '1.5rem' }}>

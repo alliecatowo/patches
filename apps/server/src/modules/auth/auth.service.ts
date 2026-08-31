@@ -59,6 +59,7 @@ import {
 import {
   addCredentialInputSchema,
   codeInputSchema,
+  changePasswordInputSchema,
   completePasskeyLoginInputSchema,
   completePasskeyRegistrationInputSchema,
   loginInputSchema,
@@ -828,6 +829,43 @@ export class AuthService {
       // A password reset is the standard response to "my account was compromised", so every
       // existing session dies with it (§36).
       await this.tokens.revokeAllForUser(manager, userId);
+    });
+  }
+
+  /** Verifies the caller's current password before hashing its replacement. */
+  async changePassword(
+    claims: AccessTokenClaims,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const parsed = parseInput(changePasswordInputSchema, { currentPassword, newPassword });
+    this.rateLimit.consumePeer('password_reset', getRequestContext()?.peer);
+    this.rateLimit.consume('password_reset', claims.userId);
+    await this.rateLimit.consumeDistributed('password_reset', claims.userId);
+
+    const credential = await this.dataSource.getRepository(Credential).findOne({
+      where: { userId: claims.userId, type: 'PASSWORD', revokedAt: IsNull() },
+    });
+    if (!(await this.hasher.verify(credential?.secretHash, parsed.currentPassword))) {
+      throw invalidCredentials();
+    }
+
+    const secretHash = await this.hasher.hash(parsed.newPassword);
+    await this.dataSource.transaction(async (manager) => {
+      const credentials = manager.getRepository(Credential);
+      await credentials.update(
+        { userId: claims.userId, type: 'PASSWORD', revokedAt: IsNull() },
+        { revokedAt: new Date() },
+      );
+      await credentials.save(
+        credentials.create({
+          userId: claims.userId,
+          type: 'PASSWORD',
+          identifier: null,
+          secretHash,
+        }),
+      );
+      await this.tokens.revokeAllForUser(manager, claims.userId);
     });
   }
 

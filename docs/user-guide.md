@@ -537,11 +537,13 @@ honest DM disclosure, and no-algorithm product rules as the TUI:
   falls back to a plaintext file (mode `0600`) and warns once. To silence the warning and
   explicitly accept the plaintext fallback, set `PATCHES_ALLOW_INSECURE_CREDENTIAL_FILE=1`.
   Without that variable set, Patches refuses to fall back silently and raises instead.
-- **Lost/forgot your password.** `RequestPasswordReset`/`ResetPassword` are implemented on
-  the server, but there is no `patches` client command for them yet — the flow is server-only
-  today. If you still have an SSH key or GitHub credential on the account, use
-  `patches login --ssh` (or wait for GitHub login to land in the client) instead; otherwise
-  contact your node's administrators.
+- **Change your password.** While signed in, use `patches keys password` in the TUI, or open
+  Settings → Sign-in methods → Change password on the web. Entering the wrong current password
+  fails without changing the account; a successful change signs out other live sessions.
+- **Lost/forgot your password.** The web login screen offers the recovery-email
+  `RequestPasswordReset`/`ResetPassword` flow. The TUI exposes the authenticated change path
+  (`patches keys password`); if you cannot sign in and have no recovery email, use another
+  credential such as an SSH key or recovery code.
 
 ## Reporting bugs
 

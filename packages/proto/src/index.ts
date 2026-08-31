@@ -70,6 +70,8 @@ export type {
   CompletePasskeyRegistrationResponse,
   CompleteSshLoginRequest,
   CompleteSshLoginResponse,
+  ChangePasswordRequest,
+  ChangePasswordResponse,
   Credential,
   GenerateRecoveryCodesRequest,
   GenerateRecoveryCodesResponse,

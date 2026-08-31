@@ -153,6 +153,7 @@ function buildMethods(sdk: PatchesSdk) {
     beginSshEnrollment: requiredToken(sdk.auth.beginSshEnrollment),
     resendVerification: noRequestRequiredToken(sdk.auth.resendVerification, {}),
     revokeCredential: requiredToken(sdk.auth.revokeCredential),
+    changePassword: requiredToken(sdk.auth.changePassword),
     beginGitHubLogin: optionalToken(sdk.auth.beginGitHubLogin),
     pollGitHubLogin: optionalToken(sdk.auth.pollGitHubLogin),
     beginOidcLogin: optionalToken(sdk.auth.beginOidcLogin),
