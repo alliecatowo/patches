@@ -216,6 +216,14 @@ export const router = createBrowserRouter([
             errorElement: <LazyRouteBoundary />,
           },
           {
+            path: 'mcp-approvals',
+            lazy: () =>
+              import('./routes/settings/McpApprovalRoute.js').then((m) => ({
+                Component: m.McpApprovalRoute,
+              })),
+            errorElement: <LazyRouteBoundary />,
+          },
+          {
             path: 'devices',
             lazy: () =>
               import('./routes/settings/DevicesRoute.js').then((m) => ({

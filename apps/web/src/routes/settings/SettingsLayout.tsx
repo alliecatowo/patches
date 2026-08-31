@@ -40,6 +40,9 @@ export function SettingsLayout(): JSX.Element {
         <NavLink to="/settings/session-security" className={LINK_CLASS}>
           Session security
         </NavLink>
+        <NavLink to="/settings/mcp-approvals" className={LINK_CLASS}>
+          MCP approvals
+        </NavLink>
         <NavLink to="/settings/devices" className={LINK_CLASS}>
           Devices &amp; recovery
         </NavLink>

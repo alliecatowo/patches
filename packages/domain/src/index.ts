@@ -58,6 +58,10 @@ export {
 export { containsUnsafeBytes, sanitizeText, utf8ByteLength } from './sanitize.js';
 export type { SanitizeTextOptions } from './sanitize.js';
 
+// MCP approval request types are safe to consume from browser clients. The approval
+// implementation stays out of this browser-shared barrel because it uses node:crypto.
+export type { McpRiskTier, McpToolRequest } from './mcp/approval.js';
+
 // Identity cosmetic packs (B-117 / #241) — the shared, capability-aware catalog both the web
 // and TUI collate against, so per-client cosmetic decisions stop drifting apart.
 export {
