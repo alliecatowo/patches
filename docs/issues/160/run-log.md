@@ -13,7 +13,7 @@
 
 - Used accepted ADR 0013's designation of `patches.social` as the flagship/reference node as
   the existing owner decision; recorded the permanent canonical origin and no-subdomain-split
-  policy in ADR 0039.
+  policy in the canonical-origin ADR (now ADR 0040 after its later conflict-safe renumbering).
 - Updated `infra/fly/fly.toml` to `PUBLIC_ORIGIN=https://patches.social` and
   `NODE_DOMAIN=patches.social`; documented preview `*.fly.dev` origins as intentionally
   ephemeral and federation-disabled.
@@ -31,11 +31,35 @@
 
 - Harness evidence identified failed checks on PR #438: `quality (format, lint, typecheck)` and
   its `ci-ok` aggregate, with no pending checks.
-- Reproduced the actionable local failure with the pinned Prettier CLI: the ADR index table
-  row for ADR 0039 was not formatted. The repository-wide invocation also reports existing
+- Reproduced the actionable local failure with the pinned Prettier CLI: the canonical-origin
+  ADR index table row was not formatted. The repository-wide invocation also reports existing
   unsupported TOML inputs; the CI-relevant Markdown check was isolated successfully.
 - Formatted `docs/decisions/README.md`; affected ADR, deployment, roadmap, and issue artifacts
   now pass Prettier. Direct repository-wide ESLint cannot reproduce CI's built workspace state
   in this restricted checkout and reports dependency-resolution errors across unrelated files.
 - `git diff --check` and Python TOML parsing pass for both Fly templates. No remote checks,
   deployment, or delivery operations were performed.
+
+## 2026-09-01 retry: merge conflict
+
+- Inspected PR #438 once: it is open and `CONFLICTING`, with no review threads or reviewer
+  feedback. The remote base is `d19443b` (PR #436), which independently added an E2EE-only
+  Direct Messages ADR as `0039-e2ee-only-direct-messages-and-honest-copy.md`.
+- Renumbered this issue's canonical-origin ADR from 0039 to 0040 and updated its index,
+  deployment, preview, roadmap, and per-issue references. Existing source comments that
+  refer to ADR 0039 retain their existing E2EE meaning and are intentionally untouched.
+- This resolves the only overlapping ADR number while preserving both decisions. Delivery,
+  rebase, commit, push, and CI remain harness-owned.
+
+## 2026-08-31 continuation attempt 3
+
+- The persisted harness evidence reports an interruption during delivery, not a new source or
+  validation failure. Preserved the uncommitted ADR 0040 conflict correction for harness
+  delivery.
+- Corrected the deployment routing diagram so `social.patches.social` is explicitly reserved
+  and cannot be mistaken for an alternative federation identifier origin.
+- Revalidated TOML parsing, ADR-reference integrity, and whitespace; no deployment, DNS, TLS,
+  or remote CI observation was performed.
+- `pnpm exec prettier` cannot run in this checkout because the `mise.toml` trust state is
+  read-only, and this workspace has no direct Prettier binary. The existing prior-formatting
+  result is preserved; the harness must run the authoritative quality gate after delivery.

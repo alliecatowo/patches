@@ -562,7 +562,7 @@ And administrators can:
 
 - [ ] production domain configured _(canonical application origin is now configured as
       `https://patches.social`; DNS and Fly certificate proof remain pending —
-      `docs/decisions/0039-canonical-federation-origin.md` and
+      `docs/decisions/0040-canonical-federation-origin.md` and
       `docs/operations/deployment.md`)_,
 - [x] TLS works _(Fly-terminated TLS on 443, confirmed by `patches ping` over TLS against the
       live node)_,
@@ -605,7 +605,7 @@ And administrators can:
 Do not publicly enable federation until:
 
 - [x] stable canonical domain selected, _(`https://patches.social`, with no federation
-      subdomain split; ADR 0039)_
+      subdomain split; ADR 0040)_
 - [x] WebFinger works, _(local lab, P8-001 — `apps/server/src/modules/federation/http/webfinger.controller.ts` + `services/webfinger.service.ts`)_
 - [x] actors serialize correctly, _(local lab, P8-001 — `activitystreams/documents.ts` + `services/actor-document.service.ts`; covered by `activitystreams/documents.test.ts`)_
 - [ ] ActivityStreams objects validate, _(no formal AS2/JSON-LD schema validation — shape-checked only, e.g. `id`/`type`/`actor` presence; `services/inbox.service.ts` + `security/bounded-json.ts`)_

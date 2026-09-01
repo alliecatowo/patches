@@ -572,7 +572,7 @@ infrastructure:
 
 ## Domains
 
-Per `INITIAL_VISION.md` §91 and [ADR 0039](../decisions/0039-canonical-federation-origin.md),
+Per `INITIAL_VISION.md` §91 and [ADR 0040](../decisions/0040-canonical-federation-origin.md),
 the permanent canonical federation origin is `https://patches.social`. There is no
 federation subdomain split; `PUBLIC_ORIGIN` and `NODE_DOMAIN` are both `patches.social`.
 
@@ -586,7 +586,7 @@ The planned routing shape remains:
 patches.social              marketing/docs
 api.patches.social          future HTTP API
 grpc.patches.social         gRPC
-social.patches.social       federation origin if desired
+social.patches.social       reserved; not a federation identifier origin
 ```
 
 **Status: DNS/TLS pending external provisioning** — application configuration is committed,

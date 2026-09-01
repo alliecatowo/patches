@@ -15,7 +15,7 @@ Resolve the permanent canonical federation origin before public federation is en
 ## Current disposition
 
 The repository's accepted ADR 0013 establishes `patches.social` as the flagship/reference
-node. This run records that as the permanent canonical origin in ADR 0039, updates the
+node. This run records that as the permanent canonical origin in ADR 0040, updates the
 production configuration and roadmap evidence, and leaves DNS/Fly certificate proof as the
 only external blocker.
 
@@ -24,3 +24,15 @@ only external blocker.
 The prior delivery's quality check failed on Prettier formatting in the ADR index. The retry
 formats that table entry and validates the affected Markdown plus the configuration parsing;
 remote delivery remains harness-owned.
+
+## Merge-conflict resolution (2026-09-01)
+
+`main` independently added ADR 0039 for the E2EE-only DM decision. This issue's canonical-
+origin ADR is therefore renumbered to ADR 0040, preserving both accepted decisions and
+removing the filename/index conflict before the harness rebases the delivery branch.
+
+## Continuation attempt 3 (2026-08-31)
+
+The delivery harness was interrupted while publishing the already validated correction. This
+run preserves that correction, verifies the ADR 0040 rename and its documentation references,
+and returns the workspace to the harness without remote delivery or polling.

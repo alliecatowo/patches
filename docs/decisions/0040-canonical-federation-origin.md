@@ -1,4 +1,4 @@
-# 0039. Canonical federation origin is `patches.social`
+# 0040. Canonical federation origin is `patches.social`
 
 **Status:** Accepted  
 **Date:** 2026-08-30  
