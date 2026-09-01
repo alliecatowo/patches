@@ -15,7 +15,7 @@
 # CAUTION: never run `git worktree prune`/`remove` while agents are live — it deletes a
 # running agent's tree out from under it and loses its work.
 #
-# Worktrees live under the repo's SIBLING directory, never /tmp. On 2026-08-20 three agents
+# Worktrees live under the repo's ignored `.worktrees/` directory by default, never /tmp. On 2026-08-20 three agents
 # were killed mid-edit by a usage limit; /tmp is tmpfs, the machine rebooted before they could
 # be resumed, and every uncommitted change went with it. A worktree holds hours of work and
 # must outlive a reboot. (/tmp also runs out of *inodes* long before disk — eleven worktrees
@@ -31,7 +31,7 @@ repo="${OPENCODE_PROJECT_DIR:-${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-tople
 dir="$(printf '%s' "$input" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const j=JSON.parse(s);process.stdout.write(j.worktree_path??j.worktreePath??j.path??"")}catch{}})' 2>/dev/null || true)"
 
 slug="$(date +%s)-$$"
-[ -n "$dir" ] || dir="${PATCHES_WORKTREE_ROOT:-$(dirname "$repo")/patches-agent-wt}/${slug}"
+[ -n "$dir" ] || dir="${PATCHES_WORKTREE_ROOT:-$repo/.worktrees}/${slug}"
 branch="agent/wt-${slug}"
 
 mkdir -p "$(dirname "$dir")" || exit 0

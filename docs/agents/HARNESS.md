@@ -99,6 +99,17 @@ rather than a client-side substring match that could leak the wrong recipient's 
 notification observation still waits on B-098 and is unaffected — Mailpit only ever carries
 transactional auth-code email in this system, never DM bodies.
 
+## Agent worktree bootstrap paths
+
+The canonical WorktreeCreate hooks create isolated worktrees below the repository's
+ignored `.worktrees/` directory by default. This keeps the worktree inside the worker
+sandbox's repository allow-list while keeping it separate from tracked files in the
+checkout. Set `PATCHES_WORKTREE_ROOT` when a different accessible filesystem is
+required; the override must remain within a path the worker can access.
+
+Workers must use the supported WorktreeCreate/harness workflow and must not create
+worktrees with ad-hoc `git worktree add` commands.
+
 ## Cross-worktree lab ownership
 
 `mise run lab` state (`infra/lab/.run/harness/state.json`) is per-worktree, but the ports it
