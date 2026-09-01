@@ -11,6 +11,10 @@ Evidence:
 - Project 5 shows Task ID `P12-120`, Status `Todo`, and `Blocked by: P12-119`.
 - No Now protocol/storage implementation was changed or added.
 
-Validation: repository search completed; worktree remains clean apart from the
-required untracked per-issue run log and these workpad artifacts. No commit,
-push, PR, or remote wait was performed.
+Validation: repository search completed; the three per-issue artifacts are
+modified for this retry. Persisted PR #460 deploy evidence was
+reviewed once: build, Fly launch, DNS, secret update, and deploy completed, but
+the final `GET https://patches-pr-460.fly.dev:8443/healthz` probe failed after
+20 attempts; this is preview infrastructure state unrelated to the docs-only
+change. No Now implementation was added, and no commit, push, PR update, or
+remote wait was performed.

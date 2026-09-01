@@ -8,5 +8,6 @@ resolved.
 - [x] Reproduce the blocker from the authoritative task/design documents.
 - [x] Confirm the target server protocol/storage implementation is absent.
 - [x] Record evidence and stop without speculative code changes.
+- [x] Diagnose the persisted PR #460 delivery failure from its completed deploy log.
 - [ ] After `P12-119` sign-off, implement the signed-off protocol, persistence,
       expiry hard-delete, and focused tests.
