@@ -60,3 +60,16 @@ database migrations, feature flags, or deployment configuration.
 - [x] Preserve the harness-owned `docs/issues/_151/run-log.md` modification.
 - [x] Re-run focused documentation, reference, artifact, and whitespace checks.
 - [x] Return the validated workspace to the delivery harness without delivery operations or remote waiting.
+
+## Retry attempt #1 (current handoff)
+
+- [x] Reconcile PR #440 feedback and confirm its current open/conflicting state.
+- [x] Update the persistent workpad with the current workspace stamp and evidence.
+- [x] Re-run focused documentation, reference, artifact, and whitespace checks.
+- [x] Preserve the harness-owned `docs/issues/_151/run-log.md` modification and return control without delivery or remote waiting.
+
+## Retry attempt #1 (final local validation)
+
+- [x] Reconcile the intact ADR 0039 design slice and existing workpad.
+- [x] Re-run focused content, reference, artifact, and whitespace validation.
+- [x] Preserve harness-owned changes and return control without delivery or remote waiting.

@@ -92,3 +92,23 @@ The existing ADR 0039 design slice remains intact and locally validated. Focused
 content, reference, artifact, and whitespace checks pass. The harness-owned
 `docs/issues/_151/run-log.md` modification remains untouched; no delivery operation
 or remote wait was performed.
+
+## Retry attempt #1 (current handoff)
+
+The existing ADR 0039 design slice remains intact at workspace `472e9c2`. PR #440 is
+OPEN/CONFLICTING against `main` and has no actionable review feedback. The persistent
+workpad was updated in place. Focused content, reference, artifact, and whitespace
+checks pass. The harness-owned `docs/issues/_151/run-log.md` modification remains
+untouched; no commit, push, PR, merge, CI wait, or remote-delivery operation was
+performed.
+
+The configured workpad-comment mutation required unavailable approval during this
+run; the existing workpad was already current, and the local artifacts carry the
+final validation evidence.
+
+## Retry attempt #1 (final local validation)
+
+The existing ADR 0039 design slice remains intact and locally validated. Focused
+content, reference, artifact, and whitespace checks pass. The harness-owned
+`docs/issues/_151/run-log.md` modification remains untouched; no commit, push, PR,
+merge, CI wait, or remote-delivery operation was performed.
