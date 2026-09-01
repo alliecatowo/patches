@@ -16,8 +16,8 @@ describe('PostRow media attachments data model', () => {
     });
 
     expect(postWithMedia.media).toHaveLength(1);
-    expect(postWithMedia.media[0].mediaId).toBe('media-1');
-    expect(postWithMedia.media[0].altText).toBe('Sample image');
+    expect(postWithMedia.media[0]?.mediaId).toBe('media-1');
+    expect(postWithMedia.media[0]?.altText).toBe('Sample image');
   });
 
   it('handles posts without media attachments', () => {

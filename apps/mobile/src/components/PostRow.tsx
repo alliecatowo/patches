@@ -2,9 +2,21 @@ import type { MediaAttachment, Post } from '@patches/proto/es';
 import { useEffect, useState, type JSX } from 'react';
 import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { ALLOWED_LINK_SCHEMES, containsUnsafeBytes } from '@patches/domain';
+
 import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
-import { safePageHref } from '../pages/href.js';
+
+function safeMediaUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (trimmed === '' || containsUnsafeBytes(trimmed)) return null;
+  try {
+    const protocol = new URL(trimmed).protocol;
+    return (ALLOWED_LINK_SCHEMES as readonly string[]).includes(protocol) ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface PostRowProps {
   post: Post;
@@ -74,9 +86,7 @@ export function PostRow({
           ) : (
             <Text style={styles.body}>{post.body}</Text>
           )}
-          {post.media && post.media.length > 0 ? (
-            <PostMediaAttachments media={post.media} />
-          ) : null}
+          {post.media && post.media.length > 0 ? <PostMediaAttachments media={post.media} /> : null}
         </>
       )}
       <View style={styles.counts}>
@@ -127,7 +137,7 @@ function PostMediaImage({ mediaId, altText }: { mediaId: string; altText: string
       .getMediaDownload({ mediaId })
       .then((response) => {
         if (cancelled) return;
-        const safe = safePageHref(response.downloadUrl);
+        const safe = safeMediaUrl(response.downloadUrl);
         if (safe === null) {
           setFailed(true);
           return;
