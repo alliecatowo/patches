@@ -20,4 +20,10 @@ OpenCode config and JavaScript syntax checks passed; `git diff --check` passed
 because the managed mise configuration is untrusted/read-only. Pull synchronization was attempted once and blocked by read-only
 `.git/FETCH_HEAD`; `HEAD` already matched `origin/main`.
 
+Retry correction: CI quality had failed because Prettier flagged the plan
+artifact. Reformatted `docs/issues/229/plan.md`; full-repository Prettier,
+usage parser, OpenCode config validation, JavaScript syntax checks, and
+`git diff --check` now pass. The preview deploy failure is external and has no
+local correction.
+
 No commit, push, PR mutation, merge, CI wait, or polling was performed.

@@ -9,7 +9,8 @@ llmgateway-only routing and bounded-worker rules.
 
 ## Checklist
 
-- [x] Reconcile issue state and inspect the H-010 baseline and current agent configuration.
+- [x] Reconcile issue state and inspect the H-010 baseline and current agent
+      configuration.
 - [x] Attempt the existing measurement command against this workspace.
 - [x] Determine whether this workspace can run a valid Sonnet/Haiku paired experiment.
 - [x] Document the reusable protocol, guardrails, and evidence-backed outcome.
@@ -17,12 +18,12 @@ llmgateway-only routing and bounded-worker rules.
 
 ## Acceptance mapping
 
-| Requirement | Evidence |
-| --- | --- |
-| H-010 baseline is identified | `docs/agents/CONTEXT_ECONOMY.md` corrected baseline |
-| Measurement is reproducible | `infra/scripts/usage-report.mjs --json` and protocol in `experiment.md` |
-| Adoption decision is explicit | `experiment.md` and `CONTEXT_ECONOMY.md` |
-| Per-issue artifacts exist | `plan.md`, `run-log.md`, `handoff.md` |
+| Requirement                   | Evidence                                                                |
+| ----------------------------- | ----------------------------------------------------------------------- |
+| H-010 baseline is identified  | `docs/agents/CONTEXT_ECONOMY.md` corrected baseline                     |
+| Measurement is reproducible   | `infra/scripts/usage-report.mjs --json` and protocol in `experiment.md` |
+| Adoption decision is explicit | `experiment.md` and `CONTEXT_ECONOMY.md`                                |
+| Per-issue artifacts exist     | `plan.md`, `run-log.md`, `handoff.md`                                   |
 
 ## Result
 
