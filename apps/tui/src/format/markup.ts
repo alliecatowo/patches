@@ -249,8 +249,21 @@ export function looksLikeHtml(source: string): boolean {
   return false;
 }
 
+// Cache regexes by attribute name to avoid repeated compilation and object allocations during HTML parsing.
+const ATTRIBUTE_REGEX_CACHE = new Map<string, RegExp>();
+
+function getAttributeRegExp(name: string): RegExp {
+  const key = name.toLowerCase();
+  let pattern = ATTRIBUTE_REGEX_CACHE.get(key);
+  if (pattern === undefined) {
+    pattern = new RegExp(`${key}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'iu');
+    ATTRIBUTE_REGEX_CACHE.set(key, pattern);
+  }
+  return pattern;
+}
+
 function attributeValue(attributes: string, name: string): string | undefined {
-  const pattern = new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'iu');
+  const pattern = getAttributeRegExp(name);
   const match = pattern.exec(attributes);
   if (match === null) return undefined;
   return decodeEntities(match[2] ?? match[3] ?? match[4] ?? '');
