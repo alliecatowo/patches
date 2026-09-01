@@ -77,16 +77,16 @@ cosmetic capability.
 
 ## Threat model and controls
 
-| Threat | Control |
-| --- | --- |
-| Token for another service or resource | Distinct audience; exact RFC 8707 resource validation; issuer/signature/expiry checks at host boundary |
-| Forged or asserted-but-unverifiable token | Fail closed before factory/tool construction; never downgrade to anonymous |
-| Origin/CSRF confused-deputy request | HTTPS, explicit Origin allowlist, authentication, and bounded host policy |
-| Model-induced data exfiltration | Minimal tool set; scope-filtered deterministic list; sanitized schemas/results; no secrets, credentials, or DMs |
-| Client ignores annotations or confirmation UI | Server-side authorization; approval record required for any future mutation |
-| Request/SSE exhaustion or replay | Body/time/rate bounds; no resumable SSE; DPoP remains deferred pending replay design |
-| Cross-replica inconsistent subscriptions | No subscriptions in v0; shared event/replay design is a prerequisite |
-| Sensitive values leaked through observability | Content-free logs/metrics/errors and digest-only approval correlation |
+| Threat                                        | Control                                                                                                         |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Token for another service or resource         | Distinct audience; exact RFC 8707 resource validation; issuer/signature/expiry checks at host boundary          |
+| Forged or asserted-but-unverifiable token     | Fail closed before factory/tool construction; never downgrade to anonymous                                      |
+| Origin/CSRF confused-deputy request           | HTTPS, explicit Origin allowlist, authentication, and bounded host policy                                       |
+| Model-induced data exfiltration               | Minimal tool set; scope-filtered deterministic list; sanitized schemas/results; no secrets, credentials, or DMs |
+| Client ignores annotations or confirmation UI | Server-side authorization; approval record required for any future mutation                                     |
+| Request/SSE exhaustion or replay              | Body/time/rate bounds; no resumable SSE; DPoP remains deferred pending replay design                            |
+| Cross-replica inconsistent subscriptions      | No subscriptions in v0; shared event/replay design is a prerequisite                                            |
+| Sensitive values leaked through observability | Content-free logs/metrics/errors and digest-only approval correlation                                           |
 
 ## Consequences
 
