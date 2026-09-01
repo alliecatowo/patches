@@ -379,6 +379,8 @@ jobs:
           rm -rf "$ctx" && mkdir -p "$ctx"
           pnpm --filter @patches/server deploy --prod --legacy "$ctx/server"
           pnpm --filter @patches/worker deploy --prod --legacy "$ctx/worker"
+          cp -r apps/server/dist "$ctx/server/dist"
+          cp -r apps/worker/dist "$ctx/worker/dist"
           cp infra/docker/migrate.mjs "$ctx/migrate.mjs"
 
       - name: Assemble image (COPY-only — no toolchain in CI docker)
