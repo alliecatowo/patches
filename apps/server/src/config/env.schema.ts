@@ -62,6 +62,9 @@ const envObjectSchema = z.object({
   DATABASE_URL: databaseEnvSchema.shape.DATABASE_URL.optional(),
   PUBLIC_ORIGIN: serverEnvShape.PUBLIC_ORIGIN.default('http://localhost:3000'),
 
+  /** RFC 9728 authorization server advertised for the MCP resource. */
+  MCP_AUTHORIZATION_SERVER: z.url().optional(),
+
   /** Rotatable AES-256-GCM keyring shared with the worker for auth-code delivery envelopes. */
   AUTH_CODE_DELIVERY_KEYS: authCodeDeliveryKeyringJsonSchema,
   /** Key id selected for newly issued verification and password-reset envelopes. */

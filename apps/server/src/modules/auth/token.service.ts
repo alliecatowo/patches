@@ -40,6 +40,9 @@ const JWT_ALGORITHM = 'EdDSA';
  */
 const JWT_AUDIENCE = 'patches-api';
 
+/** Deliberately separate from the browser/API audience (issue #177). */
+export const MCP_JWT_AUDIENCE = 'patches-mcp';
+
 /** 256 bits of entropy — well past any brute-force concern, and a 43-character string. */
 const REFRESH_TOKEN_BYTES = 32;
 
@@ -48,6 +51,11 @@ export interface AccessTokenClaims {
   actorId: string;
   sessionId: string;
   expiresAt: Date;
+}
+
+export interface McpAccessTokenClaims extends AccessTokenClaims {
+  scope: ReadonlySet<string>;
+  resource: string;
 }
 
 export interface IssuedTokens {
@@ -236,6 +244,32 @@ export class TokenService {
     return { userId: sub, actorId, sessionId, expiresAt: new Date(exp * 1000) };
   }
 
+  /** Verifies a token for the MCP resource boundary. Never use the API verifier here: doing
+   * so would turn an ordinary browser session into a bearer credential for a model-controlled
+   * tool (the confused-deputy failure this boundary exists to prevent). */
+  async verifyMcpAccessToken(token: string, resource: string): Promise<McpAccessTokenClaims> {
+    let payload: JWTPayload;
+    try {
+      ({ payload } = await jwtVerify(token, await this.publicKey(), {
+        algorithms: [JWT_ALGORITHM],
+        issuer: this.config.nodeDomain,
+        audience: MCP_JWT_AUDIENCE,
+      }));
+    } catch (error) {
+      if (error instanceof joseErrors.JWTExpired) throw sessionExpired();
+      throw new AppError('AUTH_INVALID_CREDENTIALS', 'Invalid MCP access token.', { cause: error });
+    }
+
+    const claims = accessTokenClaims(payload, 'Invalid MCP access token.');
+    const resourceClaim: unknown = payload['resource'];
+    const rawScope: unknown = payload['scope'];
+    if (resourceClaim !== resource || typeof rawScope !== 'string') {
+      throw new AppError('AUTH_INVALID_CREDENTIALS', 'Invalid MCP access token.');
+    }
+    const scope = new Set(rawScope.split(' ').filter((value) => value.length > 0));
+    return { ...claims, resource, scope };
+  }
+
   private privateKey(): ReturnType<typeof importPKCS8> {
     this.signingKey ??= importPKCS8(
       requireKey(this.config.jwtPrivateKeyPem, 'JWT_PRIVATE_KEY'),
@@ -251,6 +285,21 @@ export class TokenService {
     );
     return this.verificationKey;
   }
+}
+
+function accessTokenClaims(payload: JWTPayload, message: string): AccessTokenClaims {
+  const { sub, exp } = payload;
+  const actorId: unknown = payload['actor_id'];
+  const sessionId: unknown = payload['session_id'];
+  if (
+    typeof sub !== 'string' ||
+    typeof actorId !== 'string' ||
+    typeof sessionId !== 'string' ||
+    typeof exp !== 'number'
+  ) {
+    throw new AppError('AUTH_INVALID_CREDENTIALS', message);
+  }
+  return { userId: sub, actorId, sessionId, expiresAt: new Date(exp * 1000) };
 }
 
 function requireKey(pem: string | undefined, name: string): string {
