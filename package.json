@@ -15,6 +15,7 @@
     "dev": "turbo run dev --filter=@patches/server --filter=@patches/worker",
     "dev:tui": "pnpm --filter @patches/tui dev",
     "lint": "turbo run build && eslint . --cache --cache-location node_modules/.cache/eslint/",
+    "lint:changed": "node scripts/lint-changed.mjs",
     "lint:fix": "turbo run build && eslint . --fix --cache --cache-location node_modules/.cache/eslint/",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
