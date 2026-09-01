@@ -8,7 +8,7 @@ invalidation, retaining unary polling as the mandatory fallback.
 ## Work items
 
 - [x] Reconcile issue state, workpad, ADR 0032, research, and linked PR.
-- [x] Add ADR 0039 with the RPC shape and explicit non-goals.
+- [x] Add ADR 0040 with the RPC shape and explicit non-goals.
 - [x] Document fallback, authorization, backpressure, reconnect, resource bounds,
   cross-node fan-out, and reversible rollout.
 - [x] Mark ADR 0032 superseded and update the ADR index.
@@ -27,14 +27,14 @@ database migrations, feature flags, or deployment configuration.
 
 ## Retry attempt #1 (continuation)
 
-- [x] Reconcile current `8959dad` workspace state and the existing ADR 0039 slice.
+- [x] Reconcile current `8959dad` workspace state and the existing streaming ADR slice.
 - [x] Re-run focused documentation and artifact validation.
 - [x] Record the unavailable workpad-comment mutation path and return control to the
   delivery harness without remote waiting.
 
 ## Current continuation
 
-- [x] Reconcile the existing ADR 0039 slice and preserve the harness-owned
+- [x] Reconcile the existing streaming ADR slice and preserve the harness-owned
   `docs/issues/_151/run-log.md` modification.
 - [x] Re-run focused documentation, reference, artifact, and whitespace checks.
 - [x] Return the validated workspace to the delivery harness without delivery
@@ -56,7 +56,7 @@ database migrations, feature flags, or deployment configuration.
 
 ## Retry attempt #1 (current continuation)
 
-- [x] Reconcile the active issue/workpad and confirm the existing ADR 0039 slice is intact.
+- [x] Reconcile the active issue/workpad and confirm the existing streaming ADR slice is intact.
 - [x] Preserve the harness-owned `docs/issues/_151/run-log.md` modification.
 - [x] Re-run focused documentation, reference, artifact, and whitespace checks.
 - [x] Return the validated workspace to the delivery harness without delivery operations or remote waiting.
@@ -70,6 +70,32 @@ database migrations, feature flags, or deployment configuration.
 
 ## Retry attempt #1 (final local validation)
 
-- [x] Reconcile the intact ADR 0039 design slice and existing workpad.
+- [x] Reconcile the intact streaming ADR design slice and existing workpad.
 - [x] Re-run focused content, reference, artifact, and whitespace validation.
 - [x] Preserve harness-owned changes and return control without delivery or remote waiting.
+
+## Retry attempt #1 (current handoff)
+
+```text
+pink-allie-cat:/home/allie/develop/patches/.polyphony/workspaces/_151@e0cf048
+```
+
+- [x] Reconcile the active issue/workpad and confirm the existing streaming ADR slice is intact.
+- [x] Run focused stream-design, fallback, authorization, flow-control, reconnect,
+  bounds, rollout, exclusion, reference, artifact, and whitespace checks.
+- [x] Preserve the harness-owned `docs/issues/_151/run-log.md` modification.
+- [x] Return control without commit, push, PR, merge, CI wait, or remote-delivery operations.
+
+## Retry attempt #3 (ADR-number conflict resolution)
+
+```text
+pink-allie-cat:/home/allie/develop/patches/.polyphony/workspaces/_151@e0cf048
+```
+
+- [x] Reconcile issue #151, the persistent workpad, PR #440, and remote `main` once.
+- [x] Reproduce the merge conflict as ADR number 0039 being allocated independently on `main`.
+- [x] Restore main's exact E2EE ADR 0039, renumber the realtime invalidation design to ADR 0040,
+  and merge the ADR index entries.
+- [x] Re-run focused content, reference, artifact, and whitespace validation.
+- [x] Update the local handoff and persistent workpad.
+- [x] Return control without retrying or polling remote systems.

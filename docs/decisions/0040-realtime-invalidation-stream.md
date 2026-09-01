@@ -1,4 +1,4 @@
-# 0039. Realtime is a server-streaming invalidation channel, with unary poll as the mandatory fallback
+# 0040. Realtime is a server-streaming invalidation channel, with unary poll as the mandatory fallback
 
 **Status:** Accepted (design only — does not authorize implementation)
 **Date:** 2026-08-29
@@ -488,4 +488,3 @@ and this ADR does not spend them:
 1. **APNs / FCM** (0032 T3) — a new metadata egress, own ADR.
 2. **B-093** (presence / typing / read receipts as encrypted control
    envelopes) — still not this stream, still not v0 user-visible.
-

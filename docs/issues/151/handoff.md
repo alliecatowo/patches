@@ -2,8 +2,8 @@
 
 ## Completed
 
-- Added `docs/decisions/0039-realtime-invalidation-stream.md`.
-- Marked ADR 0032 superseded by ADR 0039 and indexed the new ADR.
+- Added `docs/decisions/0040-realtime-invalidation-stream.md`.
+- Marked ADR 0032 superseded by ADR 0040 and indexed the new ADR.
 - Documented one server-streaming `SubscribeSignals` invalidation RPC, unary
   fallback for SSH/restrictive proxies, authz, resume tokens, heartbeat,
   backpressure, reconnect, per-node limits, no-bus cross-machine fan-out,
@@ -65,7 +65,7 @@ the harness without modifying unrelated `docs/issues/_151/` work.
 
 ## Current continuation
 
-The existing ADR 0039 slice remains validated at `12d72dd`. Focused documentation,
+The existing streaming ADR slice remains validated at `12d72dd`. Focused documentation,
 reference, artifact, and whitespace checks pass. The only uncommitted file is the
 harness-owned `docs/issues/_151/run-log.md` change, preserved untouched. No delivery
 operation or remote waiting was performed.
@@ -88,14 +88,14 @@ CI wait, or remote-delivery operation was performed.
 
 ## Retry attempt #1 (current continuation)
 
-The existing ADR 0039 design slice remains intact and locally validated. Focused
+The existing streaming ADR design slice remains intact and locally validated. Focused
 content, reference, artifact, and whitespace checks pass. The harness-owned
 `docs/issues/_151/run-log.md` modification remains untouched; no delivery operation
 or remote wait was performed.
 
 ## Retry attempt #1 (current handoff)
 
-The existing ADR 0039 design slice remains intact at workspace `472e9c2`. PR #440 is
+The existing streaming ADR design slice remains intact at workspace `472e9c2`. PR #440 is
 OPEN/CONFLICTING against `main` and has no actionable review feedback. The persistent
 workpad was updated in place. Focused content, reference, artifact, and whitespace
 checks pass. The harness-owned `docs/issues/_151/run-log.md` modification remains
@@ -108,7 +108,29 @@ final validation evidence.
 
 ## Retry attempt #1 (final local validation)
 
-The existing ADR 0039 design slice remains intact and locally validated. Focused
+The existing streaming ADR design slice remains intact and locally validated. Focused
 content, reference, artifact, and whitespace checks pass. The harness-owned
 `docs/issues/_151/run-log.md` modification remains untouched; no commit, push, PR,
 merge, CI wait, or remote-delivery operation was performed.
+
+## Retry attempt #1 (current handoff)
+
+The existing streaming ADR design slice remains intact at workspace `e0cf048`.
+Focused stream-design, fallback, authorization, flow-control, reconnect, bounds,
+rollout, exclusion, reference, artifact, and whitespace checks passed. The
+harness-owned `docs/issues/_151/run-log.md` modification remains untouched. No
+commit, push, PR, merge, CI wait, or remote-delivery operation was performed.
+The configured workpad-comment mutation path was unavailable; these local issue
+artifacts carry the current run evidence.
+
+## Retry attempt #3 (ADR-number conflict resolution)
+
+The delivery conflict was caused by an ADR-number collision, not by the realtime
+design content: remote `main` now owns ADR 0039 for the E2EE-only DM decision. The
+streaming design has been moved to `docs/decisions/0040-realtime-invalidation-stream.md`;
+main's exact ADR 0039 blob (`8e64e2d`) is present, and ADR 0032 plus the index now
+reference the reconciled numbering. Focused requirement, reference, artifact, and whitespace checks pass. The
+formatting runner is unavailable because dependencies are absent and `mise.toml`
+is untrusted in this worker. No commit, push, PR, merge, CI wait, or other delivery
+operation was performed. The persistent workpad was updated successfully through
+GitHub GraphQL; these local artifacts carry the final evidence.

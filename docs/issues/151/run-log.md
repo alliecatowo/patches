@@ -4,13 +4,13 @@
 
 - Confirmed issue #151 is OPEN and its Project item O-004 is In Progress.
 - Reused and updated the single active `## Codex Workpad` comment.
-- Confirmed linked PR #421 is OPEN but mixed: its ADR 0039 design is alongside
+- Confirmed linked PR #421 is OPEN but mixed: its streaming ADR design is alongside
   unrelated harness and test changes.
 - Reproduction/current-state signal: `d19443b` is at `origin/main`; ADR 0032
-  currently says `Status: Accepted` and no ADR 0039 exists in this checkout.
+  currently says `Status: Accepted` and no streaming ADR exists in this checkout.
 - Attempted `git merge --ff-only origin/main`; Git failed before changing files:
   `Unable to create .../.git/ORIG_HEAD.lock: Read-only file system`.
-- Added ADR 0039 from the linked design slice, marked ADR 0032 superseded,
+- Added the streaming ADR from the linked design slice, marked ADR 0032 superseded,
   updated the ADR index, and created these issue artifacts.
 - Focused validation passed: required design terms and references are present;
   changed files are documentation-only.
@@ -39,7 +39,7 @@
 
 ## Retry attempt #1 (continuation)
 
-- Confirmed issue #151 is OPEN and O-004 remains In Progress; the existing ADR 0039
+- Confirmed issue #151 is OPEN and O-004 remains In Progress; the existing streaming ADR
   documentation slice is present at workspace `a2618ab`.
 - Revalidated required RPC, fallback, authz, backpressure, bounds, rollout, and
   exclusion references, artifact existence, and `git diff --check`: PASS.
@@ -78,7 +78,7 @@
 ## Current continuation
 
 - Confirmed issue #151 remains OPEN/In Progress with the existing active workpad;
-  the ADR 0039 documentation slice is complete and no actionable review feedback
+  the streaming ADR documentation slice is complete and no actionable review feedback
   was identified.
 - Re-ran focused checks for required stream/fallback/authz/flow-control/bounds/
   rollout/exclusion wording, ADR references, artifact existence, and whitespace:
@@ -88,7 +88,7 @@
 
 ## Retry attempt #1 (current run)
 
-- Reconciled the active issue/workpad and confirmed the design-only ADR 0039 slice
+- Reconciled the active issue/workpad and confirmed the design-only streaming ADR slice
   remains intact at `12d72dd`.
 - Focused required-term, ADR-reference, artifact-existence, and `git diff --check`
   validation passed.
@@ -97,7 +97,7 @@
 
 ## Current continuation
 
-- Confirmed issue #151 remains OPEN with the existing active workpad; ADR 0039 and
+- Confirmed issue #151 remains OPEN with the existing active workpad; the streaming ADR and
   the required issue artifacts are complete in the current checkout.
 - Focused assertions for the RPC, fallback, authorization, flow control,
   reconnect, per-node bounds, rollout, exclusions, ADR references, artifacts, and
@@ -111,7 +111,7 @@
 
 ## Retry attempt #1 (current continuation)
 
-- Reconciled issue #151 as OPEN/In Progress with the existing ADR 0039 design slice
+- Reconciled issue #151 as OPEN/In Progress with the existing streaming ADR design slice
   intact and no actionable review feedback.
 - Preserved the unrelated modified `docs/issues/_151/run-log.md` file.
 - Re-ran focused stream-design, fallback, authorization, flow-control, bounds,
@@ -133,10 +133,28 @@
 
 ## Retry attempt #1 (final local validation)
 
-- Reconciled the existing ADR 0039 design slice and active workpad; no new implementation or review work was required.
+- Reconciled the existing streaming ADR design slice and active workpad; no new implementation or review work was required.
 - Focused stream-design, fallback, authorization, flow-control, reconnect, bounds,
   rollout, exclusion, reference, artifact, and whitespace checks: PASS.
 - Preserved the harness-owned `docs/issues/_151/run-log.md` modification. No
   commit, push, PR, merge, CI wait, or remote-delivery operation was performed.
 - The configured workpad-comment mutation again required unavailable approval; the
   existing workpad was already current, so the local artifacts carry this run's evidence.
+
+## Retry attempt #3 (ADR-number conflict resolution)
+
+- Confirmed issue #151 remains OPEN/In Progress and PR #440 remains OPEN/CONFLICTING
+  with no actionable review feedback.
+- Reproduced the persisted merge conflict: remote `main` at `7a45b25` independently
+  assigned ADR 0039 to `0039-e2ee-only-direct-messages-and-honest-copy.md`, while
+  this branch had assigned ADR 0039 to the realtime invalidation design.
+- Restored remote main's ADR 0039 exactly (Git blob `8e64e2d`), renumbered the realtime
+  design to ADR 0040, updated ADR 0032's supersession link, and retained both ADRs in the index.
+- Focused RPC, fallback, authorization, backpressure, reconnect, per-node bounds,
+  reversible rollout, exclusion, reference, artifact, and `git diff --check`
+  validation passed.
+- `prettier --check` could not start because dependencies are not installed and the
+  repository `mise.toml` is untrusted in this restricted worker environment. The
+  changed Markdown retains the repository's existing table and wrapping format.
+- Updated the single persistent workpad successfully through GitHub GraphQL with the
+  conflict resolution and validation state; no separate summary comment was created.

@@ -1,6 +1,6 @@
 # 0032. DM delivery stays poll-based, with a stated freshness SLA and a measured re-open gate
 
-**Status:** Superseded by [0039](./0039-realtime-invalidation-stream.md)
+**Status:** Superseded by [0040](./0040-realtime-invalidation-stream.md)
 **Date:** 2026-08-25
 **Decides:** P19-011 ("DM realtime decision")
 **Relates to:** [0016](./0016-connect-transport-and-client-sdk.md) (unary-only Connect edge; two of
