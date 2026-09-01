@@ -211,6 +211,9 @@ dir="$(node -e 'const{execSync}=require("child_process");const l=JSON.parse(exec
   wait $prettier_pid; prettier_rc=$?
   if [ $turbo_rc -ne 0 ]; then exit $turbo_rc; fi
   if [ $prettier_rc -ne 0 ]; then exit $prettier_rc; fi
+  # Turbo's lint task is cacheable. Always lint changed files directly without
+  # ESLint's cache as a final local proof, including untracked new files.
+  pnpm lint:changed -- "$dir"
 elapsed=$(( $(date +%s) - start ))
 echo "ok $pkg ${elapsed}s"
 """

@@ -100,10 +100,12 @@ jobs:
       - if: needs.plan.outputs.full-ci != 'true'
         run: git fetch origin main --quiet
       - run: pnpm format:check
-      # eslint/prettier have no native git-diff-aware filtering here, and both are cheap
-      # relative to typecheck/test — kept full-repo in both modes. typecheck is turbo-native
-      # and is the expensive part of this job, so it's the one that's actually scoped.
+      # Keep the full lint for broad config coverage, then run a direct uncached changed-file
+      # pass. A cache hit in a scoped Turbo task must not be treated as proof that newly added
+      # MCP files were linted.
       - run: pnpm lint
+      - name: Lint changed files uncached
+        run: pnpm lint:changed
       - name: Typecheck (affected workspaces + dependents, or full on main/full-ci)
         run: pnpm exec turbo run typecheck ${{ needs.plan.outputs.turbo-filter }} --output-logs=errors-only
 

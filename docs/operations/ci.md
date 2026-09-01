@@ -385,3 +385,17 @@ already fixed by prior work, not by this change:
 No further worker test changes were needed for this issue; it's tracked here as the
 confirmation record since #144 predates both fixes and was never explicitly closed against
 them.
+
+### Changed-file lint and cache-suspect scoped checks
+
+Scoped Turbo checks are useful for fast feedback, but a successful cached task
+is not proof that a newly added file was linted. Treat a scoped check as
+cache-suspect when the change adds or moves source files, changes lint/config
+inputs, or the task reports a cache hit while the changed-file set is not
+obvious.
+
+Use `pnpm lint:changed -- apps/server` (or the relevant workspace directory)
+for a direct, uncached ESLint pass over tracked, staged, unstaged, and untracked
+changed files. `mise run check server` includes this pass after its cached Turbo
+tasks. CI also runs `pnpm lint:changed` after the regular full lint, so a fresh
+MCP controller/service lint failure is caught without requiring `pnpm verify`.
