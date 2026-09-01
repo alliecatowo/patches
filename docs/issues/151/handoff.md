@@ -62,3 +62,17 @@ tracking ref is stale at `d19443b`, and the mandated safe fetch cannot write
 remains unchanged and focused validation passes. A merge/rebase and delivery are
 needed to resolve the remote conflict, so the validated workspace is returned to
 the harness without modifying unrelated `docs/issues/_151/` work.
+
+## Current continuation
+
+The existing ADR 0039 slice remains validated at `12d72dd`. Focused documentation,
+reference, artifact, and whitespace checks pass. The only uncommitted file is the
+harness-owned `docs/issues/_151/run-log.md` change, preserved untouched. No delivery
+operation or remote waiting was performed.
+
+## Retry attempt #1 (current run)
+
+The existing design slice remains locally validated at `12d72dd`. Required ADR
+content/reference/artifact checks and `git diff --check` pass. The harness-owned
+`docs/issues/_151/run-log.md` modification remains untouched; no commit, push, PR,
+CI wait, or remote-delivery operation was performed.

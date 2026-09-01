@@ -32,6 +32,21 @@ database migrations, feature flags, or deployment configuration.
 - [x] Record the unavailable workpad-comment mutation path and return control to the
   delivery harness without remote waiting.
 
+## Current continuation
+
+- [x] Reconcile the existing ADR 0039 slice and preserve the harness-owned
+  `docs/issues/_151/run-log.md` modification.
+- [x] Re-run focused documentation, reference, artifact, and whitespace checks.
+- [x] Return the validated workspace to the delivery harness without delivery
+  operations or remote waiting.
+
+## Retry attempt #1 (current run)
+
+- [x] Reconcile the active issue/workpad and current `12d72dd` checkout.
+- [x] Re-run focused ADR content, reference, artifact, and whitespace checks.
+- [x] Preserve the harness-owned `docs/issues/_151/run-log.md` change and stop after
+  local validation.
+
 ## Retry attempt #6 (merge-conflict continuation)
 
 - [x] Inspect PR #440's current head, merge state, and all review-feedback channels.
