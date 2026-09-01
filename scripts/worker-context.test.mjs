@@ -33,6 +33,17 @@ test('whole packets stay within the hard context ceiling', () => {
     })),
   });
   assert.ok(JSON.stringify(result).length <= LIMITS.contextChars);
+  assert.ok(result.telemetry.contextBytes <= LIMITS.contextBytes);
+});
+
+test('UTF-8 packets stay within the byte ceiling, not only the character ceiling', () => {
+  const result = buildWorkerContext({
+    issue: '内容 '.repeat(10_000),
+    workpad: 'résumé '.repeat(2_000),
+    commandOutput: 'ошибка '.repeat(2_000),
+  });
+  assert.ok(result.telemetry.contextBytes <= LIMITS.contextBytes);
+  assert.ok(result.telemetry.contextBytes >= result.telemetry.contextChars);
 });
 
 test('large command lists and paths remain bounded without hanging', () => {

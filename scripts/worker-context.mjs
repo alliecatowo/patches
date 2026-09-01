@@ -7,6 +7,7 @@
 
 export const LIMITS = Object.freeze({
   contextChars: 32_000,
+  contextBytes: 32_000,
   contextLines: 240,
   fieldChars: 4_000,
   fieldLines: 80,
@@ -20,6 +21,8 @@ export const LIMITS = Object.freeze({
   noProgressStop: 3,
   growthStopChars: 8_000,
 });
+
+const utf8Bytes = (value) => new TextEncoder().encode(value).byteLength;
 
 const EXCLUDED =
   /(^|\/)(?:node_modules|dist|build|coverage|\.git|\.turbo|generated)(?:\/|$)|(?:^|\/)(?:tasks\.md|INITIAL_VISION\.md|pnpm-lock\.yaml)$|(?:^|\/)[^/]*\.generated\.[^/]+$|\.(?:lock|zip|tgz|gz|tar|7z)$/i;
@@ -68,7 +71,10 @@ function checks(checks) {
 }
 
 function fitPacket(packet) {
-  while (JSON.stringify(packet).length > LIMITS.contextChars) {
+  while (
+    JSON.stringify(packet).length > LIMITS.contextChars ||
+    utf8Bytes(JSON.stringify(packet)) > LIMITS.contextBytes
+  ) {
     if (packet.commandOutput.length > 256) {
       packet.commandOutput = bounded(
         packet.commandOutput,
@@ -159,6 +165,7 @@ export function buildWorkerContext(input) {
       contextGrowthChars,
       noProgressTurns,
       contextChars: json.length,
+      contextBytes: utf8Bytes(json),
       action,
       outputWarning: outputTokens !== undefined && outputTokens >= LIMITS.outputTokenWarn,
     },
