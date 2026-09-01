@@ -36,3 +36,13 @@
 - Rechecked documentation integrity locally: `git diff --check` and required
   issue-artifact existence checks passed. Preserved the unrelated modified
   `docs/issues/_151/run-log.md` file untouched.
+
+## Retry attempt #1 (continuation)
+
+- Confirmed issue #151 is OPEN and O-004 remains In Progress; the existing ADR 0039
+  documentation slice is present at workspace `a2618ab`.
+- Revalidated required RPC, fallback, authz, backpressure, bounds, rollout, and
+  exclusion references, artifact existence, and `git diff --check`: PASS.
+- The available GitHub GraphQL connector rejected the workpad comment-update
+  mutation; local issue artifacts carry the handoff. The unrelated
+  `docs/issues/_151/run-log.md` modification was preserved.

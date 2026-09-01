@@ -36,3 +36,12 @@ slice and tracks its published remote ref at `b85e1f5`; PR #440 remains the
 existing delivery target. This retry added only workpad artifacts and passed
 `git diff --check` plus required-artifact presence checks. The unrelated
 `docs/issues/_151/run-log.md` modification remains preserved for its owner.
+
+## Retry attempt #1 (continuation)
+
+The existing focused slice remains present at `a2618ab`; no implementation changes
+were required. Focused content, reference, artifact, and whitespace checks passed.
+The GitHub connector rejected the workpad comment-update mutation, so the local
+plan/run-log/handoff are the durable handoff record. The unrelated
+`docs/issues/_151/run-log.md` modification remains untouched. No commit, push, PR
+operation, CI wait, or remote polling was performed.
