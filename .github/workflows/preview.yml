@@ -447,7 +447,7 @@ jobs:
         # now fixed in teardown), but this probe proves the LIVE path every deploy:
         # the Pages origin must get CORS approval from the Connect edge and healthz
         # must answer, exactly as the browser client's login fetch does.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.DATABASE_URL != '' && env.PREVIEW_WEB == 'enabled'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -463,8 +463,15 @@ jobs:
           # request, and a brand-new app's DNS can take a minute — probe with short
           # intervals rather than paying a flat 15s sleep per attempt.
           for i in $(seq 1 20); do
-            if health="$(curl -fsS --max-time 10 "${edge}/healthz" 2>/dev/null)"; then break; fi
-            echo "healthz not reachable yet (attempt ${i}/20); waiting 5s"; sleep 5
+            res="$(curl -sS --max-time 10 -w "\n%{http_code}" "${edge}/healthz" 2>&1 || true)"
+            body="$(echo "$res" | head -n -1)"
+            code="$(echo "$res" | tail -n 1)"
+            if [ "$code" = "200" ]; then
+              health="$body"
+              break
+            fi
+            echo "healthz not reachable yet (status=${code}, body='${body}', attempt ${i}/20); waiting 5s"
+            sleep 5
           done
           [ -n "$health" ] || { echo "healthz never became reachable" >&2; exit 1; }
           echo "healthz: ${health}" | head -c 200; echo
