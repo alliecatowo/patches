@@ -249,8 +249,34 @@
   background: var(--bg);
   color: var(--fg);
   padding: 1.5rem;
-  max-width: 380px;
+  width: min(30rem, calc(100vw - 2rem));
+  max-height: min(38rem, calc(100dvh - 2rem));
   box-shadow: var(--shadow-lg);
+}
+
+.helpContent {
+  max-height: min(29rem, calc(100dvh - 10rem));
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.helpContent section + section {
+  margin-top: 1rem;
+}
+
+.helpContent h3 {
+  color: var(--accent);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.helpContent p {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+  margin: 0.45rem 0;
 }
 
 .helpDialog::backdrop {
@@ -289,6 +315,14 @@
     min-height: calc(100vh - 52px - var(--sat));
     padding-bottom: max(5rem, calc(4rem + var(--sab)));
     border: 0;
+  }
+
+  .helpDialog {
+    padding: 1rem;
+  }
+
+  .helpContent {
+    max-height: calc(100dvh - 9rem);
   }
 
   .footer {

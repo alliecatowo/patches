@@ -31,6 +31,36 @@ import styles from './RootLayout.module.css';
 const NAV_LINK_CLASS = ({ isActive }: { isActive: boolean }): string =>
   isActive ? `${styles['navLink']} ${styles['active']}` : (styles['navLink'] ?? '');
 
+const SHORTCUT_GROUPS = [
+  {
+    name: 'Navigation',
+    shortcuts: [
+      ['j / ↓', 'move to the next post'],
+      ['k / ↑', 'move to the previous post'],
+      ['Enter', 'open the focused post'],
+    ],
+  },
+  {
+    name: 'Post actions',
+    shortcuts: [
+      ['l', 'like the focused post'],
+    ],
+  },
+  {
+    name: 'Create and search',
+    shortcuts: [
+      ['c', 'compose a new post'],
+      ['/', 'search posts and people'],
+    ],
+  },
+  {
+    name: 'Help',
+    shortcuts: [
+      ['?', 'toggle this help'],
+    ],
+  },
+] as const;
+
 export function RootLayout(): JSX.Element {
   useShakeToReport();
   const session = useSession();
@@ -331,22 +361,19 @@ export function RootLayout(): JSX.Element {
         aria-labelledby="keyboard-shortcuts-title"
       >
         <h2 id="keyboard-shortcuts-title">Keyboard shortcuts</h2>
-        <p>
-          <kbd className={styles['helpKbd']}>j</kbd>/<kbd className={styles['helpKbd']}>k</kbd> move
-          between posts
-        </p>
-        <p>
-          <kbd className={styles['helpKbd']}>l</kbd> like focused post
-        </p>
-        <p>
-          <kbd className={styles['helpKbd']}>c</kbd> compose new post
-        </p>
-        <p>
-          <kbd className={styles['helpKbd']}>/</kbd> search
-        </p>
-        <p>
-          <kbd className={styles['helpKbd']}>?</kbd> toggle help
-        </p>
+        <div className={styles['helpContent']}>
+          {SHORTCUT_GROUPS.map((group) => (
+            <section key={group.name} aria-labelledby={`shortcut-group-${group.name}`}>
+              <h3 id={`shortcut-group-${group.name}`}>{group.name}</h3>
+              {group.shortcuts.map(([keys, description]) => (
+                <p key={keys}>
+                  <kbd className={styles['helpKbd']}>{keys.trim()}</kbd>
+                  {description}
+                </p>
+              ))}
+            </section>
+          ))}
+        </div>
         <form method="dialog" style={{ marginTop: '1rem' }}>
           <button
             type="submit"
