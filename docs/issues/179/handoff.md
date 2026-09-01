@@ -14,6 +14,8 @@
 ## Validation
 
 - `git diff --check` passed.
+- The prior quality failure was reproduced: trailing whitespace on the ADR `Status` and
+  `Date` lines. Those Markdown hard-break spaces were removed.
 - ADR/index headings and relative links were checked with repository searches.
 - Required artifact and constraint-marker checks passed.
 - `pnpm exec prettier --check ...` could not start because mise rejected the untrusted
@@ -25,5 +27,7 @@
 The ADR remains Proposed by design. Owner approval of the exact constraints is required
 before #180 or #181 implements any Now protocol, storage, or UI behavior. Commit, push,
 PR creation, and issue delivery are intentionally left to the orchestration harness.
-The remote workpad could not be updated this retry: GitHub GraphQL mutation failed and
-the `gh api` fallback could not connect to api.github.com.
+The remote workpad could not be updated this retry: the GitHub GraphQL
+`updateIssueComment` mutation returned an UNKNOWN error, and the `gh api` fallback
+could not connect to `api.github.com`. The local workpad artifacts contain the complete
+handoff record.

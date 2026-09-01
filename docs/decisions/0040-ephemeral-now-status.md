@@ -1,7 +1,7 @@
 # 0040. Ephemeral Now status is non-story state
 
-**Status:** Proposed — owner approval required before implementation  
-**Date:** 2026-09-01  
+**Status:** Proposed — owner approval required before implementation
+**Date:** 2026-09-01
 **Depends on:** [0018](./0018-tui-interaction-model.md), [0019](./0019-user-side-filters-and-decentralized-moderation.md), and Amendment B §§178–195
 
 ## Context

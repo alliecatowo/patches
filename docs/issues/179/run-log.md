@@ -24,3 +24,11 @@
 - 2026-09-01: Validation passed: `git diff --check`; ADR heading/index/link checks
   completed with repository searches. Full application checks were not applicable to
   documentation-only changes.
+- 2026-09-01 retry continuation: Reproduced the persisted quality failure with
+  `git diff --check f16d106^..HEAD`: trailing whitespace was present on ADR 0040's
+  `Status` and `Date` lines. Removed the two Markdown hard-break spaces; focused quality
+  validation follows.
+- 2026-09-01 retry continuation: GitHub GraphQL `updateIssueComment` mutation returned
+  an UNKNOWN error; `gh api graphql` fallback returned `error connecting to
+  api.github.com`. The remote workpad could not be edited, so this local artifact is
+  the handoff record.
