@@ -25,14 +25,13 @@ Ship passkeys as a fifth credential type, web-client-only, using `@simplewebauth
 CJS-compatible per `docs/research/simplewebauthn.md`) and `@simplewebauthn/browser` (ESM, Vite-
 compatible).
 
-- **Relying Party ID = this node's `PUBLIC_ORIGIN` hostname.** `PUBLIC_ORIGIN` (not `NODE_DOMAIN`)
-  is what the browser that will actually perform the ceremony is served from and navigates to —
-  the same reasoning [`federation-identity-is-public-origin-not-node-domain`](../agents/LEARNINGS.md)
-  already established for WebFinger/actor resolution applies unchanged here.
-  `expectedOrigin` is the full `PUBLIC_ORIGIN` string; `rpID` is `new URL(PUBLIC_ORIGIN).hostname`.
-  A node whose web client is served from a different origin than `PUBLIC_ORIGIN` cannot use
-  passkeys today — not a v0 scenario (the reference node serves both from the same origin) and
-  worth a follow-up if that ever changes.
+- **Relying Party ID and origins are explicit, validated configuration.** `PASSKEY_RP_ID` is a
+  bare hostname and `PASSKEY_ORIGINS` is a comma-separated list of bare browser origins. When
+  omitted, they default to `new URL(PUBLIC_ORIGIN).hostname` and `[PUBLIC_ORIGIN]`, preserving
+  existing nodes. This lets a web client hosted on another registrable site use passkeys while
+  keeping the node's `PUBLIC_ORIGIN` for federation and other canonical URLs. The production
+  reference node sets `PASSKEY_RP_ID=patches-web.pages.dev` and accepts
+  `https://patches-web.pages.dev`.
 - **No new columns on `credentials`.** The existing `identifier` (already the type-scoped lookup
   key: SSH fingerprint, GitHub numeric id) holds the WebAuthn credential ID (base64url, unique
   per the existing partial unique index on `(type, identifier)`); the existing `publicMaterial`

@@ -519,6 +519,13 @@ password-carrying `Register`, and `AddCredential(PASSWORD)` then reject with
 to hide password UI. `required` is accepted but not yet enforced — see
 `docs/architecture/auth.md` §10.
 
+**Passkeys on the web client (Status: configured for the reference deploy):** passkey
+credentials are bound to the configured WebAuthn RP ID. The reference node's web client is
+served from `https://patches-web.pages.dev`, so Fly sets `PASSKEY_RP_ID=patches-web.pages.dev`
+and `PASSKEY_ORIGINS=https://patches-web.pages.dev`. If the RP ID changes, any passkey enrolled
+under the previous RP ID is no longer usable: the RP ID is baked into the credential and users
+must re-enroll it.
+
 **`GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` (Status: deployed 2026-08-30, #147):** create an
 OAuth App at `github.com/settings/applications/new` (**"Enable Device Flow"** must be checked;
 homepage and callback set to `https://patches-web.pages.dev`; OAuth Apps have no create-API so

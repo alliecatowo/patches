@@ -1423,7 +1423,7 @@ export class AuthService {
       verification = await this.passkeyVerifier.verifyRegistrationResponse({
         response,
         expectedChallenge: challengeValue,
-        expectedOrigin: this.config.publicOrigin,
+        expectedOrigin: this.config.passkeyOrigins,
         expectedRPID: this.rpId(),
       });
     } catch (error) {
@@ -1585,7 +1585,7 @@ export class AuthService {
       verification = await this.passkeyVerifier.verifyAuthenticationResponse({
         response,
         expectedChallenge: challengeValue,
-        expectedOrigin: this.config.publicOrigin,
+        expectedOrigin: this.config.passkeyOrigins,
         expectedRPID: this.rpId(),
         credential: {
           id: response.id,
@@ -1623,10 +1623,10 @@ export class AuthService {
     });
   }
 
-  /** Hostname-only RP id (ADR 0022): `PUBLIC_ORIGIN` minus scheme/port, matching what the
-   * browser's WebAuthn implementation itself derives from the page origin. */
+  /** Hostname-only RP id (ADR 0022), configured independently when the browser page is hosted
+   * on a different origin than this node's canonical PUBLIC_ORIGIN. */
   private rpId(): string {
-    return new URL(this.config.publicOrigin).hostname;
+    return this.config.passkeyRpId;
   }
 
   // ---------------------------------------------------------------- credentials

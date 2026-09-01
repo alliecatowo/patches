@@ -43,6 +43,31 @@ export const serverEnvShape = {
         .filter((origin) => origin.length > 0),
     )
     .pipe(z.array(originSchema)),
+  /** Optional WebAuthn relying-party hostname; the server accessor falls back to PUBLIC_ORIGIN. */
+  PASSKEY_RP_ID: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .refine((value) => {
+      if (value === undefined) return true;
+      try {
+        return new URL(`https://${value}`).hostname === value.toLowerCase();
+      } catch {
+        return false;
+      }
+    }, 'must be a bare hostname'),
+  /** Optional WebAuthn browser-origin allow-list, validated like WEB_ORIGINS. */
+  PASSKEY_ORIGINS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0),
+    )
+    .pipe(z.array(originSchema)),
   // Optional here: local/dev environments may run without JWT signing configured yet
   // (Phase 0). Production must have both — enforced below, not by the base type, so the
   // *reason* a boot fails is a clear, listed configuration error rather than a type error.

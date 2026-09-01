@@ -57,6 +57,28 @@ describe('serverEnvSchema', () => {
   it('defaults WEB_ORIGINS to an empty allow-list', () => {
     const result = serverEnvSchema.parse(base);
     expect(result.WEB_ORIGINS).toEqual([]);
+    expect(result.PASSKEY_RP_ID).toBeUndefined();
+    expect(result.PASSKEY_ORIGINS).toEqual([]);
+  });
+
+  it('accepts a bare passkey RP hostname and defaults origins to empty', () => {
+    const result = serverEnvSchema.parse({ ...base, PASSKEY_RP_ID: 'app.example' });
+    expect(result.PASSKEY_RP_ID).toBe('app.example');
+    expect(result.PASSKEY_ORIGINS).toEqual([]);
+  });
+
+  it('parses and validates passkey origins like WEB_ORIGINS', () => {
+    const result = serverEnvSchema.parse({
+      ...base,
+      PASSKEY_ORIGINS: ' https://app.example, https://second.example:8443 ',
+    });
+    expect(result.PASSKEY_ORIGINS).toEqual(['https://app.example', 'https://second.example:8443']);
+    expect(
+      serverEnvSchema.safeParse({ ...base, PASSKEY_RP_ID: 'https://app.example' }).success,
+    ).toBe(false);
+    expect(
+      serverEnvSchema.safeParse({ ...base, PASSKEY_ORIGINS: 'https://app.example/path' }).success,
+    ).toBe(false);
   });
 
   it('parses a comma-separated WEB_ORIGINS list, trimming whitespace', () => {
