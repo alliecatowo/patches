@@ -56,11 +56,11 @@ describe('validateEnv', () => {
       GRPC_PORT: 50_051,
       INSTANCE_NAME: 'patches-dev',
       PUBLIC_ORIGIN: 'http://localhost:3000',
-      PASSKEY_RP_ID: undefined,
       PASSKEY_ORIGINS: [],
       INVITE_ONLY: true,
       GRPC_REFLECTION: false,
     });
+    expect(env.PASSKEY_RP_ID).toBeUndefined();
     expect(env.DATABASE_URL).toBeUndefined();
   });
 
