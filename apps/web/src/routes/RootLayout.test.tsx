@@ -138,6 +138,19 @@ describe('RootLayout', () => {
     );
   });
 
+  it('keeps the full TUI keymap discoverable in the responsive help dialog', () => {
+    mockUseSession.mockReturnValue(null);
+    renderLayout();
+
+    expect(screen.getByRole('heading', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+    for (const group of ['Navigation', 'Post actions', 'Create and search', 'Help']) {
+      expect(screen.getByRole('heading', { name: group })).toBeInTheDocument();
+    }
+    for (const shortcut of ['j / ↓', 'l', 'c', '/', '?']) {
+      expect(screen.getByText(shortcut, { selector: 'kbd' })).toBeInTheDocument();
+    }
+  });
+
   it('closes More after choosing a destination', () => {
     mockUseSession.mockReturnValue(null);
     renderLayout();
