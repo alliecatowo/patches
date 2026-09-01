@@ -45,3 +45,41 @@ open, and federation remains disabled.
   pass. The harness quality gate remains the Markdown-format authority.
 - The external DNS/Fly certificate/TLS blocker remains unchanged; no remote delivery action
   was taken.
+
+## Continuation attempt 4
+
+- Preserved the already validated canonical-origin slice at `HEAD` (`51b936e`); no implementation
+  edits were required in this retry.
+- Revalidated TOML parsing, ADR-reference integrity, and `git diff --check`.
+- GitHub workpad synchronization was rejected by the connector's approval guard, and no repository
+  fallback updater is present. The local run log records this attempt.
+- DNS/Fly certificate issuance and live TLS verification remain blocked by the runner environment;
+  delivery remains harness-owned.
+
+## Continuation attempt 5
+
+- Refreshed the single GitHub workpad successfully and preserved the validated implementation at
+  `HEAD` (`51b936e`).
+- Revalidated TOML parsing, ADR-reference integrity, and `git diff --check` successfully.
+- DNS/Fly certificate issuance and live TLS verification remain blocked; no delivery or CI polling
+  was performed because those operations are harness-owned or externally unavailable.
+
+## Continuation attempt 6
+
+- Preserved the validated canonical-origin slice at `HEAD` (`51b936e`); no implementation edits
+  were required.
+- Focused Fly TOML, ADR-reference, roadmap-evidence, and whitespace checks passed.
+- DNS/Fly certificate issuance and live TLS verification remain blocked by the runner environment;
+  no delivery or CI polling was performed because those operations are harness-owned.
+
+## Continuation attempt 7: delivery correction
+
+- Confirmed the merge-conflict correction remains valid: the local branch adds ADR 0040 and does
+  not collide with the E2EE ADR 0039 in the current mainline history.
+- Removed trailing whitespace from ADR 0040's status/date lines after `git diff --check
+  origin/main...HEAD` exposed it. `git diff --check origin/main` and the focused Fly
+  TOML/ADR-reference/roadmap-evidence validation pass for the corrected workspace.
+- Prettier cannot run locally because this workspace has no executable binary; the harness quality
+  gate remains the formatter authority.
+- DNS/Fly certificate issuance and live TLS verification remain blocked by the runner environment;
+  no delivery or CI polling was performed.

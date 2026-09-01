@@ -1,7 +1,7 @@
 # 0040. Canonical federation origin is `patches.social`
 
-**Status:** Accepted  
-**Date:** 2026-08-30  
+**Status:** Accepted
+**Date:** 2026-08-30
 **Relates to:** [0013](./0013-node-model-and-earlier-federation.md), `INITIAL_VISION.md` §91, §159, §160
 
 ## Context

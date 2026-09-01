@@ -63,3 +63,45 @@
 - `pnpm exec prettier` cannot run in this checkout because the `mise.toml` trust state is
   read-only, and this workspace has no direct Prettier binary. The existing prior-formatting
   result is preserved; the harness must run the authoritative quality gate after delivery.
+
+## 2026-09-01 continuation attempt 4
+
+- Reconciled issue #160 as open / In Progress with the existing workpad and preserved implementation slice.
+- No source changes were needed: the canonical-origin ADR 0040, Fly configuration, preview policy,
+  deployment documentation, and roadmap evidence are already present at `HEAD` (`51b936e`).
+- GitHub workpad edit was attempted through the configured connector but rejected because this
+  unattended runner has no approval capability; no fallback workpad updater exists in the checkout.
+- Revalidated the preserved slice locally: both Fly TOML files parse, canonical ADR references are
+  intact, and `git diff --check` passes. No DNS, TLS, deployment, CI, or delivery polling was run.
+
+## 2026-09-01 continuation attempt 5
+
+- Refreshed the single GitHub `## Codex Workpad` successfully; issue remains OPEN / In Progress
+  with PR #438 OPEN and CONFLICTING.
+- No implementation edits were needed. Revalidated both Fly TOML files, ADR 0040 reference
+  integrity, and `git diff --check`; all passed.
+- DNS/Fly certificate issuance and live TLS verification remain external blockers. No deployment,
+  delivery, CI, or remote polling was performed.
+
+## 2026-08-31 continuation attempt 6
+
+- Reconciled the preserved implementation at `HEAD` (`51b936e`); no source changes were needed.
+- Focused checks passed: both Fly TOML files parse, production and preview origin/domain values
+  match policy, ADR 0040 references resolve, roadmap evidence is present, and `git diff --check`
+  is clean.
+- DNS/Fly certificate issuance and live TLS verification remain external blockers. No deployment,
+  delivery, or CI polling was performed.
+
+## 2026-09-01 continuation attempt 7: merge-conflict retry
+
+- The persisted `merge_conflict` was reconciled against the local delivery history: ADR 0039 is
+  reserved for the independently merged E2EE DM decision, while this slice exclusively creates
+  ADR 0040. `origin/main` is an ancestor of the delivery branch, so the ADR filename/index
+  collision has already been corrected locally.
+- Focused validation exposed a separate delivery blocker: `git diff --check origin/main...HEAD`
+  reported trailing whitespace on ADR 0040's status/date lines. Removed the whitespace.
+- Revalidated the resulting working tree with `git diff --check origin/main` and the focused
+  Python TOML/ADR-reference/roadmap-evidence assertions; both passed. The workspace has no
+  Prettier binary, so the harness quality gate remains the formatter authority.
+- DNS/Fly certificate issuance and live TLS verification remain external blockers. No deployment,
+  delivery, CI, or remote polling was performed.
