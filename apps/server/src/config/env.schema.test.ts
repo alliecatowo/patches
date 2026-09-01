@@ -56,10 +56,22 @@ describe('validateEnv', () => {
       GRPC_PORT: 50_051,
       INSTANCE_NAME: 'patches-dev',
       PUBLIC_ORIGIN: 'http://localhost:3000',
+      PASSKEY_ORIGINS: [],
       INVITE_ONLY: true,
       GRPC_REFLECTION: false,
     });
+    expect(env.PASSKEY_RP_ID).toBeUndefined();
     expect(env.DATABASE_URL).toBeUndefined();
+  });
+
+  it('accepts split-origin passkey configuration', () => {
+    const env = validateEnv({
+      PASSKEY_RP_ID: 'patches-web.pages.dev',
+      PASSKEY_ORIGINS: 'https://patches-web.pages.dev',
+    });
+
+    expect(env.PASSKEY_RP_ID).toBe('patches-web.pages.dev');
+    expect(env.PASSKEY_ORIGINS).toEqual(['https://patches-web.pages.dev']);
   });
 
   it('coerces GRPC_PORT from its string environment form', () => {

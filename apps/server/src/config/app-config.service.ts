@@ -42,6 +42,15 @@ export class AppConfigService {
     return this.get('PUBLIC_ORIGIN');
   }
 
+  get passkeyRpId(): string {
+    return this.get('PASSKEY_RP_ID') ?? new URL(this.publicOrigin).hostname;
+  }
+
+  get passkeyOrigins(): string[] {
+    const origins = this.get('PASSKEY_ORIGINS');
+    return origins.length > 0 ? origins : [this.publicOrigin];
+  }
+
   get instanceName(): string {
     return this.get('INSTANCE_NAME');
   }
