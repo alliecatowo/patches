@@ -465,6 +465,7 @@ export function ComposeRoute(): JSX.Element {
           <label
             className={`${styles['toolBtn']} ${uploads.length >= MAX_MEDIA ? styles['disabled'] : ''}`}
             title="Attach images (up to 4)"
+            aria-label="Attach images (up to 4)"
           >
             <input
               type="file"
@@ -472,6 +473,7 @@ export function ComposeRoute(): JSX.Element {
               multiple
               disabled={uploads.length >= MAX_MEDIA}
               style={{ display: 'none' }}
+              aria-label="Attach images (up to 4)"
               onChange={(e) => {
                 onFilesSelected(e.target.files);
                 // Reset so picking the same file again (e.g. after removing a
@@ -489,6 +491,8 @@ export function ComposeRoute(): JSX.Element {
             className={`${styles['toolBtn']} ${cwEnabled ? styles['activeTool'] : ''}`}
             onClick={() => setCwEnabled((v) => !v)}
             title="Toggle content warning"
+            aria-label="Toggle content warning"
+            aria-pressed={cwEnabled}
           >
             <AlertTriangleIcon size={18} />
             <span>CW</span>
@@ -501,6 +505,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('**', '**')}
             title="Bold"
+            aria-label="Bold"
           >
             <strong>B</strong>
           </button>
@@ -509,6 +514,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('*', '*')}
             title="Italic"
+            aria-label="Italic"
           >
             <em>I</em>
           </button>
@@ -517,6 +523,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('`', '`')}
             title="Code"
+            aria-label="Code"
           >
             <code>`</code>
           </button>
@@ -525,6 +532,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('> ')}
             title="Quote"
+            aria-label="Quote"
           >
             &gt;
           </button>
@@ -533,6 +541,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('#')}
             title="Tag"
+            aria-label="Tag"
           >
             #
           </button>
@@ -541,6 +550,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('@')}
             title="Mention"
+            aria-label="Mention"
           >
             @
           </button>
