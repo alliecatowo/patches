@@ -60,6 +60,7 @@ deliberately does **not** authorize without owner sign-off.
 | [0037](./0037-e2ee-device-linking-and-root-rotation.md)               | E2EE device linking (SAS-authenticated, authority-signed) and client-reachable root rotation          | Accepted           |
 | [0038](./0038-api-versioning-policy.md)                               | API versioning policy: `patches.v1` is additive-only, a `v2` is a sibling package                     | Accepted           |
 | [0039](./0039-e2ee-only-direct-messages-and-honest-copy.md)           | E2EE-only direct messages and honest client disclosures                                               | Accepted           |
+| [0040](./0040-mcp-01-product-security-scope.md)                      | MCP-01 product and security scope                                                                      | Accepted           |
 
 ## Template
 
