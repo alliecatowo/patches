@@ -23,6 +23,9 @@ spec, the spec wins — treat the discrepancy as a bug in these docs.
   - [`architecture/media.md`](./architecture/media.md)
   - [`architecture/jobs.md`](./architecture/jobs.md)
   - [`architecture/federation.md`](./architecture/federation.md)
+  - [`architecture/mcp.md`](./architecture/mcp.md) — the POST-only `/mcp`
+    Model Context Protocol endpoint: transport, guards, bounded body/deadline,
+    auth seam, deterministic tool registry (MCP-01, #220/#217/#218)
   - [`architecture/e2ee.md`](./architecture/e2ee.md)
   - [`architecture/tui.md`](./architecture/tui.md) — what's built
   - [`architecture/tui-interaction-model.md`](./architecture/tui-interaction-model.md) — what

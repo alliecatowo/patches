@@ -23,6 +23,7 @@ import { FilterListsModule } from './modules/filter-lists/filter-lists.module.js
 import { FiltersModule } from './modules/filters/filters.module.js';
 import { GraphModule } from './modules/graph/graph.module.js';
 import { LabelsModule } from './modules/labels/labels.module.js';
+import { McpHttpModule } from './modules/mcp/mcp.http.module.js';
 import { MediaModule } from './modules/media/media.module.js';
 import { MessagesModule } from './modules/messages/messages.module.js';
 import { ModerationModule } from './modules/moderation/moderation.module.js';
@@ -55,6 +56,7 @@ import { PinoLoggerModule } from './logging/pino-logger.module.js';
  * avoids that coordination problem entirely.
  */
 const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
+const mcpHttpEnabled = validateEnv(process.env).MCP_ENABLED;
 
 @Module({
   imports: [
@@ -84,6 +86,7 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     WebVitalsModule,
     PinoLoggerModule.forRoot(),
     ...(federationHttpEnabled ? [FederationHttpModule] : []),
+    ...(mcpHttpEnabled ? [McpHttpModule] : []),
   ],
   providers: [
     // Keep the budget interceptor addressable as the same singleton that Nest registers

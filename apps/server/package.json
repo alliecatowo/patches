@@ -20,6 +20,8 @@
     "@grpc/grpc-js": "catalog:",
     "@grpc/proto-loader": "catalog:",
     "@grpc/reflection": "catalog:",
+    "@modelcontextprotocol/node": "catalog:",
+    "@modelcontextprotocol/server": "catalog:",
     "@nestjs/common": "catalog:",
     "@nestjs/config": "catalog:",
     "@nestjs/core": "catalog:",

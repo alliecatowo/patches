@@ -1,6 +1,6 @@
 # Model Context Protocol (MCP) — Patches MCP-01
 
-**Verified:** 2026-08-22. **Scope:** finalized MCP protocol revision
+**Verified:** 2026-08-22 (protocol/SDK survey) and **2026-08-29** (transport slice implemented — this repo). **Scope:** finalized MCP protocol revision
 `2026-07-28`, its released TypeScript SDK v2 packages, and the OAuth standards
 they normatively use. This note uses only primary sources (the MCP
 specification/source repository, the npm registry maintained by npm, and IETF
@@ -11,8 +11,9 @@ RFCs/drafts).
 ### Documented facts
 
 - The current Patches server is NestJS on the Express platform
-  ([`apps/server/package.json`](../../apps/server/package.json)); it has no MCP
-  SDK dependency yet. Patches is pinned to Node 24 and TypeScript `^5.9.3`
+  ([`apps/server/package.json`](../../apps/server/package.json)); its MCP transport slice adds \`@modelcontextprotocol/server@2.0.0\` and
+  \`@modelcontextprotocol/node@2.0.0\` (\`pnpm add\`ed on 2026-08-29, see the
+  [\`apps/server/package.json\`](../../apps/server/package.json) dependency block). Patches is pinned to Node 24 and TypeScript `^5.9.3`
   ([toolchain catalog](../../pnpm-workspace.yaml)).
 - On 2026-08-22, npm's `latest` tag resolves each released SDK v2 package below
   to **`2.0.0`**: [`@modelcontextprotocol/server`](https://www.npmjs.com/package/@modelcontextprotocol/server/v/2.0.0),
@@ -280,3 +281,44 @@ RFCs/drafts).
   `createMcpHandler`; authentication is deliberately host middleware.
 - Do not treat annotations, OAuth client metadata, or DPoP proof possession as
   authorization by themselves.
+
+## This repo — implementation status (MCP-01, #220/#159)
+
+Status: **transport + application adapter implemented** (verified against installed SDK typings
+at `@modelcontextprotocol/server@2.0.0` / `@modelcontextprotocol/node@2.0.0` on 2026-08-29).
+The authorization _policy_ and tool _persistence/config_ remain **unimplemented** — they are the
+"unknowns" above, owned by #217 (decision-only) and #218 (blocked). See
+`docs/architecture/mcp.md` for the module anatomy.
+
+### Documented facts (read from installed typings + empirical tests)
+
+- `createMcpHandler(factory, { legacy: \reject })` is the modern-only posture; a bare GET
+  (no protocol headers) is answered with a client error (observed `400`), never a success.
+- The SDK is **strictly pass-through for auth**: it surfaces the node’s `AuthInfo` (attached as
+  `req.auth` → `ctx.authInfo`) without ever verifying a token. Token verification is entirely
+  the application’s job — hence `McpAuthService.resolveAuth` is the #217 policy seam.
+- `originValidation(hosts)` / `hostHeaderValidation(hosts)` each return a `(req, res) => boolean`
+  guard that validates **port-agnostic hostnames** and, on rejection, writes its own JSON-RPC
+  `403` and returns `false` — the caller stops when it returns `false`.
+- `toNodeHandler` takes duck-typed `NodeIncomingMessageLike`/`NodeServerResponseLike`; a real
+  `node:http` `IncomingMessage` (`method: string | undefined`) requires `as unknown as` casts.
+- `McpServer.registerTool(name, { description?, inputSchema?, outputSchema? }, cb)` is the tool
+  registry surface used by `McpToolService`.
+- The SDK has **no request deadline of its own**; `MCP_REQUEST_TIMEOUT_MS` is an
+  application-side guarantee, not an SDK one. A malformed body yields a structured JSON-RPC
+  error, not a thrown `500` (verified empirically).
+
+### Decision against `@modelcontextprotocol/express`
+
+As the "Inferred: Patches package choice" above anticipated, the Express adapter is **not used**.
+Nest puts its own guard pipeline in front, so the Node adapter is wired directly.
+
+### Cross-reference to the unimplemented unknowns
+
+The five "Explicit unknowns" map one-to-one to seams, not work done here:
+
+1. MCP audience / resource URI / scope taxonomy → `docs/architecture/mcp.md` §5 (#217).
+2. Read-only vs mutating tools + confirmation → §5/#217; v0 registers only read-only `server.info`.
+3. Single-replica / event-bus state → §8/#218 (no event bus subscription surface yet).
+4. Authorization server / CIMD/DCR → #217 (no issuer mints MCP tokens in v0).
+5. DPoP / replay policy → #217 (no bearer tokens exist in v0 to bind).

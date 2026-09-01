@@ -34,6 +34,9 @@ catalog:
   '@grpc/grpc-js': ^1.14.4
   '@grpc/proto-loader': ^0.8.1
   ts-proto: ^2.12.1
+  # model context protocol
+  '@modelcontextprotocol/server': ^2.0.0
+  '@modelcontextprotocol/node': ^2.0.0
   # data
   typeorm: ^1.1.0
   pg: ^8.23.0
