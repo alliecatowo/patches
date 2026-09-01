@@ -42,6 +42,16 @@ Subagent workers: 196k mean context over 18,676 requests; the worst 5 individual
 - **A bespoke "context compiler" / symbol-level patch protocol** — replaces judgment with a guess about what's needed; `LSP` gets most of the same benefit for read paths without that risk.
 - **A dumber orchestrator / orchestrator turn caps** — one long-lived context deciding what work exists; capping it just forces expensive re-briefing.
 
+### H-011 nested-delegation result (2026-09-01)
+
+The proposed Sonnet-only-`Agent` implementer delegating read/edit/verify waves
+to Haiku was not adopted. This workspace routes inference through
+`llmgateway/*`, disables Anthropic inference, and has no Sonnet/Haiku profile;
+`infra/scripts/usage-report.mjs --json` found zero transcript contexts. A paired
+measurement therefore could not be produced without inventing evidence. The
+reproducible protocol and adoption guard are recorded in
+`docs/issues/229/experiment.md`.
+
 ## Enforced by configuration
 
 - **`opencode.json` `provider.llmgateway.models[].limit.context`**: deterministic ceilings — `grok-4-6`/`grok-4-3` 180k (200k cliff doubles whole request), `gpt-5.6-luna` 90k, `gpt-5.6-terra` 220k (272k cliff), `deepseek-v4-flash` 140k, `qwen3.7-flash` 120k, free `opencode/*-free` 120-140k. If `limit` is unset or 0, `overflow.ts` never compacts — that's the bug `oh-my-openagent#4184` documents. These ceilings are the fork/compact trigger, not just hints.
