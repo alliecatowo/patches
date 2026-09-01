@@ -1,8 +1,22 @@
-import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { MediaAttachment, Post } from '@patches/proto/es';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { ALLOWED_LINK_SCHEMES, containsUnsafeBytes } from '@patches/domain';
+
+import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+
+function safeMediaUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (trimmed === '' || containsUnsafeBytes(trimmed)) return null;
+  try {
+    const protocol = new URL(trimmed).protocol;
+    return (ALLOWED_LINK_SCHEMES as readonly string[]).includes(protocol) ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface PostRowProps {
   post: Post;
@@ -72,6 +86,7 @@ export function PostRow({
           ) : (
             <Text style={styles.body}>{post.body}</Text>
           )}
+          {post.media && post.media.length > 0 ? <PostMediaAttachments media={post.media} /> : null}
         </>
       )}
       <View style={styles.counts}>
@@ -102,6 +117,61 @@ export function PostRow({
   );
 }
 
+function PostMediaAttachments({ media }: { media: readonly MediaAttachment[] }): JSX.Element {
+  return (
+    <View style={styles.mediaContainer}>
+      {media.map((item) => (
+        <PostMediaImage key={item.mediaId} mediaId={item.mediaId} altText={item.altText} />
+      ))}
+    </View>
+  );
+}
+
+function PostMediaImage({ mediaId, altText }: { mediaId: string; altText: string }): JSX.Element {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.media
+      .getMediaDownload({ mediaId })
+      .then((response) => {
+        if (cancelled) return;
+        const safe = safeMediaUrl(response.downloadUrl);
+        if (safe === null) {
+          setFailed(true);
+          return;
+        }
+        setUrl(safe);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaId]);
+
+  if (failed || url === null) {
+    return (
+      <View style={styles.mediaPlaceholder}>
+        <Text style={styles.mediaMuted}>{failed ? 'Image unavailable.' : 'Loading image…'}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mediaItem}>
+      <Image source={{ uri: url }} style={styles.mediaImage} resizeMode="contain" />
+      {altText !== '' ? (
+        <Text style={styles.mediaAltText} numberOfLines={2}>
+          {altText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 12,
@@ -120,4 +190,16 @@ const styles = StyleSheet.create({
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
   action: { color: '#7c9cff', fontSize: 13 },
+  mediaContainer: { marginTop: 8, gap: 8 },
+  mediaItem: { gap: 4 },
+  mediaImage: { width: '100%', height: 200, borderRadius: 6, backgroundColor: '#161618' },
+  mediaAltText: { color: '#888', fontSize: 12 },
+  mediaPlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 6,
+  },
+  mediaMuted: { color: '#888', fontSize: 12 },
 });
