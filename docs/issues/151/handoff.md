@@ -70,9 +70,25 @@ reference, artifact, and whitespace checks pass. The only uncommitted file is th
 harness-owned `docs/issues/_151/run-log.md` change, preserved untouched. No delivery
 operation or remote waiting was performed.
 
+## Current continuation
+
+The existing design slice remains locally validated at `c6318a6`. Focused content,
+reference, artifact, and whitespace checks pass. Workpad comment mutation was
+unavailable through the connector, GraphQL, and `gh` fallback because of approval,
+unknown GraphQL, and sandbox-network failures. The harness-owned
+`docs/issues/_151/run-log.md` modification remains untouched; no delivery or
+remote-wait operation was performed.
+
 ## Retry attempt #1 (current run)
 
 The existing design slice remains locally validated at `12d72dd`. Required ADR
 content/reference/artifact checks and `git diff --check` pass. The harness-owned
 `docs/issues/_151/run-log.md` modification remains untouched; no commit, push, PR,
 CI wait, or remote-delivery operation was performed.
+
+## Retry attempt #1 (current continuation)
+
+The existing ADR 0039 design slice remains intact and locally validated. Focused
+content, reference, artifact, and whitespace checks pass. The harness-owned
+`docs/issues/_151/run-log.md` modification remains untouched; no delivery operation
+or remote wait was performed.

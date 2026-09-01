@@ -94,3 +94,27 @@
   validation passed.
 - Preserved the unrelated `docs/issues/_151/run-log.md` modification; no delivery
   operation or remote wait was performed.
+
+## Current continuation
+
+- Confirmed issue #151 remains OPEN with the existing active workpad; ADR 0039 and
+  the required issue artifacts are complete in the current checkout.
+- Focused assertions for the RPC, fallback, authorization, flow control,
+  reconnect, per-node bounds, rollout, exclusions, ADR references, artifacts, and
+  whitespace passed after matching the ADR's actual `Per-node bounds` wording.
+- Workpad mutation was attempted through the configured connector and GraphQL,
+  then through `gh`; remote mutation paths were unavailable due to approval,
+  GraphQL unknown-error, and sandbox-network failures. Local artifacts are the
+  durable handoff record.
+- Preserved the unrelated modified `docs/issues/_151/run-log.md` file. No commit,
+  push, PR operation, CI wait, or remote-delivery operation was performed.
+
+## Retry attempt #1 (current continuation)
+
+- Reconciled issue #151 as OPEN/In Progress with the existing ADR 0039 design slice
+  intact and no actionable review feedback.
+- Preserved the unrelated modified `docs/issues/_151/run-log.md` file.
+- Re-ran focused stream-design, fallback, authorization, flow-control, bounds,
+  rollout, exclusion, reference, artifact, and whitespace checks: PASS.
+- No code change, commit, push, PR operation, CI wait, or remote-delivery operation
+  was performed.
