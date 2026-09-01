@@ -1,8 +1,8 @@
 # Issue #179 plan
 
-Retry attempt #1: carried-forward ADR slice revalidated in the provided workspace;
-remote workpad mutation was unavailable, so evidence is also recorded in the local
-run log and handoff.
+Retry attempt #2: diagnose the persisted delivery quality failure without expanding the
+approved documentation-only slice. The GitHub workpad remains the single remote source
+of truth; these required repository artifacts retain the local evidence.
 
 ## Scope
 
@@ -17,6 +17,7 @@ documentation-only and must not implement the dependent server or TUI issues (#1
 - [x] Define the owner-approval gate and the exact handoff boundary for #180 and #181.
 - [x] Add and index ADR 0040.
 - [x] Run documentation-focused validation.
+- [x] Reproduce and correct the persisted quality-check signal.
 - [x] Record evidence and handoff without committing or publishing.
 
 ## Acceptance criteria
@@ -25,3 +26,4 @@ documentation-only and must not implement the dependent server or TUI issues (#1
 - Now is non-story, node-local, bounded, and absent from timelines and ranking inputs.
 - Deletion, expiry, audience privacy, moderation/audit, and client behavior are explicit.
 - Follow-on contract surfaces are named without adding code.
+- The retry leaves no whitespace errors in the delivered documentation diff.
