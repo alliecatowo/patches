@@ -59,3 +59,8 @@ To swap models: change `model:` in the agent file and `limit.context` in `openco
 ## Claude Code compat
 
 Claude Code still works as UI but no Anthropic inference occurs — `.claude/settings.json` pins `CLAUDE_CODE_AUTO_COMPACT_WINDOW=180k` and routes via `ANTHROPIC_BASE_URL=https://api.llmgateway.io/v1`; `guard-bash.sh` blocks `ANTHROPIC_API_KEY`/`claude-*` strings. Prefer OpenCode for new delegation.
+
+H-011's proposed Sonnet/Haiku nested-delegation profile is not part of the
+default harness. It was not measurable in the current llmgateway-only,
+Anthropic-disabled environment; see `docs/issues/229/experiment.md` for the
+paired-run protocol and guardrails.
