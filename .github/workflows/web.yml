@@ -68,7 +68,7 @@ jobs:
 
       - name: Upload bundle report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: web-bundle-report
           path: apps/web/dist-analyze/bundle-report.html
