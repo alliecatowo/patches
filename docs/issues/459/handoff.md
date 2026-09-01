@@ -1,13 +1,18 @@
 Status: local implementation and validation complete; delivery remains owned by Polyphony.
 
-The implementation is committed on the worker branch as `afcb012` by the prior attempt;
-this worker did not create another commit. It adds bounded worker packets, line/byte caps,
+The existing implementation is on current `origin/main` at `75acc31` via merged PR #465. This
+run adds an explicit UTF-8 byte ceiling and telemetry field to the worker packet, plus a Unicode
+regression test. It adds bounded worker packets, line/byte caps,
 duplicate-output collapse, generated/lock artifact exclusion, self-contained CI retry metadata,
 telemetry metrics, and no-progress/context-growth guards. The contract is documented in
 `docs/agents/WORKER_CONTEXT_CONTRACT.md`.
 
-Validation: pinned Node 24 `node --check scripts/worker-context.mjs`, pinned Node 24
-`node --test scripts/worker-context.test.mjs` (8 tests pass), and `git diff --check` pass.
+Validation: `node --check scripts/worker-context.mjs`, `node --test scripts/worker-context.test.mjs`
+(9 assertions), and `git diff --check` pass. The packet is capped at 32,000 UTF-8 bytes and
+32,000 characters; the Unicode fixture verifies the byte limit independently. `HEAD` and
+`origin/main` are both `75acc31`. Final rerun used Node v24.19.0 and passed; Git status/diff
+also reported the pre-existing fsmonitor IPC warning.
 
-Remote blocker: the issue remains `Todo` because the GitHub GraphQL mutation hung and `gh`
-could not connect to `api.github.com`; no remote polling was performed after that retry.
+The issue is currently `In Progress`; the existing workpad remains complete. GitHub GraphQL
+read access succeeded for this run, while no remote mutation, delivery, PR update, CI polling, or
+deployment action was performed. The pre-existing `docs/issues/_459/run-log.md` remains untouched.

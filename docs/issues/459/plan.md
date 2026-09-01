@@ -7,3 +7,6 @@
 
 The implementation slice is limited to the dependency-free worker packet script, its regression
 tests, contract documentation, and issue artifacts. Delivery remains owned by Polyphony.
+
+2026-09-01 run reconciliation: the byte-ceiling refinement is present in the workspace and is
+based on `origin/main` at `75acc31`; no additional product scope was identified.
