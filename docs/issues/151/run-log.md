@@ -26,3 +26,13 @@
   PASS.
 - `rg`, `grep`, and a final `git log` display were unavailable in the retry
   shell; no required validation depended on them.
+
+## Retry attempt #3
+
+- Confirmed the current branch and its remote tracking ref are both at `b85e1f5`;
+  the focused ADR slice remains in its earlier commit `b06be15` and open PR #440.
+- The persisted delivery evidence reports only that the worker was interrupted
+  while delivery executed. It identifies no implementation or validation failure.
+- Rechecked documentation integrity locally: `git diff --check` and required
+  issue-artifact existence checks passed. Preserved the unrelated modified
+  `docs/issues/_151/run-log.md` file untouched.

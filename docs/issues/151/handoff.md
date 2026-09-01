@@ -27,3 +27,12 @@ The focused slice is already committed at `b06be15` and published on the
 current branch with open PR #440. Its one-time review sweep found no actionable
 feedback. Minimal local validation passed; the unrelated
 `docs/issues/_151/run-log.md` modification remains preserved.
+
+## Retry attempt #3
+
+The prior delivery was interrupted after local handoff, with no persisted code,
+test, or review failure. The current branch still contains the validated focused
+slice and tracks its published remote ref at `b85e1f5`; PR #440 remains the
+existing delivery target. This retry added only workpad artifacts and passed
+`git diff --check` plus required-artifact presence checks. The unrelated
+`docs/issues/_151/run-log.md` modification remains preserved for its owner.

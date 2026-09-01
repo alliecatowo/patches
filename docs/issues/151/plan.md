@@ -18,3 +18,9 @@ invalidation, retaining unary polling as the mandatory fallback.
 
 This slice adds documentation only. It does not edit protobuf, server/client code,
 database migrations, feature flags, or deployment configuration.
+
+## Retry attempt #3
+
+- [x] Confirm the previous delivery interruption did not leave an incomplete local slice.
+- [x] Reconcile the active workpad and preserve the published focused change for the
+  delivery harness.
