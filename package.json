@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "@eslint/js": "catalog:",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
     "eslint-config-prettier": "catalog:",
