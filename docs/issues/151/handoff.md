@@ -45,3 +45,20 @@ The GitHub connector rejected the workpad comment-update mutation, so the local
 plan/run-log/handoff are the durable handoff record. The unrelated
 `docs/issues/_151/run-log.md` modification remains untouched. No commit, push, PR
 operation, CI wait, or remote polling was performed.
+
+## Retry attempt #1 (current continuation)
+
+The focused ADR slice remains intact at `8959dad`. Final local documentation,
+reference, artifact, and whitespace checks passed. The only uncommitted file is
+the harness-owned `docs/issues/_151/run-log.md` change, preserved untouched.
+No delivery or remote-wait operation was performed.
+
+## Retry attempt #6 (merge-conflict continuation)
+
+PR #440 remains OPEN at `8959dad` but GitHub now reports a merge conflict against
+remote `main` at `7a45b25`; there is no actionable review feedback. This checkout's
+tracking ref is stale at `d19443b`, and the mandated safe fetch cannot write
+`.git/FETCH_HEAD` because Git metadata is mounted read-only. The design slice
+remains unchanged and focused validation passes. A merge/rebase and delivery are
+needed to resolve the remote conflict, so the validated workspace is returned to
+the harness without modifying unrelated `docs/issues/_151/` work.

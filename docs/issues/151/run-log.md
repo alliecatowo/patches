@@ -46,3 +46,31 @@
 - The available GitHub GraphQL connector rejected the workpad comment-update
   mutation; local issue artifacts carry the handoff. The unrelated
   `docs/issues/_151/run-log.md` modification was preserved.
+
+## Retry attempt #1 (current continuation)
+
+- Confirmed issue #151 remains OPEN and the existing active workpad comment is
+  present; no new implementation or review feedback was identified.
+- Final focused validation passed after matching assertions to the ADR's actual
+  constraint wording: required RPC, fallback, authz, flow-control, bounds,
+  rollout, exclusion, reference, artifact, and whitespace checks all pass.
+- The design slice is present in the current checkout at `8959dad`; the only
+  uncommitted change is the harness-owned `docs/issues/_151/run-log.md` update,
+  preserved untouched.
+- No commit, push, PR operation, CI wait, or remote polling was performed.
+
+## Retry attempt #6 (merge-conflict continuation)
+
+- Inspected issue #151 and PR #440 once. PR #440 is OPEN at `8959dad`, while
+  GitHub reports it as `CONFLICTING` / `DIRTY` against remote `main` at
+  `7a45b2514c6223d1e5c39a3c15903eabec7cf800`. It has no reviews, review threads,
+  or actionable comments.
+- The local tracking ref is still `origin/main` at `d19443b`. `git fetch origin
+  main` was attempted as the required safe sync but failed before altering refs:
+  `cannot open '.git/FETCH_HEAD': Read-only file system`.
+- Because resolving the server-side conflict requires updated Git metadata plus a
+  merge/rebase and delivery operation, it remains with the delivery harness. The
+  focused ADR content was not changed and the unrelated
+  `docs/issues/_151/run-log.md` modification was preserved untouched.
+- Re-ran focused documentation validation: whitespace, artifact, ADR-reference,
+  and required design-constraint checks passed.

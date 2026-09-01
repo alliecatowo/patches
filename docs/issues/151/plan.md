@@ -27,7 +27,14 @@ database migrations, feature flags, or deployment configuration.
 
 ## Retry attempt #1 (continuation)
 
-- [x] Reconcile current `a2618ab` workspace state and the existing ADR 0039 slice.
+- [x] Reconcile current `8959dad` workspace state and the existing ADR 0039 slice.
 - [x] Re-run focused documentation and artifact validation.
 - [x] Record the unavailable workpad-comment mutation path and return control to the
   delivery harness without remote waiting.
+
+## Retry attempt #6 (merge-conflict continuation)
+
+- [x] Inspect PR #440's current head, merge state, and all review-feedback channels.
+- [x] Reconcile the remote `main` SHA with this checkout's stale tracking ref.
+- [x] Attempt the mandated safe sync, preserve unrelated work, and record the
+  Git-metadata access restriction for the delivery harness.
