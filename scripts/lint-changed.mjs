@@ -11,7 +11,7 @@ const lintable = /\.(?:ts|tsx|mts|cts|js|mjs|cjs)$/i;
 
 function gitFiles(args, optional = false) {
   try {
-    return execFileSync('git', args, { cwd: root, encoding: 'utf8' })
+    return execFileSync('git', [...args, '-z'], { cwd: root, encoding: 'utf8' })
       .split('\0')
       .filter(Boolean);
   } catch (error) {
@@ -37,7 +37,9 @@ const selected = [...files]
   .sort();
 
 if (selected.length === 0) {
-  console.log(workspace ? `No changed lintable files under ${workspace}` : 'No changed lintable files');
+  console.log(
+    workspace ? `No changed lintable files under ${workspace}` : 'No changed lintable files',
+  );
   process.exit(0);
 }
 
