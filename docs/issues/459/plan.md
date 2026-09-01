@@ -6,4 +6,6 @@
 4. [x] Update harness documentation and leave a concise local handoff for Polyphony.
 
 The implementation slice is limited to the dependency-free worker packet script, its regression
-tests, contract documentation, and issue artifacts. Delivery remains owned by Polyphony.
+tests, contract documentation, and issue artifacts. Delivery remains owned by Polyphony. The
+workspace is already based on `origin/main` at `27b4088`; fetching newer remote state was
+attempted but the managed checkout cannot write `.git/FETCH_HEAD`.

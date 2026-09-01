@@ -6,8 +6,14 @@ duplicate-output collapse, generated/lock artifact exclusion, self-contained CI 
 telemetry metrics, and no-progress/context-growth guards. The contract is documented in
 `docs/agents/WORKER_CONTEXT_CONTRACT.md`.
 
-Validation: pinned Node 24 `node --check scripts/worker-context.mjs`, pinned Node 24
-`node --test scripts/worker-context.test.mjs` (8 tests pass), and `git diff --check` pass.
+Validation: `node --check scripts/worker-context.mjs`, `node --test scripts/worker-context.test.mjs`
+(pass; the runner reports one suite with eight passing assertions), and `git diff --check` pass.
 
-Remote blocker: the issue remains `Todo` because the GitHub GraphQL mutation hung and `gh`
-could not connect to `api.github.com`; no remote polling was performed after that retry.
+Current run evidence: issue #459 is In Progress with workpad comment
+`IC_kwDOT7-QUs8AAAABR7qDdg`. Available `origin/main` is `27b4088`; HEAD `acd7fdc` is a
+descendant. A fresh fetch was attempted and failed because this managed checkout cannot write
+`.git/FETCH_HEAD`.
+
+Remote limitation: the issue is now `In Progress` and the workpad mutation succeeded. The only
+current external limitation is the managed checkout refusing fetch writes to `.git/FETCH_HEAD`;
+no CI, deployment, review, or merge polling was performed.
