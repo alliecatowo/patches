@@ -1,8 +1,10 @@
-import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { MediaAttachment, Post } from '@patches/proto/es';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { resolvePostMediaAttachments, type ResolvedMediaAttachment } from '../media/postMedia.js';
 
 export interface PostRowProps {
   post: Post;
@@ -14,6 +16,78 @@ export interface PostRowProps {
   /** Open the author's Patches Page/wall — the mobile Pages viewer's entry point from a
    * timeline (B-082). Optional so contexts without a page stack render inert handles. */
   onOpenPage?: (handle: string) => void;
+}
+
+/**
+ * Renders media attachments for a post (B-084).
+ */
+export function PostMediaAttachments({
+  attachments,
+}: {
+  attachments: readonly MediaAttachment[];
+}): JSX.Element | null {
+  const [resolved, setResolved] = useState<ResolvedMediaAttachment[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (attachments.length === 0) {
+      setResolved([]);
+      return;
+    }
+
+    void resolvePostMediaAttachments(attachments, (req) => api.media.getMediaDownload(req)).then(
+      (results) => {
+        if (!cancelled) {
+          setResolved(results);
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attachments]);
+
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  if (resolved === null) {
+    return (
+      <View style={styles.mediaContainer}>
+        <Text style={styles.mediaMuted}>Loading media…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mediaContainer}>
+      {resolved.map((item, index) => {
+        if (item.failed || item.url === null) {
+          return (
+            <View key={item.mediaId || index} style={styles.mediaPlaceholder}>
+              <Text style={styles.mediaMuted}>Image unavailable.</Text>
+            </View>
+          );
+        }
+        return (
+          <View key={item.mediaId || index} style={styles.mediaWrapper}>
+            <Image
+              source={{ uri: item.url }}
+              style={styles.mediaImage}
+              resizeMode="cover"
+              accessibilityLabel={item.altText || 'Post attachment'}
+            />
+            {item.altText !== '' ? (
+              <Text style={styles.mediaAlt} numberOfLines={2}>
+                ALT: {item.altText}
+              </Text>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
 }
 
 /**
@@ -70,7 +144,12 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              {post.body !== '' ? <Text style={styles.body}>{post.body}</Text> : null}
+              {post.media && post.media.length > 0 ? (
+                <PostMediaAttachments attachments={post.media} />
+              ) : null}
+            </>
           )}
         </>
       )}
@@ -116,6 +195,18 @@ const styles = StyleSheet.create({
   time: { color: '#666', marginLeft: 'auto' },
   cw: { color: '#e0b341', marginBottom: 4 },
   body: { color: '#e5e5e5', fontSize: 15, lineHeight: 20 },
+  mediaContainer: { marginTop: 8, gap: 8 },
+  mediaWrapper: { gap: 4 },
+  mediaImage: { width: '100%', height: 200, borderRadius: 6, backgroundColor: '#161618' },
+  mediaAlt: { color: '#888', fontSize: 11 },
+  mediaPlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 6,
+  },
+  mediaMuted: { color: '#888', fontSize: 13 },
   counts: { flexDirection: 'row', gap: 16, marginTop: 8 },
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },

@@ -227,6 +227,7 @@ jobs:
       # are invalidated by each push, which is fine for a preview). No shared
       # production secrets ever reach a preview app.
       - name: Generate throwaway JWT + auth-code keys
+        if: env.DATABASE_URL != ''
         run: |
           set -euo pipefail
           pnpm keys:generate > "$RUNNER_TEMP/preview-keys.env"
@@ -239,6 +240,7 @@ jobs:
           rm -f "$RUNNER_TEMP/preview-keys.env"
 
       - name: Create Fly app if needed (patches-pr-<N>)
+        if: env.DATABASE_URL != ''
         run: |
           set -euo pipefail
           org="${FLY_PREVIEW_ORG:-personal}"
@@ -255,6 +257,7 @@ jobs:
       # "can't connect to backend" while the machine itself is perfectly healthy.
       # Allocate the free org-shared IPv4 idempotently; re-runs are no-ops.
       - name: Ensure shared IPv4 (DNS for <app>.fly.dev)
+        if: env.DATABASE_URL != ''
         run: |
           set -euo pipefail
           if flyctl ips list --app "patches-pr-${PR_NUMBER}" 2>/dev/null | grep -q "v4"; then
@@ -271,6 +274,7 @@ jobs:
       # error at call time by design in packages/config's storageEnvSchema), and
       # the PR comment says so.
       - name: Detect optional media capability (R2 preview bucket)
+        if: env.DATABASE_URL != ''
         env:
           R2_PREVIEW_ACCOUNT_ID: ${{ secrets.R2_PREVIEW_ACCOUNT_ID }}
           R2_PREVIEW_ACCESS_KEY_ID: ${{ secrets.R2_PREVIEW_ACCESS_KEY_ID }}
@@ -301,6 +305,7 @@ jobs:
           fi
 
       - name: Set Fly secrets (branch DATABASE_URL + throwaway keys + optional R2)
+        if: env.DATABASE_URL != ''
         run: |
           set -euo pipefail
           args=(DATABASE_URL="${DATABASE_URL:-}" DATABASE_SSL=true
@@ -314,11 +319,13 @@ jobs:
           flyctl secrets set --app "patches-pr-${PR_NUMBER}" "${args[@]}" >/dev/null
 
       - name: Generate preview fly config
+        if: env.DATABASE_URL != ''
         run: node infra/preview/make-preview-config.mjs --pr "$PR_NUMBER"
 
       - name: Build server + worker on the runner (turbo-cached)
         # The same turbo cache the CI jobs restore (setup action) makes unchanged
         # packages FULL TURBO replays; only what this PR changed actually compiles.
+        if: env.DATABASE_URL != ''
         run: pnpm exec turbo run build --filter=@patches/server --filter=@patches/worker
 
       # Optional web-preview capability, gated on the Cloudflare credentials exactly
@@ -373,6 +380,7 @@ jobs:
           echo "Web preview deployed at $web_url" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Stage self-contained app dirs (pnpm deploy)
+        if: env.DATABASE_URL != ''
         run: |
           set -euo pipefail
           ctx="infra/preview/.image-context"
@@ -382,6 +390,7 @@ jobs:
           cp infra/docker/migrate.mjs "$ctx/migrate.mjs"
 
       - name: Assemble image (COPY-only — no toolchain in CI docker)
+        if: env.DATABASE_URL != ''
         run: >-
           docker build -f infra/docker/Dockerfile.prebuilt
           -t "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
@@ -393,6 +402,7 @@ jobs:
       # ref. `flyctl auth docker` honors FLY_API_TOKEN; the per-app registry path is
       # org-scoped so no extra credentials exist to rotate.
       - name: Push image to the Fly registry
+        if: env.DATABASE_URL != ''
         run: |
           set -euo pipefail
           flyctl auth docker
@@ -403,6 +413,7 @@ jobs:
         # builders share none of those, and their cold path measured ~1m50s per
         # deploy). Process groups, checks, and autostop all come from the generated
         # fly config as before.
+        if: env.DATABASE_URL != ''
         run: |
           set -euo pipefail
           flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
@@ -415,7 +426,7 @@ jobs:
         # blocked until the Pages origin is allow-listed. Set it (as a Fly secret,
         # like the other runtime secrets) to the deterministic branch alias AND the
         # live deployment URL wrangler printed. Setting a secret restarts the machine.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.DATABASE_URL != ''
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
@@ -445,7 +456,7 @@ jobs:
         # now fixed in teardown), but this probe proves the LIVE path every deploy:
         # the Pages origin must get CORS approval from the Connect edge and healthz
         # must answer, exactly as the browser client's login fetch does.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.DATABASE_URL != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
