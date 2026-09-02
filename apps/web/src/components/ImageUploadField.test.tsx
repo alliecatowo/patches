@@ -84,4 +84,31 @@ describe('ImageUploadField', () => {
     removeBtn.click();
     expect(onChange).toHaveBeenCalledWith('');
   });
+
+  it('has accessible dropzone label and prevents page scroll on Space keypress', () => {
+    const onChange = vi.fn();
+    render(
+      <ImageUploadField
+        aspect={1}
+        shape="avatar"
+        label="Avatar"
+        currentMediaId=""
+        onChange={onChange}
+      />,
+    );
+
+    const dropzone = screen.getByRole('button', { name: 'Choose or upload avatar' });
+    expect(dropzone).toBeInTheDocument();
+
+    const input: HTMLInputElement = screen.getByLabelText('Avatar', { selector: 'input' });
+    const clickSpy = vi.spyOn(input, 'click');
+
+    const spaceEvent = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    const preventDefaultSpy = vi.spyOn(spaceEvent, 'preventDefault');
+
+    dropzone.dispatchEvent(spaceEvent);
+
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(preventDefaultSpy).toHaveBeenCalledTimes(1);
+  });
 });

@@ -139,4 +139,36 @@ describe('EditWallDialog', () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('provides a descriptive aria-label on block remove buttons', async () => {
+    const doc = new TextEncoder().encode(
+      JSON.stringify({
+        version: 1,
+        pages: [
+          {
+            slug: 'home',
+            title: 'Home',
+            blocks: [
+              { type: 'Text', body: 'First text block' },
+              { type: 'NowPlaying', text: 'Daft Punk' },
+            ],
+          },
+        ],
+      }),
+    );
+
+    renderDialog({
+      isOpen: true,
+      onClose: vi.fn(),
+      handle: 'allie',
+      currentDocument: doc,
+    });
+
+    expect(
+      await screen.findByRole('button', { name: 'Remove Text block: First text block' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Remove NowPlaying block: ♪ Daft Punk' }),
+    ).toBeInTheDocument();
+  });
 });

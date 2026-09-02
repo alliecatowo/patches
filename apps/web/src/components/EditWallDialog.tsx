@@ -214,7 +214,7 @@ export function EditWallDialog({
                       type="button"
                       className={styles['deleteBlockBtn']}
                       onClick={() => handleDeleteBlock(idx)}
-                      aria-label="Remove block"
+                      aria-label={`Remove ${block.type} block: ${getPreviewText(block)}`}
                     >
                       <TrashIcon size={15} />
                     </button>
