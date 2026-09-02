@@ -8,9 +8,7 @@ export interface ResolvedMediaAttachment {
   failed: boolean;
 }
 
-export type MediaDownloadFetcher = (req: {
-  mediaId: string;
-}) => Promise<{ downloadUrl?: string }>;
+export type MediaDownloadFetcher = (req: { mediaId: string }) => Promise<{ downloadUrl?: string }>;
 
 /**
  * Fetches download URLs for a list of `MediaAttachment` items via a `getMediaDownload` fetcher,

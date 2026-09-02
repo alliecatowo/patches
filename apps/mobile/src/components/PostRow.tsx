@@ -35,13 +35,13 @@ export function PostMediaAttachments({
       return;
     }
 
-    void resolvePostMediaAttachments(attachments, (req) =>
-      api.media.getMediaDownload(req),
-    ).then((results) => {
-      if (!cancelled) {
-        setResolved(results);
-      }
-    });
+    void resolvePostMediaAttachments(attachments, (req) => api.media.getMediaDownload(req)).then(
+      (results) => {
+        if (!cancelled) {
+          setResolved(results);
+        }
+      },
+    );
 
     return () => {
       cancelled = true;
