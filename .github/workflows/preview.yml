@@ -415,7 +415,7 @@ jobs:
         # blocked until the Pages origin is allow-listed. Set it (as a Fly secret,
         # like the other runtime secrets) to the deterministic branch alias AND the
         # live deployment URL wrangler printed. Setting a secret restarts the machine.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.DATABASE_URL != ''
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
@@ -445,7 +445,7 @@ jobs:
         # now fixed in teardown), but this probe proves the LIVE path every deploy:
         # the Pages origin must get CORS approval from the Connect edge and healthz
         # must answer, exactly as the browser client's login fetch does.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.DATABASE_URL != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
