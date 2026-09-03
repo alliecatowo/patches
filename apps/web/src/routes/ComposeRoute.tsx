@@ -501,6 +501,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('**', '**')}
             title="Bold"
+            aria-label="Bold"
           >
             <strong>B</strong>
           </button>
@@ -509,6 +510,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('*', '*')}
             title="Italic"
+            aria-label="Italic"
           >
             <em>I</em>
           </button>
@@ -517,6 +519,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('`', '`')}
             title="Code"
+            aria-label="Code"
           >
             <code>`</code>
           </button>
@@ -525,6 +528,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('> ')}
             title="Quote"
+            aria-label="Quote"
           >
             &gt;
           </button>
@@ -533,6 +537,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('#')}
             title="Tag"
+            aria-label="Tag"
           >
             #
           </button>
@@ -541,6 +546,7 @@ export function ComposeRoute(): JSX.Element {
             className={styles['formatBtn']}
             onClick={() => insertMarkdown('@')}
             title="Mention"
+            aria-label="Mention"
           >
             @
           </button>
