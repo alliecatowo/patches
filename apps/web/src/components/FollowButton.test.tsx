@@ -58,7 +58,7 @@ describe('FollowButton', () => {
     expect(request).toEqual({ actorId: 'actor-2' });
     expect(options.signal).toBeInstanceOf(AbortSignal);
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Following' })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Unfollow' })).toBeInTheDocument(),
     );
   });
 
