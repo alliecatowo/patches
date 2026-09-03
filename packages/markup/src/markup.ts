@@ -118,10 +118,23 @@ function pushMark(marks: Mark[], mark: Mark): void {
 }
 
 /**
+ * Trigger character pattern for inline markup parsing. If none of these characters/prefixes
+ * exist in the text, we can safely return a single 'text' node and skip all RegExp matching.
+ */
+const MARKUP_TRIGGER_PATTERN = /[`[*_#@]|https?:\/\//u;
+
+/**
  * Splits already-sanitized text into styled runs: emphasis, code spans, links,
  * mentions and tags. Never un-escapes anything — it only decides what each run *is*.
  */
 export function parseInline(text: string): InlineNode[] {
+  if (text.length === 0) return [];
+
+  // Optimization: fast path for plain text without any markup, link, mention, or tag trigger characters.
+  if (!MARKUP_TRIGGER_PATTERN.test(text)) {
+    return [{ role: 'text', text }];
+  }
+
   const marks: Mark[] = [];
 
   // Each pattern scans a copy in which already-claimed spans are blanked out with
@@ -194,6 +207,9 @@ export function parseInline(text: string): InlineNode[] {
 
 /** Every distinct `@handle` in a body, lowercased, in first-appearance order. */
 export function extractMentions(text: string): string[] {
+  // Optimization: fast path when no `@` character exists in the text.
+  if (!text.includes('@')) return [];
+
   const handles: string[] = [];
   for (const match of sanitizeForTerminal(text).matchAll(MENTION_PATTERN)) {
     const handle = (match[1] ?? '').toLowerCase();
@@ -213,6 +229,9 @@ const TAG_PATTERN_HTML = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^'">])*
 
 /** True when the source carries at least one tag from the supported subset. */
 export function looksLikeHtml(source: string): boolean {
+  // Optimization: fast path when no `<` tag opener exists in the source.
+  if (!source.includes('<')) return false;
+
   for (const match of source.matchAll(TAG_PATTERN_HTML)) {
     const name = (match[1] ?? '').toLowerCase();
     if (INLINE_TAGS.has(name) || BLOCK_TAGS.has(name)) return true;
