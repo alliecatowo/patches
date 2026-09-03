@@ -11,7 +11,8 @@ function fakeMediaClient(
   return {
     getMediaDownload: vi.fn(
       getMediaDownload ??
-        (({ mediaId }) => Promise.resolve({ downloadUrl: `https://media.example.com/${mediaId}.png` })),
+        (({ mediaId }) =>
+          Promise.resolve({ downloadUrl: `https://media.example.com/${mediaId}.png` })),
     ),
   } as unknown as MediaClient;
 }
