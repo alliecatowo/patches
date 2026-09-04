@@ -1135,8 +1135,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           metadata: { reason: 'first strike' },
         });
 
+        // Pause briefly before capturing 'since' timestamp to ensure distinct Postgres timestamps across fast DB operations
+        await new Promise((resolve) => setTimeout(resolve, 100));
         const since = new Date();
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
         // No `metadata` at all — exercises the "no reason to give" blank case.
         await appendAdminAuditLog(dataSource.manager, {
