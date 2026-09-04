@@ -2,6 +2,8 @@ import * as Crypto from 'expo-crypto';
 import { MediaStatus, type GetMediaDownloadResponse } from '@patches/proto/es';
 import type { PatchesApi } from '@patches/client';
 
+import { safePageHref } from '../pages/href.js';
+
 /** `PatchesApi['media']` — the generated `MediaService` client, not re-derived from
  * `@connectrpc/connect`'s `Client<T>` so this module stays agnostic of that import path. */
 type MediaClient = PatchesApi['media'];
@@ -92,5 +94,20 @@ export async function pollMediaUntilReady(
     }
     if (Date.now() >= deadline) return response;
     await sleep(intervalMs);
+  }
+}
+
+/** Resolves a media ID to its safe download URL via `GetMediaDownload` and `safePageHref`.
+ * Returns `null` if fetching fails or if the download URL is not a safe http(s) URL. */
+export async function resolveMediaDownloadUrl(
+  media: MediaClient,
+  mediaId: string,
+): Promise<string | null> {
+  try {
+    const response = await media.getMediaDownload({ mediaId });
+    if (!response.downloadUrl) return null;
+    return safePageHref(response.downloadUrl);
+  } catch {
+    return null;
   }
 }

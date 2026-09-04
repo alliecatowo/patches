@@ -10,7 +10,7 @@ vi.mock('expo-crypto', () => ({
   CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
 }));
 
-import { pollMediaUntilReady, sha256Hex, uploadMediaBytes } from './upload.js';
+import { pollMediaUntilReady, resolveMediaDownloadUrl, sha256Hex, uploadMediaBytes } from './upload.js';
 
 type MediaClient = PatchesApi['media'];
 
@@ -130,5 +130,51 @@ describe('pollMediaUntilReady', () => {
       timeoutMs: 5,
     });
     expect(response.status).toBe(MediaStatus.PROCESSING);
+  });
+});
+
+describe('resolveMediaDownloadUrl', () => {
+  it('resolves a valid download URL', async () => {
+    const getMediaDownload = vi.fn<() => Promise<GetMediaDownloadResponse>>(() =>
+      Promise.resolve({
+        mediaId: 'media-1',
+        status: MediaStatus.READY,
+        downloadUrl: 'https://cdn.example.com/media-1.png',
+      } as GetMediaDownloadResponse),
+    );
+    const media = fakeMedia({ getMediaDownload });
+    const url = await resolveMediaDownloadUrl(media, 'media-1');
+    expect(url).toBe('https://cdn.example.com/media-1.png');
+  });
+
+  it('returns null when getMediaDownload throws', async () => {
+    const getMediaDownload = vi.fn<() => Promise<GetMediaDownloadResponse>>(() =>
+      Promise.reject(new Error('Network error')),
+    );
+    const media = fakeMedia({ getMediaDownload });
+    const url = await resolveMediaDownloadUrl(media, 'media-1');
+    expect(url).toBeNull();
+  });
+
+  it('returns null when downloadUrl is empty or not http(s)', async () => {
+    const getMediaDownload1 = vi.fn<() => Promise<GetMediaDownloadResponse>>(() =>
+      Promise.resolve({
+        mediaId: 'media-1',
+        status: MediaStatus.READY,
+        downloadUrl: '',
+      } as GetMediaDownloadResponse),
+    );
+    const media1 = fakeMedia({ getMediaDownload: getMediaDownload1 });
+    expect(await resolveMediaDownloadUrl(media1, 'media-1')).toBeNull();
+
+    const getMediaDownload2 = vi.fn<() => Promise<GetMediaDownloadResponse>>(() =>
+      Promise.resolve({
+        mediaId: 'media-2',
+        status: MediaStatus.READY,
+        downloadUrl: 'javascript:alert(1)',
+      } as GetMediaDownloadResponse),
+    );
+    const media2 = fakeMedia({ getMediaDownload: getMediaDownload2 });
+    expect(await resolveMediaDownloadUrl(media2, 'media-2')).toBeNull();
   });
 });
