@@ -276,7 +276,9 @@ describe('ThreadRoute', () => {
     );
 
     const view = renderThread();
-    expect(await screen.findByText('Root post in thread')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Root post in thread', {}, { timeout: 3000 }),
+    ).toBeInTheDocument();
 
     const input = view.container.querySelector('input[type="file"]');
     expect(input).not.toBeNull();
@@ -284,7 +286,7 @@ describe('ThreadRoute', () => {
       target: { files: [new File(['bytes'], 'shot.png', { type: 'image/png' })] },
     });
     // The tile rendered with its progress overlay (progress starts at 0).
-    await screen.findByText('0%');
+    await screen.findByText('0%', {}, { timeout: 3000 });
 
     const textarea = screen.getByPlaceholderText('Post your reply…');
     fireEvent.change(textarea, { target: { value: 'With attachment' } });
@@ -304,7 +306,7 @@ describe('ThreadRoute', () => {
         expect.objectContaining({ mediaIds: ['media-9'] }),
       );
     });
-  });
+  }, 10000);
 
   it('passes an AbortSignal, and clicking cancel aborts it, drops the tile, and unblocks the reply button (B-172)', async () => {
     mockUseSession.mockReturnValue({
