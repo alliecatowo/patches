@@ -10,7 +10,12 @@ vi.mock('expo-crypto', () => ({
   CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
 }));
 
-import { pollMediaUntilReady, resolveMediaDownloadUrl, sha256Hex, uploadMediaBytes } from './upload.js';
+import {
+  pollMediaUntilReady,
+  resolveMediaDownloadUrl,
+  sha256Hex,
+  uploadMediaBytes,
+} from './upload.js';
 
 type MediaClient = PatchesApi['media'];
 
