@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ByteWriter } from './codec.js';
+import { ByteReader, ByteWriter, compareUtf8Bytes, fromHex, toHex } from './codec.js';
 import { MalformedInputError } from './errors.js';
 
 describe('ByteWriter#fixed', () => {
@@ -45,5 +45,61 @@ describe('ByteWriter#fixed', () => {
     expect(() => new ByteWriter().fixed(splitB.first, 2).fixed(splitB.second, 2)).toThrow(
       MalformedInputError,
     );
+  });
+});
+
+describe('toHex and fromHex', () => {
+  it('correctly converts between Uint8Array and hex string', () => {
+    const bytes = new Uint8Array([0x00, 0x0f, 0x10, 0xaf, 0xff]);
+    const hex = toHex(bytes);
+    expect(hex).toBe('000f10afff');
+    expect(fromHex(hex)).toEqual(bytes);
+    expect(fromHex('000F10AFFF')).toEqual(bytes);
+  });
+
+  it('rejects invalid hex input', () => {
+    expect(() => fromHex('abc')).toThrow(MalformedInputError); // odd length
+    expect(() => fromHex('000g')).toThrow(MalformedInputError); // invalid char
+    expect(() => fromHex('000Z')).toThrow(MalformedInputError);
+  });
+});
+
+describe('ByteReader and ByteWriter', () => {
+  it('correctly encodes and decodes u8, u32, u64, fixed, bytes, and string', () => {
+    const writer = new ByteWriter();
+    writer
+      .u8(255)
+      .u32(0x12345678)
+      .u64(1234567890123)
+      .fixed(new Uint8Array([1, 2, 3]), 3)
+      .string('hello world');
+
+    const encoded = writer.finish();
+    const reader = new ByteReader(encoded);
+
+    expect(reader.u8()).toBe(255);
+    expect(reader.u32()).toBe(0x12345678);
+    expect(reader.u64()).toBe(1234567890123);
+    expect(reader.fixed(3)).toEqual(new Uint8Array([1, 2, 3]));
+    expect(reader.string()).toBe('hello world');
+    reader.end();
+  });
+
+  it('throws MalformedInputError on truncated reads', () => {
+    const reader = new ByteReader(new Uint8Array([1, 2]));
+    expect(reader.u8()).toBe(1);
+    expect(reader.u8()).toBe(2);
+    expect(() => reader.u8()).toThrow(MalformedInputError);
+    expect(() => reader.u32()).toThrow(MalformedInputError);
+  });
+});
+
+describe('compareUtf8Bytes', () => {
+  it('handles string comparison and equality fast path', () => {
+    const s = 'a_test_string_123';
+    expect(compareUtf8Bytes(s, s)).toBe(0);
+    expect(compareUtf8Bytes('alpha', 'alpha')).toBe(0);
+    expect(compareUtf8Bytes('alpha', 'beta')).toBeLessThan(0);
+    expect(compareUtf8Bytes('beta', 'alpha')).toBeGreaterThan(0);
   });
 });
