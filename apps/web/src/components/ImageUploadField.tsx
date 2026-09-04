@@ -86,6 +86,7 @@ export function ImageUploadField({
         className={`${styles['dropzone']} ${shapeClass ?? ''} ${dragActive ? (styles['dropzoneActive'] ?? '') : ''}`}
         role="button"
         tabIndex={0}
+        aria-label={`Upload ${label.toLowerCase()}`}
         onClick={() => inputRef.current?.click()}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') inputRef.current?.click();

@@ -68,6 +68,21 @@ describe('ImageUploadField', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('renders an accessible dropzone button with an aria-label', () => {
+    render(
+      <ImageUploadField
+        aspect={1}
+        shape="avatar"
+        label="Avatar"
+        currentMediaId="media-123"
+        onChange={vi.fn()}
+      />,
+    );
+
+    const dropzone = screen.getByRole('button', { name: 'Upload avatar' });
+    expect(dropzone).toBeInTheDocument();
+  });
+
   it('shows a remove button once a media id is set, and clears it on click', async () => {
     const onChange = vi.fn();
     render(
