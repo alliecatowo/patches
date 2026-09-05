@@ -6,25 +6,6 @@ const MAX_CANDIDATES = 8;
  * "search my follows" RPC (same constraint as the web client's `useMentionQuery`, §219). */
 const FOLLOWING_SCAN_LIMIT = 100;
 
-function matchesPrefix(actor: Actor, query: string): boolean {
-  const needle = query.toLowerCase();
-  return (
-    actor.handle.toLowerCase().startsWith(needle) ||
-    actor.displayName.toLowerCase().startsWith(needle)
-  );
-}
-
-function byHandleAlphabetical(a: Actor, b: Actor): number {
-  return a.handle.localeCompare(b.handle);
-}
-
-/**
- * Candidate actors for the `@`-mention popover (§219): follows whose handle/display name
- * prefix-matches `query` first, then `ActorService.SearchActors` results for the same query,
- * de-duplicated, alphabetical within each group — never engagement/relevance-ranked (spec
- * §194). Actors the viewer blocks or mutes are dropped via `SocialGraphService.GetRelationship`
- * on the bounded candidate list (never over the whole follow/search result set).
- */
 export interface MentionCandidate extends Actor {
   reason: 'following' | 'search';
 }

@@ -27,9 +27,15 @@ const mockUploadMedia =
       options?: { signal?: AbortSignal },
     ) => Promise<string>
   >();
-const mockSearchActors = vi.fn().mockResolvedValue({ actors: [], page: undefined });
-const mockListFollowing = vi.fn().mockResolvedValue({ actors: [], page: undefined });
-const mockGetRelationship = vi.fn().mockResolvedValue({ relationship: undefined });
+const mockSearchActors = vi
+  .fn<(...args: unknown[]) => Promise<{ actors: Actor[]; page: undefined }>>()
+  .mockResolvedValue({ actors: [], page: undefined });
+const mockListFollowing = vi
+  .fn<(...args: unknown[]) => Promise<{ actors: Actor[]; page: undefined }>>()
+  .mockResolvedValue({ actors: [], page: undefined });
+const mockGetRelationship = vi
+  .fn<(...args: unknown[]) => Promise<{ relationship: undefined }>>()
+  .mockResolvedValue({ relationship: undefined });
 
 vi.mock('../api/client.js', () => ({
   api: {
