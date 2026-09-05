@@ -174,7 +174,7 @@ describe('ThreadRoute', () => {
       actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,
     });
     mockListFollowing.mockResolvedValue({
-      actors: [{ id: 'a1', handle: 'alice', displayName: 'Alice', avatar: undefined }],
+      actors: [{ id: 'a1', handle: 'alice', displayName: 'Alice', avatar: undefined } as unknown as Actor],
       page: undefined,
     });
 
