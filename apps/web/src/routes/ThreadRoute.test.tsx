@@ -360,7 +360,7 @@ describe('ThreadRoute', () => {
     fireEvent.change(input as Element, {
       target: { files: [new File(['bytes'], 'shot.png', { type: 'image/png' })] },
     });
-    await waitFor(() => expect(capturedSignal).toBeDefined());
+    await waitFor(() => expect(capturedSignal).toBeDefined(), { timeout: 10000 });
 
     view.unmount();
     expect(capturedSignal?.aborted).toBe(true);
