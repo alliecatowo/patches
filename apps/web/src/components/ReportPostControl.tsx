@@ -43,7 +43,13 @@ export function ReportPostControl({
   if (sent) return <span role="status">Report sent.</span>;
   if (!open) {
     return (
-      <button type="button" className={className} onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className={className}
+        onClick={() => setOpen(true)}
+        aria-label="Report post"
+        aria-expanded={false}
+      >
         report
       </button>
     );
@@ -79,7 +85,7 @@ export function ReportPostControl({
         style={{ flex: '1 1 18rem', minWidth: 0, resize: 'vertical' }}
       />
       <button type="submit" disabled={report.isPending}>
-        Submit report
+        {report.isPending ? 'Submitting report…' : 'Submit report'}
       </button>
       <button type="button" onClick={() => setOpen(false)} disabled={report.isPending}>
         Cancel

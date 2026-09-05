@@ -26,7 +26,10 @@ describe('ReportPostControl', () => {
       </QueryClientProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'report' }));
+    const openBtn = screen.getByRole('button', { name: 'Report post' });
+    expect(openBtn).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(openBtn);
     fireEvent.change(screen.getByLabelText('Report reason'), {
       target: { value: String(ReportReason.HARASSMENT) },
     });
@@ -42,6 +45,30 @@ describe('ReportPostControl', () => {
         details: 'repeated abuse',
       }),
     );
+    expect(await screen.findByRole('status')).toHaveTextContent('Report sent.');
+  });
+
+  it('shows submitting loading state on the submit button while pending', async () => {
+    let resolveReport: (val: { reportId: string }) => void = () => {};
+    mockReportPost.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveReport = resolve;
+        }),
+    );
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ReportPostControl postId="post-2" />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Report post' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit report' }));
+
+    expect(await screen.findByRole('button', { name: 'Submitting report…' })).toBeDisabled();
+
+    resolveReport({ reportId: 'report-2' });
     expect(await screen.findByRole('status')).toHaveTextContent('Report sent.');
   });
 });
