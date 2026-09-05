@@ -56,19 +56,21 @@ describe('mentionCandidates', () => {
     expect(api.listFollowing).not.toHaveBeenCalled();
   });
 
-  it('lists prefix-matching follows before search results, deduplicated and alphabetical', async () => {
+  it('lists prefix-matching follows before search results, deduplicated, ranked deterministically with reason provenance', async () => {
     const api = fakeApi({
       listFollowing: vi.fn().mockResolvedValue({
         actors: [
           actor({ id: 'f2', handle: 'bob', displayName: 'Bob' }),
           actor({ id: 'f1', handle: 'alice' }),
+          actor({ id: 'f3', handle: 'al', displayName: 'Al' }),
         ],
         page: { nextCursor: '', hasMore: false },
       }),
       searchActors: vi.fn().mockResolvedValue({
         actors: [
           actor({ id: 'f1', handle: 'alice' }),
-          actor({ id: 's1', handle: 'aaron', displayName: 'Aaron' }),
+          actor({ id: 's1', handle: 'alex', displayName: 'Alex' }),
+          actor({ id: 'f3', handle: 'al', displayName: 'Al' }),
         ],
         page: { nextCursor: '', hasMore: false },
       }),
@@ -78,11 +80,15 @@ describe('mentionCandidates', () => {
       api,
       ensureAccessToken,
       'viewer-1',
-      'a',
+      'al',
       new AbortController().signal,
     );
 
-    expect(result.map((a) => a.handle)).toEqual(['alice', 'aaron']);
+    expect(result.map((a) => ({ handle: a.handle, reason: a.reason }))).toEqual([
+      { handle: 'al', reason: 'following' },
+      { handle: 'alice', reason: 'following' },
+      { handle: 'alex', reason: 'search' },
+    ]);
   });
 
   it('drops a blocked or muted actor from the merged candidate list', async () => {

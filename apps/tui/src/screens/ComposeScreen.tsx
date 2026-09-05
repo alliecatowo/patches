@@ -249,8 +249,8 @@ export function ComposeScreen({
           insertValue: actor.handle,
           label:
             actor.displayName === ''
-              ? `@${actor.handle}`
-              : `@${actor.handle}  ${actor.displayName}`,
+              ? `@${actor.handle}  (${actor.reason})`
+              : `@${actor.handle}  ${actor.displayName}  (${actor.reason})`,
         }));
       };
     }

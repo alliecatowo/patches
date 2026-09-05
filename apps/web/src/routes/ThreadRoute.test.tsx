@@ -27,6 +27,15 @@ const mockUploadMedia =
       options?: { signal?: AbortSignal },
     ) => Promise<string>
   >();
+const mockSearchActors = vi
+  .fn<(...args: unknown[]) => Promise<{ actors: Actor[]; page: undefined }>>()
+  .mockResolvedValue({ actors: [], page: undefined });
+const mockListFollowing = vi
+  .fn<(...args: unknown[]) => Promise<{ actors: Actor[]; page: undefined }>>()
+  .mockResolvedValue({ actors: [], page: undefined });
+const mockGetRelationship = vi
+  .fn<(...args: unknown[]) => Promise<{ relationship: undefined }>>()
+  .mockResolvedValue({ relationship: undefined });
 
 vi.mock('../api/client.js', () => ({
   api: {
@@ -42,6 +51,13 @@ vi.mock('../api/client.js', () => ({
     node: {
       getNodeInfo: (): Promise<{ socialCapabilities: { maxPostChars: number } }> =>
         Promise.resolve({ socialCapabilities: { maxPostChars: 500 } }),
+    },
+    actors: {
+      searchActors: (...args: unknown[]) => mockSearchActors(...args),
+      listFollowing: (...args: unknown[]) => mockListFollowing(...args),
+    },
+    socialGraph: {
+      getRelationship: (...args: unknown[]) => mockGetRelationship(...args),
     },
   } as unknown as PatchesApi,
 }));
@@ -151,6 +167,32 @@ describe('ThreadRoute', () => {
     // section exists and the reply article stays a direct sibling, not a list item.
     expect(screen.getByRole('region', { name: 'Replies' })).toBeInTheDocument();
     expect(document.querySelector('#reply-9 article')).not.toBeNull();
+  });
+
+  it('supports @mention autocomplete in the inline reply composer (§219)', async () => {
+    mockUseSession.mockReturnValue({
+      actor: { id: 'actor-2', handle: 'bob', displayName: 'Bob' } as unknown as Actor,
+    });
+    mockListFollowing.mockResolvedValue({
+      actors: [{ id: 'a1', handle: 'alice', displayName: 'Alice', avatar: undefined } as unknown as Actor],
+      page: undefined,
+    });
+
+    renderThread();
+    expect(await screen.findByText('Root post in thread')).toBeInTheDocument();
+
+    const textarea = screen.getByPlaceholderText('Post your reply…');
+    fireEvent.change(textarea, { target: { value: 'Hey @al' } });
+    (textarea as HTMLTextAreaElement).setSelectionRange(7, 7);
+    fireEvent.click(textarea);
+
+    await waitFor(() => {
+      expect(screen.getByRole('listbox', { name: 'Mention suggestions' })).toBeInTheDocument();
+    });
+    expect(screen.getByText('@alice')).toBeInTheDocument();
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(textarea).toHaveValue('Hey @alice ');
   });
 
   it('renders inline reply composer when signed in and posts a reply', async () => {

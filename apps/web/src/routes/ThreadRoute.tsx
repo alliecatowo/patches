@@ -6,12 +6,21 @@ import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 
 import { api } from '../api/client.js';
+import type { Actor } from '@patches/proto/es';
 import { CloseIcon, ImageIcon } from '../components/icons/Icons.js';
 import { MediaUploadPreview } from '../components/MediaUploadPreview.js';
+import { MentionAutocomplete } from '../components/MentionAutocomplete.js';
 import { PostCard } from '../components/PostCard.js';
+import { useDebouncedValue } from '../hooks/useDebouncedValue.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
+import { useMentionQuery } from '../hooks/useMentionQuery.js';
 import { useSession } from '../hooks/useSession.js';
 import { uploadMedia, type MediaUploadHandle } from '../lib/mediaUpload.js';
+import {
+  applyMentionSelection,
+  findMentionTrigger,
+  type MentionTrigger,
+} from '../lib/mentionTrigger.js';
 import styles from './ThreadRoute.module.css';
 
 const MAX_MEDIA = 4;
@@ -37,7 +46,37 @@ export function ThreadRoute(): JSX.Element {
   // thread's root post (the default); set to a specific reply when the viewer clicks
   // that reply's reply action — reply targeting (issue #154).
   const [replyTarget, setReplyTarget] = useState<Post | undefined>(undefined);
+  const replyTextareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // `@`-mention autocomplete (§219)
+  const [mentionTrigger, setMentionTrigger] = useState<MentionTrigger | null>(null);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+
+  const updateMentionTrigger = (textarea: HTMLTextAreaElement, value: string): void => {
+    const caret = textarea.selectionStart ?? value.length;
+    setMentionTrigger(findMentionTrigger(value, caret));
+    setMentionActiveIndex(0);
+  };
+
+  const debouncedMentionQuery = useDebouncedValue(mentionTrigger?.query ?? '', 200);
+  const { candidates: mentionCandidates } = useMentionQuery(
+    debouncedMentionQuery,
+    session?.actor.id,
+  );
+  const mentionOpen = mentionTrigger !== null && mentionCandidates.length > 0;
+
+  const selectMention = (actor: Actor): void => {
+    const textarea = replyTextareaRef.current;
+    if (!textarea || mentionTrigger === null) return;
+    const { text, caret } = applyMentionSelection(replyBody, mentionTrigger, actor.handle);
+    setReplyBody(text);
+    setMentionTrigger(null);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(caret, caret);
+    }, 0);
+  };
   // In-flight uploads' abort switches, keyed by the same `File` identity `uploads`
   // entries are matched on. Not reactive state on purpose — aborting doesn't itself
   // need a render, only the `uploads` update that follows it does (B-172).
@@ -276,14 +315,52 @@ export function ThreadRoute(): JSX.Element {
               </div>
             ) : null}
 
-            <textarea
-              className={styles['replyTextarea']}
-              placeholder="Post your reply…"
-              value={replyBody}
-              onChange={(e) => setReplyBody(e.target.value)}
-              rows={2}
-              aria-label="Write a reply"
-            />
+            <div className={styles['textareaWrap']}>
+              <textarea
+                ref={replyTextareaRef}
+                className={styles['replyTextarea']}
+                placeholder="Post your reply…"
+                value={replyBody}
+                onChange={(e) => {
+                  setReplyBody(e.target.value);
+                  updateMentionTrigger(e.target, e.target.value);
+                }}
+                onClick={(e) => updateMentionTrigger(e.currentTarget, e.currentTarget.value)}
+                onKeyUp={(e) => {
+                  if (!['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
+                    updateMentionTrigger(e.currentTarget, e.currentTarget.value);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (!mentionOpen) return;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setMentionActiveIndex((i) => (i + 1) % mentionCandidates.length);
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setMentionActiveIndex(
+                      (i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length,
+                    );
+                  } else if (e.key === 'Enter' || e.key === 'Tab') {
+                    e.preventDefault();
+                    const active = mentionCandidates[mentionActiveIndex];
+                    if (active) selectMention(active);
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setMentionTrigger(null);
+                  }
+                }}
+                rows={2}
+                aria-label="Write a reply"
+              />
+              {mentionOpen ? (
+                <MentionAutocomplete
+                  candidates={mentionCandidates}
+                  activeIndex={mentionActiveIndex}
+                  onSelect={selectMention}
+                />
+              ) : null}
+            </div>
 
             {uploads.length > 0 ? (
               <div className={styles['mediaPreviewList']}>

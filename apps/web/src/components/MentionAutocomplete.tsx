@@ -1,10 +1,11 @@
 import type { Actor } from '@patches/proto/es';
 import type { JSX } from 'react';
+import type { MentionCandidate } from '../hooks/useMentionQuery.js';
 
 import styles from './MentionAutocomplete.module.css';
 
 interface MentionAutocompleteProps {
-  candidates: Actor[];
+  candidates: (Actor | MentionCandidate)[];
   activeIndex: number;
   onSelect: (actor: Actor) => void;
 }
@@ -47,6 +48,9 @@ export function MentionAutocomplete({
             />
             <span className={styles['name']}>{actor.displayName || actor.handle}</span>
             <span className={styles['handle']}>@{actor.handle}</span>
+            {'reason' in actor && actor.reason ? (
+              <span className={styles['reason']}>{actor.reason}</span>
+            ) : null}
           </button>
         </li>
       ))}
