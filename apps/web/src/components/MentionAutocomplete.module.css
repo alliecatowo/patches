@@ -48,3 +48,13 @@
   color: var(--fg-muted);
   font-size: 0.85rem;
 }
+
+.reason {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  background: var(--bg-subtle, var(--border));
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
