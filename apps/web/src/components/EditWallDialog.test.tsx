@@ -114,6 +114,19 @@ describe('EditWallDialog', () => {
     expect(saved.pages[1]).toMatchObject({ slug: 'about', title: 'About' });
   });
 
+  it('renders block type selection buttons with accessible aria-labels', () => {
+    renderDialog({
+      isOpen: true,
+      onClose: vi.fn(),
+      handle: 'allie',
+    });
+
+    expect(screen.getByRole('button', { name: 'Select Text block type' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select Now Playing block type' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select Hero block type' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Select ASCII Art block type' })).toBeInTheDocument();
+  });
+
   it('allows adding a text block and saving the wall', async () => {
     const onClose = vi.fn();
     renderDialog({
