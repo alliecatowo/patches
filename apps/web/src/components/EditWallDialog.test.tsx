@@ -122,7 +122,9 @@ describe('EditWallDialog', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Select Text block type' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Select Now Playing block type' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Select Now Playing block type' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Select Hero block type' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Select ASCII Art block type' })).toBeInTheDocument();
   });
