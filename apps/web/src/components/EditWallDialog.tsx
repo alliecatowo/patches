@@ -233,6 +233,7 @@ export function EditWallDialog({
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'Text' ? styles['active'] : ''}`}
                   onClick={() => setSelectedType('Text')}
+                  aria-label="Select Text block type"
                 >
                   Text
                 </button>
@@ -240,6 +241,7 @@ export function EditWallDialog({
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'NowPlaying' ? styles['active'] : ''}`}
                   onClick={() => setSelectedType('NowPlaying')}
+                  aria-label="Select Now Playing block type"
                 >
                   Now Playing
                 </button>
@@ -247,6 +249,7 @@ export function EditWallDialog({
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'Hero' ? styles['active'] : ''}`}
                   onClick={() => setSelectedType('Hero')}
+                  aria-label="Select Hero block type"
                 >
                   Hero
                 </button>
@@ -254,6 +257,7 @@ export function EditWallDialog({
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'AsciiArt' ? styles['active'] : ''}`}
                   onClick={() => setSelectedType('AsciiArt')}
+                  aria-label="Select ASCII Art block type"
                 >
                   ASCII Art
                 </button>
