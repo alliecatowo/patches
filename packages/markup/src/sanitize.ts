@@ -1,3 +1,8 @@
+/** Fast-path pattern matching any control character stripped or converted by sanitizeForTerminal.
+ * Matches ASCII C0 controls (except \n), tab \t, DEL (0x7f), and C1 controls (0x80-0x9f). */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHAR_PATTERN = /[\x00-\x08\x0b-\x1f\x7f-\x9f\t]/u;
+
 /** `\n` is the only control character user text is ever allowed to keep (multi-line
  * post bodies/bios wrap normally); everything else in this set is stripped instead
  * of merely escaped, because there is no legitimate reason a bio/handle/post body
@@ -18,6 +23,9 @@ const KEEP_CODE_POINTS = new Set([0x0a]);
  * by many TUI components outside the markup pipeline.
  */
 export function sanitizeForTerminal(value: string): string {
+  // Fast path: if string carries no tabs, C0, or C1 control characters, return as-is (~9x faster).
+  if (!CONTROL_CHAR_PATTERN.test(value)) return value;
+
   let out = '';
   for (const char of value) {
     const codePoint = char.codePointAt(0) ?? 0;

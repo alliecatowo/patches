@@ -145,7 +145,7 @@ const SCENARIOS: readonly Scenario[] = [
       app.press(KEY.enter);
       await expectFrame(app, 'A reply from bob');
     },
-    settleText: 'A reply from bob',
+    settleText: 'replies',
   },
   {
     name: 'compose',
