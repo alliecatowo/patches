@@ -228,9 +228,12 @@ export function encodeRecoveryCode(recoveryKey: Bytes): string {
   return toHex(recoveryKey) + recoveryCodeChecksumByte(recoveryKey).toString(16).padStart(2, '0');
 }
 
+/** Pattern for grouping recovery code characters into blocks of {@link RECOVERY_CODE_GROUP}. */
+const RECOVERY_CODE_GROUP_PATTERN = new RegExp(`.{1,${RECOVERY_CODE_GROUP}}`, 'g');
+
 /** Inserts a separator every {@link RECOVERY_CODE_GROUP} characters for display. */
 export function groupRecoveryCodeForDisplay(code: string): string {
-  return code.match(new RegExp(`.{1,${String(RECOVERY_CODE_GROUP)}}`, 'g'))?.join('-') ?? code;
+  return code.match(RECOVERY_CODE_GROUP_PATTERN)?.join('-') ?? code;
 }
 
 function fromHex(normalized: string): Bytes {
