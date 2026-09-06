@@ -74,9 +74,7 @@ export function PostRow({
           ) : (
             <>
               <Text style={styles.body}>{post.body}</Text>
-              {post.media.length > 0 ? (
-                <PostMediaAttachmentsView attachments={post.media} />
-              ) : null}
+              {post.media.length > 0 ? <PostMediaAttachmentsView attachments={post.media} /> : null}
             </>
           )}
         </>

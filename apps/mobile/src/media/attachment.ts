@@ -1,9 +1,9 @@
-import type { GetMediaDownloadRequest, GetMediaDownloadResponse } from '@patches/proto/es';
+import type { GetMediaDownloadResponse } from '@patches/proto/es';
 import { safePageHref } from '../pages/href.js';
 
 export interface ResolveMediaOptions {
   mediaId: string;
-  getMediaDownload?: (req: GetMediaDownloadRequest) => Promise<GetMediaDownloadResponse>;
+  getMediaDownload?: (req: { mediaId: string }) => Promise<GetMediaDownloadResponse>;
 }
 
 /**
