@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type JSX, type TouchEvent } from 'react';
 
-import { ChevronLeftIcon, CloseIcon } from './icons/Icons.js';
+import { ChevronLeftIcon, CloseIcon, DownloadIcon } from './icons/Icons.js';
 import styles from './MediaLightbox.module.css';
 
 export interface LightboxImage {
@@ -105,14 +105,27 @@ export function MediaLightbox({
         <span className={styles['counter']}>
           {currentIndex + 1} / {images.length}
         </span>
-        <button
-          type="button"
-          className={styles['closeButton']}
-          onClick={handleClose}
-          aria-label="Close lightbox"
-        >
-          <CloseIcon size={24} />
-        </button>
+        <div className={styles['topActions']}>
+          <a
+            href={current.url}
+            download
+            target="_blank"
+            rel="noopener noreferrer"
+            className={styles['actionButton']}
+            aria-label="Download image"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DownloadIcon size={20} />
+          </a>
+          <button
+            type="button"
+            className={styles['closeButton']}
+            onClick={handleClose}
+            aria-label="Close lightbox"
+          >
+            <CloseIcon size={24} />
+          </button>
+        </div>
       </div>
 
       <div
