@@ -41,4 +41,18 @@ describe('MediaLightbox', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('renders download link for current image', () => {
+    render(<MediaLightbox images={images} isOpen={true} onClose={vi.fn()} />);
+
+    const downloadLink = screen.getByRole('link', { name: 'Download image' });
+    expect(downloadLink).toBeInTheDocument();
+    expect(downloadLink).toHaveAttribute('href', 'https://example.com/1.jpg');
+    expect(downloadLink).toHaveAttribute('download');
+
+    const nextBtn = screen.getByRole('button', { name: 'Next image' });
+    fireEvent.click(nextBtn);
+
+    expect(downloadLink).toHaveAttribute('href', 'https://example.com/2.jpg');
+  });
 });

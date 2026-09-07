@@ -41,7 +41,14 @@
   font-family: var(--font-mono);
 }
 
-.closeButton {
+.topActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.closeButton,
+.actionButton {
   width: 40px;
   height: 40px;
   border-radius: var(--radius-full);
@@ -52,10 +59,12 @@
   justify-content: center;
   border: none;
   cursor: pointer;
+  text-decoration: none;
   transition: background 0.15s ease;
 }
 
-.closeButton:hover {
+.closeButton:hover,
+.actionButton:hover {
   background: rgba(255, 255, 255, 0.3);
 }
 
