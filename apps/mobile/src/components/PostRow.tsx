@@ -1,8 +1,11 @@
 import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { safePageHref } from '../pages/href.js';
+import { extractPostMediaViews } from '../posts/media.js';
 
 export interface PostRowProps {
   post: Post;
@@ -22,7 +25,8 @@ export interface PostRowProps {
  * only the body it's warning about starts hidden, matching `apps/web`'s `PostCard`
  * (`cwOpen` state). Reply/Quote/Edit are shown only when the caller wires a handler —
  * `HomeScreen` passes all three; `Edit` additionally requires `viewerActorId` to match
- * the post's author.
+ * the post's author. Media attachments (B-084) are fetched via `GetMediaDownload` and
+ * re-validated with `safePageHref`.
  */
 export function PostRow({
   post,
@@ -70,7 +74,10 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              {post.body !== '' ? <Text style={styles.body}>{post.body}</Text> : null}
+              <PostMediaAttachments post={post} />
+            </>
           )}
         </>
       )}
@@ -102,6 +109,69 @@ export function PostRow({
   );
 }
 
+function PostMediaAttachments({ post }: { post: Post }): JSX.Element {
+  const views = extractPostMediaViews(post);
+  if (views.length === 0) return <></>;
+
+  return (
+    <View style={styles.mediaContainer}>
+      {views.map((item) => (
+        <PostMediaItem key={item.mediaId} mediaId={item.mediaId} altText={item.altText} />
+      ))}
+    </View>
+  );
+}
+
+function PostMediaItem({ mediaId, altText }: { mediaId: string; altText: string }): JSX.Element {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.media
+      .getMediaDownload({ mediaId })
+      .then((response) => {
+        if (cancelled) return;
+        const safe = safePageHref(response.downloadUrl);
+        if (safe === null) {
+          setFailed(true);
+          return;
+        }
+        setUrl(safe);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaId]);
+
+  if (failed || url === null) {
+    return (
+      <View style={styles.imagePlaceholder}>
+        <Text style={styles.muted}>{failed ? 'Image unavailable.' : 'Loading image…'}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mediaCell}>
+      <Image
+        source={{ uri: url }}
+        style={styles.image}
+        resizeMode="contain"
+        accessibilityLabel={altText || undefined}
+      />
+      {altText !== '' ? (
+        <Text style={styles.imageAlt} numberOfLines={2}>
+          {altText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 12,
@@ -120,4 +190,17 @@ const styles = StyleSheet.create({
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
   action: { color: '#7c9cff', fontSize: 13 },
+  mediaContainer: { marginTop: 8, gap: 8 },
+  mediaCell: { marginBottom: 4 },
+  image: { width: '100%', height: 200, borderRadius: 6, backgroundColor: '#161618' },
+  imageAlt: { color: '#888', fontSize: 12, marginTop: 2 },
+  imagePlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 6,
+    marginVertical: 4,
+  },
+  muted: { color: '#888', fontSize: 12 },
 });
