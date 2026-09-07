@@ -74,14 +74,19 @@ export function decodeEntities(value: string): string {
   });
 }
 
-const SAFE_SCHEMES = ['http://', 'https://', 'mailto:'];
-
 /** A URL is a link only if it is absolute and uses a scheme that cannot execute. */
 export function safeHref(raw: string): string | undefined {
   const trimmed = raw.trim();
   if (trimmed === '') return undefined;
   const lowered = trimmed.toLowerCase();
-  if (!SAFE_SCHEMES.some((scheme) => lowered.startsWith(scheme))) return undefined;
+  // Performance: direct prefix check avoids array allocations on every invocation
+  if (
+    !lowered.startsWith('http://') &&
+    !lowered.startsWith('https://') &&
+    !lowered.startsWith('mailto:')
+  ) {
+    return undefined;
+  }
   // A control character can't reach here (the source was sanitized), but whitespace
   // inside a URL would let one visual "link" span two apparent targets.
   if (/\s/u.test(trimmed)) return undefined;
@@ -89,6 +94,12 @@ export function safeHref(raw: string): string | undefined {
 }
 
 // --- inline parsing ----------------------------------------------------------
+
+// Pre-compiled regular expressions for parseInline to prevent RegExp object instantiation per pass
+const CODE_SPAN_PATTERN = /`([^`\n]+)`/gu;
+const MD_LINK_PATTERN = /\[([^\]\n]+)\]\(([^)\s]+)\)/gu;
+const STRONG_PATTERN = /\*\*([^*\n]+)\*\*|__([^_\n]+)__/gu;
+const EMPHASIS_PATTERN = /\*([^*\n]+)\*|_([^_\n]+)_/gu;
 
 /**
  * `@handle` — the same grammar the server extracts mentions with
@@ -111,12 +122,6 @@ interface Mark {
   node: InlineNode;
 }
 
-function pushMark(marks: Mark[], mark: Mark): void {
-  // First match wins on overlap: an `@handle` inside a URL is part of the URL.
-  if (marks.some((existing) => mark.start < existing.end && existing.start < mark.end)) return;
-  marks.push(mark);
-}
-
 /**
  * Splits already-sanitized text into styled runs: emphasis, code spans, links,
  * mentions and tags. Never un-escapes anything — it only decides what each run *is*.
@@ -124,45 +129,60 @@ function pushMark(marks: Mark[], mark: Mark): void {
 export function parseInline(text: string): InlineNode[] {
   const marks: Mark[] = [];
 
-  // Each pattern scans a copy in which already-claimed spans are blanked out with
-  // newlines (which every pattern below excludes). Without it a later pattern both
-  // matches inside an earlier one and, worse, resumes its scan *after* that false
-  // match: `**bold** and *italic*` would silently lose the italic run.
+  // Performance optimization: Each pattern scans `masked` where claimed spans are blanked
+  // out with newlines. We use `pattern.exec()` and build `nextMasked` in chunks to avoid
+  // allocating intermediate array objects from `matchAll` and repeated `masked.slice()` calls.
   let masked = text;
-  const claim = (start: number, end: number): void => {
-    masked = masked.slice(0, start) + '\n'.repeat(end - start) + masked.slice(end);
-  };
 
   const collect = (
     pattern: RegExp,
-    build: (match: RegExpMatchArray) => InlineNode | undefined,
+    build: (match: RegExpExecArray) => InlineNode | undefined,
   ): void => {
-    const claimed: { start: number; end: number }[] = [];
-    for (const match of masked.matchAll(pattern)) {
-      if (match.index === undefined) continue;
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let nextMasked = '';
+    let lastEnd = 0;
+
+    while ((match = pattern.exec(masked)) !== null) {
       const node = build(match);
       if (node === undefined) continue;
       const start = match.index;
       const end = start + match[0].length;
-      pushMark(marks, { start, end, node });
-      claimed.push({ start, end });
+
+      // First match wins on overlap: an `@handle` inside a URL is part of the URL.
+      let overlap = false;
+      for (let i = 0; i < marks.length; i++) {
+        const existing = marks[i]!;
+        if (start < existing.end && existing.start < end) {
+          overlap = true;
+          break;
+        }
+      }
+      if (!overlap) {
+        marks.push({ start, end, node });
+        nextMasked += masked.slice(lastEnd, start) + '\n'.repeat(end - start);
+        lastEnd = end;
+      }
     }
-    for (const span of claimed) claim(span.start, span.end);
+
+    if (lastEnd > 0) {
+      masked = nextMasked + masked.slice(lastEnd);
+    }
   };
 
   // Code spans first: nothing inside a code span is markup.
-  collect(/`([^`\n]+)`/gu, (match) => ({ role: 'code', text: match[1] ?? '', marker: '`' }));
-  collect(/\[([^\]\n]+)\]\(([^)\s]+)\)/gu, (match) => {
+  collect(CODE_SPAN_PATTERN, (match) => ({ role: 'code', text: match[1] ?? '', marker: '`' }));
+  collect(MD_LINK_PATTERN, (match) => {
     const href = safeHref(match[2] ?? '');
     if (href === undefined) return { role: 'text', text: match[0] };
     return { role: 'link', text: match[1] ?? '', href };
   });
-  collect(/\*\*([^*\n]+)\*\*|__([^_\n]+)__/gu, (match) => ({
+  collect(STRONG_PATTERN, (match) => ({
     role: 'strong',
     text: match[1] ?? match[2] ?? '',
     marker: '**',
   }));
-  collect(/\*([^*\n]+)\*|_([^_\n]+)_/gu, (match) => ({
+  collect(EMPHASIS_PATTERN, (match) => ({
     role: 'emphasis',
     text: match[1] ?? match[2] ?? '',
     marker: '*',
@@ -182,7 +202,8 @@ export function parseInline(text: string): InlineNode[] {
 
   const nodes: InlineNode[] = [];
   let cursor = 0;
-  for (const mark of marks) {
+  for (let i = 0; i < marks.length; i++) {
+    const mark = marks[i]!;
     if (mark.start < cursor) continue;
     if (mark.start > cursor) nodes.push({ role: 'text', text: text.slice(cursor, mark.start) });
     nodes.push(mark.node);
@@ -195,9 +216,16 @@ export function parseInline(text: string): InlineNode[] {
 /** Every distinct `@handle` in a body, lowercased, in first-appearance order. */
 export function extractMentions(text: string): string[] {
   const handles: string[] = [];
-  for (const match of sanitizeForTerminal(text).matchAll(MENTION_PATTERN)) {
+  const seen = new Set<string>();
+  const sanitized = sanitizeForTerminal(text);
+  MENTION_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = MENTION_PATTERN.exec(sanitized)) !== null) {
     const handle = (match[1] ?? '').toLowerCase();
-    if (handle !== '' && !handles.includes(handle)) handles.push(handle);
+    if (handle !== '' && !seen.has(handle)) {
+      seen.add(handle);
+      handles.push(handle);
+    }
   }
   return handles;
 }
