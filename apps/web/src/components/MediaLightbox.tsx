@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX, type TouchEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX, type TouchEvent } from 'react';
 
 import { ChevronLeftIcon, CloseIcon } from './icons/Icons.js';
 import styles from './MediaLightbox.module.css';
@@ -24,6 +24,7 @@ export function MediaLightbox({
 }: MediaLightboxProps): JSX.Element | null {
   const [overrideIndex, setOverrideIndex] = useState<number | null>(null);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const currentIndex = overrideIndex ?? initialIndex;
 
@@ -34,6 +35,9 @@ export function MediaLightbox({
 
   useEffect(() => {
     if (!isOpen) return;
+
+    // Focus the close button when lightbox opens for immediate keyboard accessibility
+    closeButtonRef.current?.focus();
 
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
@@ -106,10 +110,12 @@ export function MediaLightbox({
           {currentIndex + 1} / {images.length}
         </span>
         <button
+          ref={closeButtonRef}
           type="button"
           className={styles['closeButton']}
           onClick={handleClose}
-          aria-label="Close lightbox"
+          aria-label="Close lightbox (Escape)"
+          title="Close lightbox (Esc)"
         >
           <CloseIcon size={24} />
         </button>
@@ -136,7 +142,8 @@ export function MediaLightbox({
                 return curr > 0 ? curr - 1 : images.length - 1;
               });
             }}
-            aria-label="Previous image"
+            aria-label="Previous image (Left arrow)"
+            title="Previous image (←)"
           >
             <ChevronLeftIcon size={28} />
           </button>
@@ -150,7 +157,8 @@ export function MediaLightbox({
                 return curr < images.length - 1 ? curr + 1 : 0;
               });
             }}
-            aria-label="Next image"
+            aria-label="Next image (Right arrow)"
+            title="Next image (→)"
           >
             <div style={{ transform: 'rotate(180deg)' }}>
               <ChevronLeftIcon size={28} />
