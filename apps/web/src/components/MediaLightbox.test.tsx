@@ -24,18 +24,21 @@ describe('MediaLightbox', () => {
     expect(screen.getByText('1 / 2')).toBeInTheDocument();
     expect(screen.getByText('Photo 1')).toBeInTheDocument();
 
-    const nextBtn = screen.getByRole('button', { name: 'Next image' });
+    const nextBtn = screen.getByRole('button', { name: 'Next image (Right arrow)' });
     fireEvent.click(nextBtn);
 
     expect(screen.getByText('2 / 2')).toBeInTheDocument();
     expect(screen.getByText('Photo 2')).toBeInTheDocument();
   });
 
-  it('closes on escape key or close button click', () => {
+  it('focuses close button when opened and closes on escape key or close button click', () => {
     const onClose = vi.fn();
     render(<MediaLightbox images={images} isOpen={true} onClose={onClose} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close lightbox' }));
+    const closeBtn = screen.getByRole('button', { name: 'Close lightbox (Escape)' });
+    expect(closeBtn).toHaveFocus();
+
+    fireEvent.click(closeBtn);
     expect(onClose).toHaveBeenCalled();
 
     fireEvent.keyDown(window, { key: 'Escape' });
