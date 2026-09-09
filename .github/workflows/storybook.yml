@@ -31,7 +31,9 @@ jobs:
       # Vitest browser mode drives Playwright's chromium headlessly (no Storybook server
       # is booted — the addon runs stories as portable-story tests).
       - name: Install Playwright chromium
-        run: pnpm --filter @patches/web exec playwright install --with-deps chromium
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          pnpm --filter @patches/web exec playwright install --with-deps chromium
 
       # Storybook bundles workspace deps like @patches/markup/@patches/client from their
       # tsup-built dist/ — build them (deps only, not @patches/web itself) like web.yml's
