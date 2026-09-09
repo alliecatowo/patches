@@ -32,7 +32,8 @@ jobs:
       # is booted — the addon runs stories as portable-story tests).
       - name: Install Playwright chromium
         run: |
-          sudo rm -f /etc/apt/sources.list.d/google-chrome.list
+          sudo sed -i '/dl.google.com/d' /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true
+          sudo rm -f /etc/apt/sources.list.d/google*.list /etc/apt/sources.list.d/chrome*.list
           pnpm --filter @patches/web exec playwright install --with-deps chromium
 
       # Storybook bundles workspace deps like @patches/markup/@patches/client from their
