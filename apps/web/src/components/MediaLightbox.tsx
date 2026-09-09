@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX, type TouchEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX, type TouchEvent } from 'react';
 
 import { ChevronLeftIcon, CloseIcon } from './icons/Icons.js';
 import styles from './MediaLightbox.module.css';
@@ -24,6 +24,9 @@ export function MediaLightbox({
 }: MediaLightboxProps): JSX.Element | null {
   const [overrideIndex, setOverrideIndex] = useState<number | null>(null);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const currentIndex = overrideIndex ?? initialIndex;
 
@@ -34,6 +37,11 @@ export function MediaLightbox({
 
   useEffect(() => {
     if (!isOpen) return;
+
+    if (!dialogRef.current?.contains(document.activeElement)) {
+      previousFocusRef.current = document.activeElement as HTMLElement | null;
+    }
+    closeButtonRef.current?.focus();
 
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
@@ -48,6 +56,21 @@ export function MediaLightbox({
           const curr = i ?? initialIndex;
           return curr < images.length - 1 ? curr + 1 : 0;
         });
+      } else if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
       }
     };
 
@@ -57,6 +80,7 @@ export function MediaLightbox({
     return () => {
       document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus();
     };
   }, [isOpen, images.length, initialIndex, handleClose]);
 
@@ -95,6 +119,7 @@ export function MediaLightbox({
 
   return (
     <div
+      ref={dialogRef}
       className={styles['overlay']}
       onClick={handleClose}
       role="dialog"
@@ -106,6 +131,7 @@ export function MediaLightbox({
           {currentIndex + 1} / {images.length}
         </span>
         <button
+          ref={closeButtonRef}
           type="button"
           className={styles['closeButton']}
           onClick={handleClose}
