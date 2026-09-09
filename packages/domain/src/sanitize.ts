@@ -83,6 +83,8 @@ export function sanitizeText(value: string, options: SanitizeTextOptions = {}): 
   return result;
 }
 
+const sharedEncoder = new TextEncoder();
+
 /** UTF-8 byte length, for fields whose limit is specified in KiB rather than characters
  * (§171's per-block 8 KiB text bound, the 64 KiB document bound). `TextEncoder` (not
  * `Buffer.byteLength`) on purpose — `packages/domain` is imported by the browser bundle
@@ -92,7 +94,7 @@ export function sanitizeText(value: string, options: SanitizeTextOptions = {}): 
  * catch-all silently turned into "page couldn't be displayed"/"no wall content" (B-216).
  * `TextEncoder` is a standard global in both environments. */
 export function utf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).length;
+  return sharedEncoder.encode(value).length;
 }
 
 /**
