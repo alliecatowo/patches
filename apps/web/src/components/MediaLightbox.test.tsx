@@ -41,4 +41,38 @@ describe('MediaLightbox', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('manages focus upon open, tab key navigation trap, and restoration upon close', () => {
+    const triggerBtn = document.createElement('button');
+    triggerBtn.textContent = 'Open modal';
+    document.body.appendChild(triggerBtn);
+    triggerBtn.focus();
+    expect(document.activeElement).toBe(triggerBtn);
+
+    const onClose = vi.fn();
+    const { unmount, rerender } = render(
+      <MediaLightbox images={images} isOpen={true} onClose={onClose} />,
+    );
+
+    const closeBtn = screen.getByRole('button', { name: 'Close lightbox' });
+    const nextBtn = screen.getByRole('button', { name: 'Next image' });
+
+    // Initial focus set to close button
+    expect(document.activeElement).toBe(closeBtn);
+
+    // Tab trap: Shift+Tab on first focusable moves focus to last focusable
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(nextBtn);
+
+    // Tab trap: Tab on last focusable wraps to first focusable
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: false });
+    expect(document.activeElement).toBe(closeBtn);
+
+    // Focus restoration on close
+    rerender(<MediaLightbox images={images} isOpen={false} onClose={onClose} />);
+    expect(document.activeElement).toBe(triggerBtn);
+
+    unmount();
+    document.body.removeChild(triggerBtn);
+  });
 });
