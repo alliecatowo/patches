@@ -311,7 +311,15 @@ jobs:
             while IFS= read -r line; do args+=("$line"); done < "$RUNNER_TEMP/preview-r2-args.txt"
             rm -f "$RUNNER_TEMP/preview-r2-args.txt"
           fi
-          flyctl secrets set --app "patches-pr-${PR_NUMBER}" "${args[@]}" >/dev/null
+          if ! flyctl secrets set --app "patches-pr-${PR_NUMBER}" "${args[@]}" 2>"$RUNNER_TEMP/fly-secrets-err.txt" >/dev/null; then
+            if grep -qi 'machine limit' "$RUNNER_TEMP/fly-secrets-err.txt"; then
+              echo 'Fly machine limit exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            else
+              cat "$RUNNER_TEMP/fly-secrets-err.txt" >&2
+              exit 1
+            fi
+          fi
 
       - name: Generate preview fly config
         run: node infra/preview/make-preview-config.mjs --pr "$PR_NUMBER"
@@ -405,9 +413,17 @@ jobs:
         # fly config as before.
         run: |
           set -euo pipefail
-          flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
+          if ! flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
             --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
-            --ha=false --strategy immediate --yes
+            --ha=false --strategy immediate --yes 2>"$RUNNER_TEMP/fly-deploy-err.txt"; then
+            if grep -qi 'machine limit' "$RUNNER_TEMP/fly-deploy-err.txt"; then
+              echo 'Fly machine limit exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            else
+              cat "$RUNNER_TEMP/fly-deploy-err.txt" >&2
+              exit 1
+            fi
+          fi
 
       - name: Allow the web preview origin in Connect CORS
         # An empty/unset WEB_ORIGINS denies every cross-origin browser request (see
