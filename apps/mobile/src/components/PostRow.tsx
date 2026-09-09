@@ -1,8 +1,10 @@
-import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { MediaAttachment, Post } from '@patches/proto/es';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { getPostMediaAttachments, resolveMediaUrl } from '../media/attachment.js';
 
 export interface PostRowProps {
   post: Post;
@@ -22,7 +24,7 @@ export interface PostRowProps {
  * only the body it's warning about starts hidden, matching `apps/web`'s `PostCard`
  * (`cwOpen` state). Reply/Quote/Edit are shown only when the caller wires a handler —
  * `HomeScreen` passes all three; `Edit` additionally requires `viewerActorId` to match
- * the post's author.
+ * the post's author. Attached media items (B-084) are rendered when body content is shown.
  */
 export function PostRow({
   post,
@@ -35,6 +37,7 @@ export function PostRow({
   const [cwOpen, setCwOpen] = useState(post.contentWarning === '');
   const isOwn = viewerActorId !== undefined && post.author?.id === viewerActorId;
   const authorHandle = post.author?.handle;
+  const attachments = getPostMediaAttachments(post);
 
   return (
     <View style={styles.row}>
@@ -70,7 +73,10 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
+              <PostMediaAttachments media={attachments} />
+            </>
           )}
         </>
       )}
@@ -102,6 +108,77 @@ export function PostRow({
   );
 }
 
+function PostMediaItem({ media }: { media: MediaAttachment }): JSX.Element {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void resolveMediaUrl(media.mediaId, (req) => api.media.getMediaDownload(req))
+      .then((safeUrl) => {
+        if (cancelled) return;
+        if (safeUrl === null) {
+          setFailed(true);
+        } else {
+          setUrl(safeUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [media.mediaId]);
+
+  if (failed) {
+    return (
+      <View style={styles.mediaPlaceholder}>
+        <Text style={styles.muted}>Image unavailable</Text>
+      </View>
+    );
+  }
+
+  if (url === null) {
+    return (
+      <View style={styles.mediaPlaceholder}>
+        <Text style={styles.muted}>Loading image…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mediaItem}>
+      <Image
+        source={{ uri: url }}
+        style={styles.mediaImage}
+        resizeMode="cover"
+        accessibilityLabel={media.altText || 'Attached image'}
+      />
+      {media.altText !== '' ? (
+        <Text style={styles.mediaAlt} numberOfLines={2}>
+          {media.altText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function PostMediaAttachments({
+  media,
+}: {
+  media: readonly MediaAttachment[];
+}): JSX.Element | null {
+  if (media.length === 0) return null;
+  return (
+    <View style={styles.mediaList}>
+      {media.map((item) => (
+        <PostMediaItem key={item.mediaId} media={item} />
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 12,
@@ -120,4 +197,21 @@ const styles = StyleSheet.create({
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
   action: { color: '#7c9cff', fontSize: 13 },
+  muted: { color: '#888', fontSize: 12 },
+  mediaList: { marginTop: 8, gap: 8 },
+  mediaItem: {
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#161618',
+  },
+  mediaImage: { width: '100%', height: 200, borderRadius: 8 },
+  mediaAlt: { color: '#888', fontSize: 12, marginTop: 4, paddingHorizontal: 4 },
+  mediaPlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 8,
+    marginTop: 8,
+  },
 });
