@@ -167,17 +167,41 @@ export function compareUtf8Bytes(left: string, right: string): number {
   return leftBytes.length - rightBytes.length;
 }
 
+// Precomputed lookup table for byte to 2-character hex conversion.
+// Avoids array allocations, string formatting, and padStart overhead per byte.
+const HEX_LOOKUP: string[] = Array.from({ length: 256 }, (_, index) =>
+  index.toString(16).padStart(2, '0'),
+);
+
+// Precomputed lookup table for ASCII char code to hex nibble value.
+// Invalid or non-hex ASCII codes map to -1 for fast single-pass validation and parsing.
+const HEX_MAP = new Int8Array(256).fill(-1);
+for (let i = 0; i < 10; i += 1) HEX_MAP[48 + i] = i; // '0'-'9'
+for (let i = 0; i < 6; i += 1) {
+  HEX_MAP[65 + i] = 10 + i; // 'A'-'F'
+  HEX_MAP[97 + i] = 10 + i; // 'a'-'f'
+}
+
 export function toHex(value: Uint8Array): string {
-  return Array.from(value, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  let hex = '';
+  for (let index = 0; index < value.length; index += 1) {
+    hex += HEX_LOOKUP[value[index] ?? 0];
+  }
+  return hex;
 }
 
 export function fromHex(value: string): Uint8Array {
-  if (value.length % 2 !== 0 || !/^[0-9a-f]*$/i.test(value)) {
+  if (value.length % 2 !== 0) {
     throw new MalformedInputError('Hex input is malformed.');
   }
   const output = new Uint8Array(value.length / 2);
-  for (let index = 0; index < output.length; index += 1) {
-    output[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+  for (let index = 0; index < value.length; index += 2) {
+    const high = HEX_MAP[value.charCodeAt(index)] ?? -1;
+    const low = HEX_MAP[value.charCodeAt(index + 1)] ?? -1;
+    if (high === -1 || low === -1) {
+      throw new MalformedInputError('Hex input is malformed.');
+    }
+    output[index >> 1] = (high << 4) | low;
   }
   return output;
 }
