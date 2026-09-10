@@ -6,6 +6,7 @@ import { api } from '../api/client.js';
 import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
 import { useSession } from '../hooks/useSession.js';
+import { Button } from './ui/index.js';
 
 export function FollowButton({ actorId }: { actorId: string }): JSX.Element | null {
   const session = useSession();
@@ -36,15 +37,26 @@ export function FollowButton({ actorId }: { actorId: string }): JSX.Element | nu
   });
 
   if (session === null || isSelf) return null;
-  if (relationshipQuery.isPending) return <button disabled>…</button>;
+  if (relationshipQuery.isPending) {
+    return (
+      <Button size="sm" variant="secondary" loading disabled aria-label="Loading follow state" />
+    );
+  }
 
   const state = relationshipQuery.data?.relationship?.state ?? FollowState.NONE;
   const following = state === FollowState.FOLLOWING;
   const pending = state === FollowState.PENDING;
 
+  const label = pending ? 'Requested' : following ? 'Following' : 'Follow';
+
   return (
-    <button type="button" onClick={() => mutation.mutate(!following)} disabled={mutation.isPending}>
-      {pending ? 'Requested' : following ? 'Following' : 'Follow'}
-    </button>
+    <Button
+      size="sm"
+      variant={following ? 'secondary' : 'primary'}
+      onClick={() => mutation.mutate(!following)}
+      loading={mutation.isPending}
+    >
+      {label}
+    </Button>
   );
 }
