@@ -1,8 +1,11 @@
 import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { safePageHref } from '../pages/href.js';
+import { toPostMediaViews } from './postMedia.js';
 
 export interface PostRowProps {
   post: Post;
@@ -17,12 +20,60 @@ export interface PostRowProps {
 }
 
 /**
+ * Single media attachment in a post. Fetches presigned download URL via `GetMediaDownload`,
+ * validates it http(s)-only via `safePageHref`, and renders the image with alt text.
+ */
+function PostMediaImage({ mediaId, altText }: { mediaId: string; altText: string }): JSX.Element {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.media
+      .getMediaDownload({ mediaId })
+      .then((response) => {
+        if (cancelled) return;
+        const safe = safePageHref(response.downloadUrl);
+        if (safe === null) {
+          setFailed(true);
+          return;
+        }
+        setUrl(safe);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaId]);
+
+  if (failed || url === null) {
+    return (
+      <View style={styles.imagePlaceholder}>
+        <Text style={styles.muted}>{failed ? 'Image unavailable.' : 'Loading image…'}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.imageContainer}>
+      <Image source={{ uri: url }} style={styles.image} resizeMode="cover" />
+      {altText === '' ? null : (
+        <Text style={styles.imageAlt} numberOfLines={2}>
+          {altText}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+/**
  * One post in a timeline. A content warning is never a reveal-then-hide-again toggle for
  * the CW text itself (spec §185 — "content always renders"): the label always shows, and
  * only the body it's warning about starts hidden, matching `apps/web`'s `PostCard`
  * (`cwOpen` state). Reply/Quote/Edit are shown only when the caller wires a handler —
  * `HomeScreen` passes all three; `Edit` additionally requires `viewerActorId` to match
- * the post's author.
+ * the post's author. Media attachments render when present and non-deleted.
  */
 export function PostRow({
   post,
@@ -35,6 +86,7 @@ export function PostRow({
   const [cwOpen, setCwOpen] = useState(post.contentWarning === '');
   const isOwn = viewerActorId !== undefined && post.author?.id === viewerActorId;
   const authorHandle = post.author?.handle;
+  const mediaViews = toPostMediaViews(post.media);
 
   return (
     <View style={styles.row}>
@@ -70,7 +122,20 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
+              {mediaViews.length > 0 ? (
+                <View style={styles.mediaContainer}>
+                  {mediaViews.map((media) => (
+                    <PostMediaImage
+                      key={media.mediaId}
+                      mediaId={media.mediaId}
+                      altText={media.altText}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </>
           )}
         </>
       )}
@@ -116,6 +181,18 @@ const styles = StyleSheet.create({
   time: { color: '#666', marginLeft: 'auto' },
   cw: { color: '#e0b341', marginBottom: 4 },
   body: { color: '#e5e5e5', fontSize: 15, lineHeight: 20 },
+  mediaContainer: { marginTop: 8, gap: 8 },
+  imageContainer: { borderRadius: 6, overflow: 'hidden', backgroundColor: '#161618' },
+  image: { width: '100%', height: 200, borderRadius: 6 },
+  imageAlt: { color: '#888', fontSize: 12, marginTop: 4 },
+  imagePlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 6,
+  },
+  muted: { color: '#888' },
   counts: { flexDirection: 'row', gap: 16, marginTop: 8 },
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
