@@ -26,10 +26,16 @@ describe('PostRow media attachments data structure (B-084)', () => {
     });
 
     expect(post.media).toHaveLength(2);
-    expect(post.media[0].mediaId).toBe('media-1');
-    expect(post.media[0].altText).toBe('A cute cat');
-    expect(post.media[1].mediaId).toBe('media-2');
-    expect(post.media[1].altText).toBe('A sunny beach');
+    const first = post.media[0];
+    const second = post.media[1];
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    if (first && second) {
+      expect(first.mediaId).toBe('media-1');
+      expect(first.altText).toBe('A cute cat');
+      expect(second.mediaId).toBe('media-2');
+      expect(second.altText).toBe('A sunny beach');
+    }
   });
 
   it('validates media download URLs using safePageHref', () => {

@@ -1,5 +1,13 @@
 import { useEffect, useState, type JSX } from 'react';
-import { Image, StyleSheet, Text, View, type StyleProp, type ViewStyle, type ImageStyle } from 'react-native';
+import {
+  Image,
+  StyleSheet,
+  Text,
+  View,
+  type StyleProp,
+  type ViewStyle,
+  type ImageStyle,
+} from 'react-native';
 
 import { api } from '../api/client.js';
 import { safePageHref } from '../pages/href.js';
