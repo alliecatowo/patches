@@ -1,5 +1,5 @@
 import { parseMarkup, type BlockNode, type InlineNode } from '@patches/markup';
-import type { JSX } from 'react';
+import { useMemo, type JSX } from 'react';
 import { Link } from 'react-router-dom';
 
 export interface RichBodyProps {
@@ -15,7 +15,9 @@ export interface RichBodyProps {
  * elements — never `dangerouslySetInnerHTML`, so there is no HTML-injection surface.
  */
 export function RichBody({ source }: RichBodyProps): JSX.Element {
-  const blocks = parseMarkup(source);
+  // Memoize markup AST parsing to prevent re-running regexes, HTML tokenization, and AST generation on every re-render
+  // when `source` is unchanged (e.g. during parent post interactions, hover/focus shifts, polling ticks).
+  const blocks = useMemo(() => parseMarkup(source), [source]);
   return <>{blocks.map((block, index) => renderBlock(block, index))}</>;
 }
 
