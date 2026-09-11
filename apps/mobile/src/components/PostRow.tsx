@@ -3,6 +3,7 @@ import { useState, type JSX } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { MediaImage } from './MediaImage.js';
 
 export interface PostRowProps {
   post: Post;
@@ -70,7 +71,21 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              <Text style={styles.body}>{post.body}</Text>
+              {post.media && post.media.length > 0 ? (
+                <View style={styles.mediaList}>
+                  {post.media.map((item, index) => (
+                    <MediaImage
+                      key={item.mediaId || index}
+                      mediaId={item.mediaId}
+                      altText={item.altText}
+                      containerStyle={styles.mediaItem}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </>
           )}
         </>
       )}
@@ -116,6 +131,8 @@ const styles = StyleSheet.create({
   time: { color: '#666', marginLeft: 'auto' },
   cw: { color: '#e0b341', marginBottom: 4 },
   body: { color: '#e5e5e5', fontSize: 15, lineHeight: 20 },
+  mediaList: { marginTop: 8, gap: 8 },
+  mediaItem: { marginTop: 4 },
   counts: { flexDirection: 'row', gap: 16, marginTop: 8 },
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
