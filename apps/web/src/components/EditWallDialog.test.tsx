@@ -139,4 +139,39 @@ describe('EditWallDialog', () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('provides accessible ARIA attributes for block type selection and form inputs', () => {
+    const doc = new TextEncoder().encode(
+      JSON.stringify({
+        version: 1,
+        pages: [
+          { slug: 'home', title: 'Home', blocks: [{ type: 'Text', body: 'existing wall text' }] },
+        ],
+      }),
+    );
+
+    renderDialog({
+      isOpen: true,
+      onClose: vi.fn(),
+      handle: 'allie',
+      currentDocument: doc,
+    });
+
+    expect(screen.getByRole('group', { name: 'Block type' })).toBeInTheDocument();
+
+    const textBtn = screen.getByRole('button', { name: 'Text' });
+    const heroBtn = screen.getByRole('button', { name: 'Hero' });
+
+    expect(textBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(heroBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByLabelText('Block content')).toBeInTheDocument();
+    expect(screen.getByLabelText('Remove Text block')).toBeInTheDocument();
+
+    fireEvent.click(heroBtn);
+
+    expect(textBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(heroBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Hero Headline')).toBeInTheDocument();
+    expect(screen.getByLabelText('Subtitle')).toBeInTheDocument();
+  });
 });
