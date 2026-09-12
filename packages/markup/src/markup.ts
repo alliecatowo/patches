@@ -105,6 +105,14 @@ const TAG_PATTERN = /#([a-zA-Z0-9_]{1,64})\b/gu;
 /** Bare URLs become links so a pasted address is still activatable. */
 const AUTOLINK_PATTERN = /https?:\/\/[^\s<>()]+/gu;
 
+const CODE_SPAN_PATTERN = /`([^`\n]+)`/gu;
+const MARKDOWN_LINK_PATTERN = /\[([^\]\n]+)\]\(([^)\s]+)\)/gu;
+const STRONG_PATTERN = /\*\*([^*\n]+)\*\*|__([^_\n]+)__/gu;
+const EMPHASIS_PATTERN = /\*([^*\n]+)\*|_([^_\n]+)_/gu;
+
+/** Fast-path pattern to check whether inline text contains any potential markup triggers. */
+const HAS_MARKUP_PATTERN = /[*`_@#]|https?:\/\/|\[/u;
+
 interface Mark {
   start: number;
   end: number;
@@ -122,6 +130,11 @@ function pushMark(marks: Mark[], mark: Mark): void {
  * mentions and tags. Never un-escapes anything — it only decides what each run *is*.
  */
 export function parseInline(text: string): InlineNode[] {
+  // Fast path: plain text with no markup characters can skip regex scans entirely.
+  if (!HAS_MARKUP_PATTERN.test(text)) {
+    return [{ role: 'text', text }];
+  }
+
   const marks: Mark[] = [];
 
   // Each pattern scans a copy in which already-claimed spans are blanked out with
@@ -151,18 +164,18 @@ export function parseInline(text: string): InlineNode[] {
   };
 
   // Code spans first: nothing inside a code span is markup.
-  collect(/`([^`\n]+)`/gu, (match) => ({ role: 'code', text: match[1] ?? '', marker: '`' }));
-  collect(/\[([^\]\n]+)\]\(([^)\s]+)\)/gu, (match) => {
+  collect(CODE_SPAN_PATTERN, (match) => ({ role: 'code', text: match[1] ?? '', marker: '`' }));
+  collect(MARKDOWN_LINK_PATTERN, (match) => {
     const href = safeHref(match[2] ?? '');
     if (href === undefined) return { role: 'text', text: match[0] };
     return { role: 'link', text: match[1] ?? '', href };
   });
-  collect(/\*\*([^*\n]+)\*\*|__([^_\n]+)__/gu, (match) => ({
+  collect(STRONG_PATTERN, (match) => ({
     role: 'strong',
     text: match[1] ?? match[2] ?? '',
     marker: '**',
   }));
-  collect(/\*([^*\n]+)\*|_([^_\n]+)_/gu, (match) => ({
+  collect(EMPHASIS_PATTERN, (match) => ({
     role: 'emphasis',
     text: match[1] ?? match[2] ?? '',
     marker: '*',
