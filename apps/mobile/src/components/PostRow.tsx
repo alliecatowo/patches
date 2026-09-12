@@ -1,8 +1,10 @@
-import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { MediaAttachment, Post } from '@patches/proto/es';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { safePageHref } from '../pages/href.js';
 
 export interface PostRowProps {
   post: Post;
@@ -11,6 +13,8 @@ export interface PostRowProps {
   onReply?: (post: Post) => void;
   onQuote?: (post: Post) => void;
   onEdit?: (post: Post) => void;
+  /** Open the author's ProfileScreen (B-085). */
+  onOpenProfile?: (handle: string) => void;
   /** Open the author's Patches Page/wall — the mobile Pages viewer's entry point from a
    * timeline (B-082). Optional so contexts without a page stack render inert handles. */
   onOpenPage?: (handle: string) => void;
@@ -30,6 +34,7 @@ export function PostRow({
   onReply,
   onQuote,
   onEdit,
+  onOpenProfile,
   onOpenPage,
 }: PostRowProps): JSX.Element {
   const [cwOpen, setCwOpen] = useState(post.contentWarning === '');
@@ -39,15 +44,35 @@ export function PostRow({
   return (
     <View style={styles.row}>
       <View style={styles.header}>
-        <Text style={styles.name} numberOfLines={1}>
-          {post.author?.displayName || post.author?.handle}
-        </Text>
-        {onOpenPage !== undefined && authorHandle !== undefined ? (
+        {onOpenProfile !== undefined && authorHandle !== undefined ? (
+          <TouchableOpacity
+            onPress={() => onOpenProfile(authorHandle)}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+          >
+            <Text style={styles.nameLink} numberOfLines={1}>
+              {post.author?.displayName || post.author?.handle}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.name} numberOfLines={1}>
+            {post.author?.displayName || post.author?.handle}
+          </Text>
+        )}
+        {onOpenProfile !== undefined && authorHandle !== undefined ? (
+          <TouchableOpacity
+            onPress={() => onOpenProfile(authorHandle)}
+            hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+          >
+            <Text style={styles.handleLink} numberOfLines={1}>
+              @{authorHandle}
+            </Text>
+          </TouchableOpacity>
+        ) : onOpenPage !== undefined && authorHandle !== undefined ? (
           <TouchableOpacity
             onPress={() => onOpenPage(authorHandle)}
             hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
           >
-            <Text style={styles.handleLink} numberOfLines={1}>
+            <Text style={styles.handlePageLink} numberOfLines={1}>
               @{authorHandle}
             </Text>
           </TouchableOpacity>
@@ -70,7 +95,16 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              <Text style={styles.body}>{post.body}</Text>
+              {post.media && post.media.length > 0 ? (
+                <View style={styles.mediaList}>
+                  {post.media.map((item) => (
+                    <PostMediaImage key={item.mediaId} attachment={item} />
+                  ))}
+                </View>
+              ) : null}
+            </>
           )}
         </>
       )}
@@ -102,6 +136,51 @@ export function PostRow({
   );
 }
 
+function PostMediaImage({ attachment }: { attachment: MediaAttachment }): JSX.Element {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.media
+      .getMediaDownload({ mediaId: attachment.mediaId })
+      .then((response) => {
+        if (cancelled) return;
+        const safe = safePageHref(response.downloadUrl);
+        if (safe === null) {
+          setFailed(true);
+          return;
+        }
+        setUrl(safe);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.mediaId]);
+
+  if (failed || url === null) {
+    return (
+      <View style={styles.imagePlaceholder}>
+        <Text style={styles.muted}>{failed ? 'Image unavailable.' : 'Loading image…'}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mediaWrap}>
+      <Image source={{ uri: url }} style={styles.mediaImage} resizeMode="cover" />
+      {attachment.altText !== '' ? (
+        <Text style={styles.mediaAlt} numberOfLines={2}>
+          {attachment.altText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 12,
@@ -111,11 +190,26 @@ const styles = StyleSheet.create({
   },
   header: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 4 },
   name: { color: '#fff', fontWeight: '700', flexShrink: 1 },
+  nameLink: { color: '#fff', fontWeight: '700', flexShrink: 1 },
   handle: { color: '#888', flexShrink: 1 },
   handleLink: { color: '#7c9cff', flexShrink: 1 },
+  handlePageLink: { color: '#7c9cff', flexShrink: 1 },
   time: { color: '#666', marginLeft: 'auto' },
   cw: { color: '#e0b341', marginBottom: 4 },
   body: { color: '#e5e5e5', fontSize: 15, lineHeight: 20 },
+  mediaList: { marginTop: 8, gap: 8 },
+  mediaWrap: { borderRadius: 6, overflow: 'hidden' },
+  mediaImage: { width: '100%', height: 200, backgroundColor: '#161618', borderRadius: 6 },
+  mediaAlt: { color: '#888', fontSize: 12, marginTop: 4 },
+  imagePlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 6,
+    marginTop: 8,
+  },
+  muted: { color: '#888', fontSize: 13 },
   counts: { flexDirection: 'row', gap: 16, marginTop: 8 },
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
