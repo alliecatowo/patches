@@ -19,6 +19,8 @@ export interface HomeScreenProps {
   onReply: (post: Post) => void;
   onQuote: (post: Post) => void;
   onEdit: (post: Post) => void;
+  /** Opens a post author's ProfileScreen (B-085). */
+  onOpenProfile?: (handle: string) => void;
   /** Opens a post author's Patches Page (`PageScreen`, B-082). */
   onOpenPage: (handle: string) => void;
 }
@@ -33,6 +35,7 @@ export function HomeScreen({
   onReply,
   onQuote,
   onEdit,
+  onOpenProfile,
   onOpenPage,
 }: HomeScreenProps): JSX.Element {
   const [tab, setTab] = useState<Tab>('home');
@@ -98,6 +101,7 @@ export function HomeScreen({
             onReply={onReply}
             onQuote={onQuote}
             onEdit={onEdit}
+            onOpenProfile={onOpenProfile}
             onOpenPage={onOpenPage}
           />
         )}

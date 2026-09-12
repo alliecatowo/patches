@@ -17,6 +17,7 @@ import { HomeScreen } from './screens/HomeScreen.js';
 import { LoginScreen } from './screens/LoginScreen.js';
 import { NotificationsScreen } from './screens/NotificationsScreen.js';
 import { PageScreen } from './screens/PageScreen.js';
+import { ProfileScreen } from './screens/ProfileScreen.js';
 import { RegisterScreen } from './screens/RegisterScreen.js';
 import { useSession } from './hooks/useSession.js';
 import { normalizeHandle } from './pages/document.js';
@@ -35,6 +36,8 @@ export default function App(): JSX.Element {
   const [tab, setTab] = useState<Tab>('home');
   const [authView, setAuthView] = useState<AuthView>('login');
   const [composeTarget, setComposeTarget] = useState<ComposeTarget>({ kind: 'post' });
+  /** The handle whose Profile is open, or `null` for normal navigation. */
+  const [profileHandle, setProfileHandle] = useState<string | null>(null);
   /** The handle whose Patches Page is open, or `null` for the normal tab shell — the
    * Pages viewer (B-082) replaces the content + tab bar until Back. */
   const [pageHandle, setPageHandle] = useState<string | null>(null);
@@ -42,6 +45,10 @@ export default function App(): JSX.Element {
   const openCompose = (nextTarget: ComposeTarget): void => {
     setComposeTarget(nextTarget);
     setTab('compose');
+  };
+
+  const openProfile = (handle: string): void => {
+    setProfileHandle(normalizeHandle(handle));
   };
 
   const openPage = (handle: string): void => {
@@ -80,7 +87,7 @@ export default function App(): JSX.Element {
       <View style={styles.topBar}>
         <TouchableOpacity
           style={styles.topHandleButton}
-          onPress={() => openPage(actor.handle)}
+          onPress={() => openProfile(actor.handle)}
           hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
         >
           <Text style={styles.handle} numberOfLines={1}>
@@ -93,6 +100,16 @@ export default function App(): JSX.Element {
       </View>
       {pageHandle !== null ? (
         <PageScreen handle={pageHandle} onBack={() => setPageHandle(null)} />
+      ) : profileHandle !== null ? (
+        <ProfileScreen
+          handle={profileHandle}
+          viewerActorId={actor.id}
+          onBack={() => setProfileHandle(null)}
+          onOpenPage={openPage}
+          onReply={(post: Post) => openCompose({ kind: 'reply', replyTo: post })}
+          onQuote={(post: Post) => openCompose({ kind: 'quote', quote: post })}
+          onEdit={(post: Post) => openCompose({ kind: 'edit', editing: post })}
+        />
       ) : (
         <>
           <View style={styles.content}>
@@ -102,6 +119,7 @@ export default function App(): JSX.Element {
                 onReply={(post: Post) => openCompose({ kind: 'reply', replyTo: post })}
                 onQuote={(post: Post) => openCompose({ kind: 'quote', quote: post })}
                 onEdit={(post: Post) => openCompose({ kind: 'edit', editing: post })}
+                onOpenProfile={openProfile}
                 onOpenPage={openPage}
               />
             ) : null}
