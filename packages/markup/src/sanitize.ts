@@ -1,8 +1,6 @@
-/** `\n` is the only control character user text is ever allowed to keep (multi-line
- * post bodies/bios wrap normally); everything else in this set is stripped instead
- * of merely escaped, because there is no legitimate reason a bio/handle/post body
- * needs it. */
-const KEEP_CODE_POINTS = new Set([0x0a]);
+/** Fast-path pattern matching ASCII C0 control chars (0x00-0x1F, except 0x0A \n), \t (0x09), DEL (0x7F), and C1 control chars (0x80-0x9F). */
+// eslint-disable-next-line no-control-regex -- fast-path pattern matching ASCII control characters
+const CONTROL_CHARS_PATTERN = /[\x00-\x08\x09\x0b-\x1f\x7f-\x9f]/;
 
 /**
  * Strips ASCII control characters and C1 control codes from user-supplied text before
@@ -18,6 +16,11 @@ const KEEP_CODE_POINTS = new Set([0x0a]);
  * by many TUI components outside the markup pipeline.
  */
 export function sanitizeForTerminal(value: string): string {
+  // Fast path: if the string contains no control characters or tabs, return it directly.
+  if (!CONTROL_CHARS_PATTERN.test(value)) {
+    return value;
+  }
+
   let out = '';
   for (const char of value) {
     const codePoint = char.codePointAt(0) ?? 0;
@@ -25,7 +28,7 @@ export function sanitizeForTerminal(value: string): string {
       out += ' '; // tab -> single space, so tab-separated text doesn't collapse together
       continue;
     }
-    if (KEEP_CODE_POINTS.has(codePoint)) {
+    if (codePoint === 0x0a) {
       out += char;
       continue;
     }
