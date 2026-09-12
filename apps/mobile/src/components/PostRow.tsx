@@ -9,15 +9,15 @@ import { safePageHref } from '../pages/href.js';
 export interface PostRowProps {
   post: Post;
   /** The signed-in actor's id, so "Edit" only ever shows on the viewer's own posts. */
-  viewerActorId?: string;
-  onReply?: (post: Post) => void;
-  onQuote?: (post: Post) => void;
-  onEdit?: (post: Post) => void;
+  viewerActorId?: string | undefined;
+  onReply?: ((post: Post) => void) | undefined;
+  onQuote?: ((post: Post) => void) | undefined;
+  onEdit?: ((post: Post) => void) | undefined;
   /** Open the author's ProfileScreen (B-085). */
-  onOpenProfile?: (handle: string) => void;
+  onOpenProfile?: ((handle: string) => void) | undefined;
   /** Open the author's Patches Page/wall — the mobile Pages viewer's entry point from a
    * timeline (B-082). Optional so contexts without a page stack render inert handles. */
-  onOpenPage?: (handle: string) => void;
+  onOpenPage?: ((handle: string) => void) | undefined;
 }
 
 /**

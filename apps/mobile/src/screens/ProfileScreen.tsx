@@ -17,13 +17,13 @@ import { safePageHref } from '../pages/href.js';
 
 export interface ProfileScreenProps {
   handle: string;
-  viewerActorId?: string;
+  viewerActorId?: string | undefined;
   onBack: () => void;
   /** Opens a user's Patches Page (`PageScreen`, B-082). */
   onOpenPage: (handle: string) => void;
-  onReply?: (post: Post) => void;
-  onQuote?: (post: Post) => void;
-  onEdit?: (post: Post) => void;
+  onReply?: ((post: Post) => void) | undefined;
+  onQuote?: ((post: Post) => void) | undefined;
+  onEdit?: ((post: Post) => void) | undefined;
 }
 
 export function ProfileScreen({
@@ -102,8 +102,8 @@ export function ProfileScreen({
   }, [actorState, loadPosts]);
 
   const websiteHref =
-    actorState.status === 'ready' && actorState.actor.website
-      ? safePageHref(actorState.actor.website)
+    actorState.status === 'ready' && actorState.actor.websiteUrl
+      ? safePageHref(actorState.actor.websiteUrl)
       : null;
 
   return (
@@ -139,12 +139,12 @@ export function ProfileScreen({
               ) : null}
 
               <View style={styles.metaRow}>
-                {actorState.actor.location !== '' ? (
-                  <Text style={styles.metaText}>📍 {actorState.actor.location}</Text>
+                {actorState.actor.locationText !== '' ? (
+                  <Text style={styles.metaText}>📍 {actorState.actor.locationText}</Text>
                 ) : null}
                 {websiteHref !== null ? (
                   <TouchableOpacity onPress={() => void Linking.openURL(websiteHref)}>
-                    <Text style={styles.websiteLink}>🔗 {actorState.actor.website}</Text>
+                    <Text style={styles.websiteLink}>🔗 {actorState.actor.websiteUrl}</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
