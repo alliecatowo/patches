@@ -4,4 +4,4 @@
 
 **Action:** Use a fast `test()` regex scan (`/
 [\x00-\x08\x09\x0b-\x1f\x7f-\x9f]/` or `/
-[*`_@#]|https?:\/\/|\[/u`) before entering heavy string loops or running multiple `matchAll` regexes, and hoist `RegExp` instances to module scope.
+[*`_@#]|https?:\/\/|\[/u`) before entering heavy string loops or running multiple `matchAll`regexes, and hoist`RegExp` instances to module scope.
