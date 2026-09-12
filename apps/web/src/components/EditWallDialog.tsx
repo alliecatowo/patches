@@ -214,7 +214,7 @@ export function EditWallDialog({
                       type="button"
                       className={styles['deleteBlockBtn']}
                       onClick={() => handleDeleteBlock(idx)}
-                      aria-label="Remove block"
+                      aria-label={`Remove ${block.type} block`}
                     >
                       <TrashIcon size={15} />
                     </button>
@@ -228,11 +228,12 @@ export function EditWallDialog({
           <div className={styles['blockSection']}>
             <span className={styles['sectionTitle']}>Add New Block</span>
             <div className={styles['addBlockForm']}>
-              <div className={styles['typeSelector']}>
+              <div className={styles['typeSelector']} role="group" aria-label="Block type">
                 <button
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'Text' ? styles['active'] : ''}`}
                   onClick={() => setSelectedType('Text')}
+                  aria-pressed={selectedType === 'Text'}
                 >
                   Text
                 </button>
@@ -240,6 +241,7 @@ export function EditWallDialog({
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'NowPlaying' ? styles['active'] : ''}`}
                   onClick={() => setSelectedType('NowPlaying')}
+                  aria-pressed={selectedType === 'NowPlaying'}
                 >
                   Now Playing
                 </button>
@@ -247,6 +249,7 @@ export function EditWallDialog({
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'Hero' ? styles['active'] : ''}`}
                   onClick={() => setSelectedType('Hero')}
+                  aria-pressed={selectedType === 'Hero'}
                 >
                   Hero
                 </button>
@@ -254,6 +257,7 @@ export function EditWallDialog({
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'AsciiArt' ? styles['active'] : ''}`}
                   onClick={() => setSelectedType('AsciiArt')}
+                  aria-pressed={selectedType === 'AsciiArt'}
                 >
                   ASCII Art
                 </button>
@@ -262,12 +266,14 @@ export function EditWallDialog({
               {selectedType === 'Hero' ? (
                 <>
                   <input
+                    aria-label="Hero Headline"
                     className={styles['formInput']}
                     placeholder="Hero Headline"
                     value={titleInput}
                     onChange={(e) => setTitleInput(e.target.value)}
                   />
                   <input
+                    aria-label="Subtitle"
                     className={styles['formInput']}
                     placeholder="Subtitle (optional)"
                     value={subtitleInput}
@@ -276,6 +282,7 @@ export function EditWallDialog({
                 </>
               ) : selectedType === 'NowPlaying' ? (
                 <input
+                  aria-label="Track title"
                   className={styles['formInput']}
                   placeholder="Song or Track Title (e.g. Daft Punk - Digital Love)"
                   value={bodyInput}
@@ -283,6 +290,7 @@ export function EditWallDialog({
                 />
               ) : selectedType === 'AsciiArt' ? (
                 <textarea
+                  aria-label="ASCII art content"
                   className={styles['formTextarea']}
                   placeholder="Paste ASCII art..."
                   value={bodyInput}
@@ -291,6 +299,7 @@ export function EditWallDialog({
                 />
               ) : (
                 <textarea
+                  aria-label="Block content"
                   className={styles['formTextarea']}
                   placeholder="Write text or markdown for your wall..."
                   value={bodyInput}
