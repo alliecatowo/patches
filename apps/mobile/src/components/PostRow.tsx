@@ -1,8 +1,10 @@
 import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { extractPostMedia, safeMediaUrl, type ValidatedPostMedia } from '../media/attachment.js';
 
 export interface PostRowProps {
   post: Post;
@@ -14,6 +16,55 @@ export interface PostRowProps {
   /** Open the author's Patches Page/wall — the mobile Pages viewer's entry point from a
    * timeline (B-082). Optional so contexts without a page stack render inert handles. */
   onOpenPage?: (handle: string) => void;
+}
+
+/**
+ * Resolves a post's media attachment to a download URL via `GetMediaDownload`
+ * and renders it as a React Native `Image`.
+ */
+function PostMediaItem({ media }: { media: ValidatedPostMedia }): JSX.Element {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.media
+      .getMediaDownload({ mediaId: media.mediaId })
+      .then((response) => {
+        if (cancelled) return;
+        const safe = safeMediaUrl(response.downloadUrl);
+        if (safe === null) {
+          setFailed(true);
+          return;
+        }
+        setUrl(safe);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [media.mediaId]);
+
+  if (failed || url === null) {
+    return (
+      <View style={styles.mediaPlaceholder}>
+        <Text style={styles.muted}>{failed ? 'Image unavailable.' : 'Loading image…'}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mediaContainer}>
+      <Image source={{ uri: url }} style={styles.mediaImage} resizeMode="cover" />
+      {media.altText !== '' ? (
+        <Text style={styles.mediaAlt} numberOfLines={2}>
+          {media.altText}
+        </Text>
+      ) : null}
+    </View>
+  );
 }
 
 /**
@@ -35,6 +86,7 @@ export function PostRow({
   const [cwOpen, setCwOpen] = useState(post.contentWarning === '');
   const isOwn = viewerActorId !== undefined && post.author?.id === viewerActorId;
   const authorHandle = post.author?.handle;
+  const mediaItems = extractPostMedia(post);
 
   return (
     <View style={styles.row}>
@@ -70,7 +122,16 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              {post.body !== '' ? <Text style={styles.body}>{post.body}</Text> : null}
+              {mediaItems.length > 0 ? (
+                <View style={styles.mediaList}>
+                  {mediaItems.map((item) => (
+                    <PostMediaItem key={item.mediaId} media={item} />
+                  ))}
+                </View>
+              ) : null}
+            </>
           )}
         </>
       )}
@@ -116,6 +177,18 @@ const styles = StyleSheet.create({
   time: { color: '#666', marginLeft: 'auto' },
   cw: { color: '#e0b341', marginBottom: 4 },
   body: { color: '#e5e5e5', fontSize: 15, lineHeight: 20 },
+  muted: { color: '#888', fontSize: 12 },
+  mediaList: { marginTop: 8, gap: 8 },
+  mediaContainer: { borderRadius: 6, overflow: 'hidden', backgroundColor: '#161618' },
+  mediaImage: { width: '100%', height: 200, borderRadius: 6 },
+  mediaAlt: { color: '#888', fontSize: 12, marginTop: 4 },
+  mediaPlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 6,
+  },
   counts: { flexDirection: 'row', gap: 16, marginTop: 8 },
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
