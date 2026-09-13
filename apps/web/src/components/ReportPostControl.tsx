@@ -5,6 +5,7 @@ import { useState, type JSX } from 'react';
 import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
 import { useSession } from '../hooks/useSession.js';
+import { Button } from './ui/Button.js';
 
 const REPORT_REASONS: ReadonlyArray<{ value: ReportReason; label: string }> = [
   { value: ReportReason.SPAM, label: 'Spam' },
@@ -78,12 +79,18 @@ export function ReportPostControl({
         rows={4}
         style={{ flex: '1 1 18rem', minWidth: 0, resize: 'vertical' }}
       />
-      <button type="submit" disabled={report.isPending}>
+      <Button type="submit" variant="primary" size="sm" loading={report.isPending}>
         Submit report
-      </button>
-      <button type="button" onClick={() => setOpen(false)} disabled={report.isPending}>
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => setOpen(false)}
+        disabled={report.isPending}
+      >
         Cancel
-      </button>
+      </Button>
     </form>
   );
 }
