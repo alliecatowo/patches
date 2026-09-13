@@ -33,7 +33,8 @@ describe('ReportPostControl', () => {
     fireEvent.change(screen.getByLabelText('Report details'), {
       target: { value: '  repeated abuse  ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Submit report' }));
+    const submitBtn = screen.getByRole('button', { name: 'Submit report' });
+    fireEvent.click(submitBtn);
 
     await waitFor(() =>
       expect(mockReportPost).toHaveBeenCalledWith({
@@ -43,5 +44,20 @@ describe('ReportPostControl', () => {
       }),
     );
     expect(await screen.findByRole('status')).toHaveTextContent('Report sent.');
+  });
+
+  it('allows canceling the report form', () => {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ReportPostControl postId="post-1" />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'report' }));
+    expect(screen.getByRole('form', { name: 'Report post' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'report' })).toBeInTheDocument();
   });
 });
