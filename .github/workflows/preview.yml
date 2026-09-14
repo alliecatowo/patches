@@ -405,9 +405,18 @@ jobs:
         # fly config as before.
         run: |
           set -euo pipefail
-          flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
+          if ! flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
             --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
-            --ha=false --strategy immediate --yes
+            --ha=false --strategy immediate --yes 2>&1 | tee "$RUNNER_TEMP/fly-deploy-log.txt"; then
+            if grep -qi "machine limit" "$RUNNER_TEMP/fly-deploy-log.txt"; then
+              echo 'Fly machine limit reached; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "PREVIEW_FLY_DEPLOYED=false" >> "$GITHUB_ENV"
+            else
+              exit 1
+            fi
+          else
+            echo "PREVIEW_FLY_DEPLOYED=true" >> "$GITHUB_ENV"
+          fi
 
       - name: Allow the web preview origin in Connect CORS
         # An empty/unset WEB_ORIGINS denies every cross-origin browser request (see
@@ -415,7 +424,7 @@ jobs:
         # blocked until the Pages origin is allow-listed. Set it (as a Fly secret,
         # like the other runtime secrets) to the deterministic branch alias AND the
         # live deployment URL wrangler printed. Setting a secret restarts the machine.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.PREVIEW_FLY_DEPLOYED != 'false'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
@@ -445,7 +454,7 @@ jobs:
         # now fixed in teardown), but this probe proves the LIVE path every deploy:
         # the Pages origin must get CORS approval from the Connect edge and healthz
         # must answer, exactly as the browser client's login fetch does.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.PREVIEW_FLY_DEPLOYED != 'false'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -490,6 +499,7 @@ jobs:
           COMMIT_SHA: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
           PREVIEW_MEDIA: ${{ env.PREVIEW_MEDIA }}
           PREVIEW_WEB: ${{ env.PREVIEW_WEB }}
+          PREVIEW_FLY_DEPLOYED: ${{ env.PREVIEW_FLY_DEPLOYED }}
           WEB_PREVIEW_URL: ${{ steps.web_deploy.outputs.web_url }}
         run: |
           set -euo pipefail
@@ -498,7 +508,7 @@ jobs:
           # shellcheck disable=SC2016  # single quotes are intentional: ${...} below are JavaScript template literals, not shell expansions
           node -e '
             const fs = require("node:fs");
-            const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA, PREVIEW_WEB, WEB_PREVIEW_URL } = process.env;
+            const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA, PREVIEW_WEB, PREVIEW_FLY_DEPLOYED, WEB_PREVIEW_URL } = process.env;
             const NEON_BRANCH = `pr-${PR_NUMBER}`;
             const short = (COMMIT_SHA || "").slice(0, 7);
             const media = PREVIEW_MEDIA === "enabled"
@@ -508,6 +518,9 @@ jobs:
             const web = PREVIEW_WEB === "enabled" && webUrl
               ? `on — ${webUrl} (Connect API base \`https://${APP}.fly.dev:8443\`)`
               : "off (no CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID — backend-only preview)";
+            const flyState = PREVIEW_FLY_DEPLOYED === "false"
+              ? "skipped (Fly organization machine limit reached)"
+              : "live";
             const body = [
               process.argv[1],
               "## Preview environment (full stack)",
@@ -525,7 +538,7 @@ jobs:
               "",
               "| Capability | State |",
               "| --- | --- |",
-              "| gRPC + Connect API + worker + DB branch | live |",
+              `| gRPC + Connect API + worker + DB branch | ${flyState} |`,
               `| Media / R2 | ${media} |`,
               `| Web frontend (Cloudflare Pages) | ${web} |`,
               "| Federation | off (ephemeral origin — see docs/operations/preview-environments.md) |",
