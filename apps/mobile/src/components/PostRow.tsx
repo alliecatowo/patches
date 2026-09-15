@@ -1,7 +1,9 @@
-import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { MediaAttachment, Post } from '@patches/proto/es';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { api } from '../api/client.js';
+import { getPostMediaAttachments, resolveMediaUrl } from '../media/download.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
 
 export interface PostRowProps {
@@ -22,7 +24,7 @@ export interface PostRowProps {
  * only the body it's warning about starts hidden, matching `apps/web`'s `PostCard`
  * (`cwOpen` state). Reply/Quote/Edit are shown only when the caller wires a handler —
  * `HomeScreen` passes all three; `Edit` additionally requires `viewerActorId` to match
- * the post's author.
+ * the post's author. Attachment images are rendered below the post body when present.
  */
 export function PostRow({
   post,
@@ -35,6 +37,7 @@ export function PostRow({
   const [cwOpen, setCwOpen] = useState(post.contentWarning === '');
   const isOwn = viewerActorId !== undefined && post.author?.id === viewerActorId;
   const authorHandle = post.author?.handle;
+  const mediaAttachments = getPostMediaAttachments(post);
 
   return (
     <View style={styles.row}>
@@ -70,7 +73,12 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              <Text style={styles.body}>{post.body}</Text>
+              {mediaAttachments.length > 0 ? (
+                <PostMediaAttachments attachments={mediaAttachments} />
+              ) : null}
+            </>
           )}
         </>
       )}
@@ -102,6 +110,63 @@ export function PostRow({
   );
 }
 
+function PostMediaAttachments({
+  attachments,
+}: {
+  attachments: readonly MediaAttachment[];
+}): JSX.Element {
+  return (
+    <View style={styles.mediaContainer}>
+      {attachments.map((media) => (
+        <PostMediaItem key={media.mediaId} mediaId={media.mediaId} altText={media.altText} />
+      ))}
+    </View>
+  );
+}
+
+function PostMediaItem({ mediaId, altText }: { mediaId: string; altText: string }): JSX.Element {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    resolveMediaUrl(api.media, mediaId)
+      .then((resolvedUrl) => {
+        if (cancelled) return;
+        if (resolvedUrl === null) {
+          setFailed(true);
+        } else {
+          setUrl(resolvedUrl);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mediaId]);
+
+  if (failed || url === null) {
+    return (
+      <View style={styles.mediaPlaceholder}>
+        <Text style={styles.muted}>{failed ? 'Image unavailable.' : 'Loading image…'}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mediaWrapper}>
+      <Image source={{ uri: url }} style={styles.mediaImage} resizeMode="cover" />
+      {altText !== '' ? (
+        <Text style={styles.mediaAlt} numberOfLines={2}>
+          {altText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 12,
@@ -120,4 +185,17 @@ const styles = StyleSheet.create({
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
   action: { color: '#7c9cff', fontSize: 13 },
+  mediaContainer: { marginTop: 8, gap: 8 },
+  mediaWrapper: { width: '100%' },
+  mediaImage: { width: '100%', height: 200, borderRadius: 6, backgroundColor: '#161618' },
+  mediaAlt: { color: '#888', fontSize: 12, marginTop: 4 },
+  mediaPlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 6,
+    marginTop: 4,
+  },
+  muted: { color: '#888' },
 });
