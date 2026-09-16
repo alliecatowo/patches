@@ -1,5 +1,5 @@
 import { Text } from 'ink';
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 
 import { theme } from '../theme/index.js';
 import { usePlainMode } from '../theme/plain-mode.js';
@@ -105,9 +105,15 @@ export interface RichBodyProps {
 export function RichBody({ text, width, maxRows }: RichBodyProps): ReactElement {
   const plain = usePlainMode();
 
+  // Memoize terminal markup parsing & word wrapping layout calculation across render frames
+  const lines = useMemo(
+    () => (width === undefined ? undefined : layoutMarkup(parseMarkup(text), width, { plain })),
+    [text, width, plain],
+  );
+
   // No width given: the caller is a single-line/unmeasured surface, so fall back to
   // Ink's own soft wrap over sanitized text rather than guessing a width.
-  if (width === undefined) {
+  if (width === undefined || lines === undefined) {
     const safe = sanitizeForTerminal(text);
     if (plain) return <Text wrap="wrap">{safe}</Text>;
     return (
@@ -121,7 +127,6 @@ export function RichBody({ text, width, maxRows }: RichBodyProps): ReactElement 
     );
   }
 
-  const lines = layoutMarkup(parseMarkup(text), width, { plain });
   const visible = maxRows === undefined ? lines : lines.slice(0, Math.max(1, maxRows));
   return (
     <>
