@@ -5,20 +5,20 @@
 // source: patches/v1/privacy.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 export enum AccountExportStatus {
-  ACCOUNT_EXPORT_STATUS_UNSPECIFIED = "ACCOUNT_EXPORT_STATUS_UNSPECIFIED",
-  ACCOUNT_EXPORT_STATUS_PENDING = "ACCOUNT_EXPORT_STATUS_PENDING",
-  ACCOUNT_EXPORT_STATUS_READY = "ACCOUNT_EXPORT_STATUS_READY",
-  ACCOUNT_EXPORT_STATUS_FAILED = "ACCOUNT_EXPORT_STATUS_FAILED",
-  ACCOUNT_EXPORT_STATUS_EXPIRED = "ACCOUNT_EXPORT_STATUS_EXPIRED",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  ACCOUNT_EXPORT_STATUS_UNSPECIFIED = 'ACCOUNT_EXPORT_STATUS_UNSPECIFIED',
+  ACCOUNT_EXPORT_STATUS_PENDING = 'ACCOUNT_EXPORT_STATUS_PENDING',
+  ACCOUNT_EXPORT_STATUS_READY = 'ACCOUNT_EXPORT_STATUS_READY',
+  ACCOUNT_EXPORT_STATUS_FAILED = 'ACCOUNT_EXPORT_STATUS_FAILED',
+  ACCOUNT_EXPORT_STATUS_EXPIRED = 'ACCOUNT_EXPORT_STATUS_EXPIRED',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -54,8 +54,7 @@ export interface AcknowledgePrivacyNoticeResponse {
   prefs: PrivacyPrefs | undefined;
 }
 
-export interface GetPrivacyPrefsRequest {
-}
+export interface GetPrivacyPrefsRequest {}
 
 export interface GetPrivacyPrefsResponse {
   prefs: PrivacyPrefs | undefined;
@@ -77,8 +76,7 @@ export interface UpdatePrivacyPrefsResponse {
   prefs: PrivacyPrefs | undefined;
 }
 
-export interface ExportAccountRequest {
-}
+export interface ExportAccountRequest {}
 
 export interface ExportAccountResponse {
   export: AccountExport | undefined;
@@ -88,13 +86,9 @@ export interface ExportAccountResponse {
 export interface AccountExport {
   id: string;
   status: AccountExportStatus;
-  requestedAt:
-    | Timestamp
-    | undefined;
+  requestedAt: Timestamp | undefined;
   /** Unset until `ACCOUNT_EXPORT_STATUS_READY`. */
-  readyAt:
-    | Timestamp
-    | undefined;
+  readyAt: Timestamp | undefined;
   /**
    * Unset until `ACCOUNT_EXPORT_STATUS_READY`. A short-lived pre-signed URL (spec §29,
    * §197.3, ADR 0005) — never a raw storage key.
@@ -104,23 +98,20 @@ export interface AccountExport {
   expiresAt: Timestamp | undefined;
 }
 
-export interface GetExportStatusRequest {
-}
+export interface GetExportStatusRequest {}
 
 export interface GetExportStatusResponse {
   /** Unset (all fields zero) if no export has ever been requested. */
   export: AccountExport | undefined;
 }
 
-export interface RequestAccountDeletionRequest {
-}
+export interface RequestAccountDeletionRequest {}
 
 export interface RequestAccountDeletionResponse {
   deletion: AccountDeletionStatus | undefined;
 }
 
-export interface CancelAccountDeletionRequest {
-}
+export interface CancelAccountDeletionRequest {}
 
 export interface CancelAccountDeletionResponse {
   deletion: AccountDeletionStatus | undefined;
@@ -130,28 +121,23 @@ export interface AccountDeletionStatus {
   /** True while the account is `PENDING_DELETION`. */
   pending: boolean;
   /** Unset if no deletion has ever been requested. */
-  requestedAt:
-    | Timestamp
-    | undefined;
+  requestedAt: Timestamp | undefined;
   /**
    * When the purge job runs, absent a cancellation within the grace period (spec §204's
    * 30-day default, node-configurable).
    */
-  purgeAfter:
-    | Timestamp
-    | undefined;
+  purgeAfter: Timestamp | undefined;
   /** Unset unless a pending deletion was cancelled. */
   cancelledAt: Timestamp | undefined;
 }
 
-export interface GetDeletionStatusRequest {
-}
+export interface GetDeletionStatusRequest {}
 
 export interface GetDeletionStatusResponse {
   deletion: AccountDeletionStatus | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * Privacy and consent surfaces (spec §197): the privacy notice, per-actor discoverability
@@ -172,20 +158,32 @@ export interface PrivacyServiceClient {
     metadata?: Metadata,
   ): Observable<AcknowledgePrivacyNoticeResponse>;
 
-  getPrivacyPrefs(request: GetPrivacyPrefsRequest, metadata?: Metadata): Observable<GetPrivacyPrefsResponse>;
+  getPrivacyPrefs(
+    request: GetPrivacyPrefsRequest,
+    metadata?: Metadata,
+  ): Observable<GetPrivacyPrefsResponse>;
 
   /** Field-mask partial update, same pattern as `ActorService.UpdateProfile` (spec §203). */
 
-  updatePrivacyPrefs(request: UpdatePrivacyPrefsRequest, metadata?: Metadata): Observable<UpdatePrivacyPrefsResponse>;
+  updatePrivacyPrefs(
+    request: UpdatePrivacyPrefsRequest,
+    metadata?: Metadata,
+  ): Observable<UpdatePrivacyPrefsResponse>;
 
   /**
    * Enqueues a background export job (spec §30, ADR 0004) — never synchronous, and never
    * streams the archive through this process (spec §197.3).
    */
 
-  exportAccount(request: ExportAccountRequest, metadata?: Metadata): Observable<ExportAccountResponse>;
+  exportAccount(
+    request: ExportAccountRequest,
+    metadata?: Metadata,
+  ): Observable<ExportAccountResponse>;
 
-  getExportStatus(request: GetExportStatusRequest, metadata?: Metadata): Observable<GetExportStatusResponse>;
+  getExportStatus(
+    request: GetExportStatusRequest,
+    metadata?: Metadata,
+  ): Observable<GetExportStatusResponse>;
 
   /**
    * Moves the account to `PENDING_DELETION`: it disappears from feeds, search, and the local
@@ -204,7 +202,10 @@ export interface PrivacyServiceClient {
     metadata?: Metadata,
   ): Observable<CancelAccountDeletionResponse>;
 
-  getDeletionStatus(request: GetDeletionStatusRequest, metadata?: Metadata): Observable<GetDeletionStatusResponse>;
+  getDeletionStatus(
+    request: GetDeletionStatusRequest,
+    metadata?: Metadata,
+  ): Observable<GetDeletionStatusResponse>;
 }
 
 /**
@@ -232,14 +233,20 @@ export interface PrivacyServiceController {
   getPrivacyPrefs(
     request: GetPrivacyPrefsRequest,
     metadata?: Metadata,
-  ): Promise<GetPrivacyPrefsResponse> | Observable<GetPrivacyPrefsResponse> | GetPrivacyPrefsResponse;
+  ):
+    | Promise<GetPrivacyPrefsResponse>
+    | Observable<GetPrivacyPrefsResponse>
+    | GetPrivacyPrefsResponse;
 
   /** Field-mask partial update, same pattern as `ActorService.UpdateProfile` (spec §203). */
 
   updatePrivacyPrefs(
     request: UpdatePrivacyPrefsRequest,
     metadata?: Metadata,
-  ): Promise<UpdatePrivacyPrefsResponse> | Observable<UpdatePrivacyPrefsResponse> | UpdatePrivacyPrefsResponse;
+  ):
+    | Promise<UpdatePrivacyPrefsResponse>
+    | Observable<UpdatePrivacyPrefsResponse>
+    | UpdatePrivacyPrefsResponse;
 
   /**
    * Enqueues a background export job (spec §30, ADR 0004) — never synchronous, and never
@@ -254,7 +261,10 @@ export interface PrivacyServiceController {
   getExportStatus(
     request: GetExportStatusRequest,
     metadata?: Metadata,
-  ): Promise<GetExportStatusResponse> | Observable<GetExportStatusResponse> | GetExportStatusResponse;
+  ):
+    | Promise<GetExportStatusResponse>
+    | Observable<GetExportStatusResponse>
+    | GetExportStatusResponse;
 
   /**
    * Moves the account to `PENDING_DELETION`: it disappears from feeds, search, and the local
@@ -274,36 +284,42 @@ export interface PrivacyServiceController {
   cancelAccountDeletion(
     request: CancelAccountDeletionRequest,
     metadata?: Metadata,
-  ): Promise<CancelAccountDeletionResponse> | Observable<CancelAccountDeletionResponse> | CancelAccountDeletionResponse;
+  ):
+    | Promise<CancelAccountDeletionResponse>
+    | Observable<CancelAccountDeletionResponse>
+    | CancelAccountDeletionResponse;
 
   getDeletionStatus(
     request: GetDeletionStatusRequest,
     metadata?: Metadata,
-  ): Promise<GetDeletionStatusResponse> | Observable<GetDeletionStatusResponse> | GetDeletionStatusResponse;
+  ):
+    | Promise<GetDeletionStatusResponse>
+    | Observable<GetDeletionStatusResponse>
+    | GetDeletionStatusResponse;
 }
 
 export function PrivacyServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      "acknowledgePrivacyNotice",
-      "getPrivacyPrefs",
-      "updatePrivacyPrefs",
-      "exportAccount",
-      "getExportStatus",
-      "requestAccountDeletion",
-      "cancelAccountDeletion",
-      "getDeletionStatus",
+      'acknowledgePrivacyNotice',
+      'getPrivacyPrefs',
+      'updatePrivacyPrefs',
+      'exportAccount',
+      'getExportStatus',
+      'requestAccountDeletion',
+      'cancelAccountDeletion',
+      'getDeletionStatus',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("PrivacyService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('PrivacyService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("PrivacyService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('PrivacyService', method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const PRIVACY_SERVICE_NAME = "PrivacyService";
+export const PRIVACY_SERVICE_NAME = 'PrivacyService';

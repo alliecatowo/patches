@@ -5,26 +5,26 @@
 // source: patches/v1/filters.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
-import { PageInfo } from "./common.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
+import { PageInfo } from './common.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 /**
  * A filter-term kind (spec §198.2). Shared with filter list entries (`filter_lists.proto`) —
  * same five kinds, same matching semantics.
  */
 export enum FilterTermKind {
-  FILTER_TERM_KIND_UNSPECIFIED = "FILTER_TERM_KIND_UNSPECIFIED",
-  FILTER_TERM_KIND_SUBSTRING = "FILTER_TERM_KIND_SUBSTRING",
-  FILTER_TERM_KIND_WORD = "FILTER_TERM_KIND_WORD",
-  FILTER_TERM_KIND_TAG = "FILTER_TERM_KIND_TAG",
-  FILTER_TERM_KIND_ACTOR = "FILTER_TERM_KIND_ACTOR",
-  FILTER_TERM_KIND_DOMAIN = "FILTER_TERM_KIND_DOMAIN",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  FILTER_TERM_KIND_UNSPECIFIED = 'FILTER_TERM_KIND_UNSPECIFIED',
+  FILTER_TERM_KIND_SUBSTRING = 'FILTER_TERM_KIND_SUBSTRING',
+  FILTER_TERM_KIND_WORD = 'FILTER_TERM_KIND_WORD',
+  FILTER_TERM_KIND_TAG = 'FILTER_TERM_KIND_TAG',
+  FILTER_TERM_KIND_ACTOR = 'FILTER_TERM_KIND_ACTOR',
+  FILTER_TERM_KIND_DOMAIN = 'FILTER_TERM_KIND_DOMAIN',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -32,14 +32,14 @@ export enum FilterTermKind {
  * filter governs what arrives unbidden", not something a viewer opened on purpose.
  */
 export enum FilterScope {
-  FILTER_SCOPE_UNSPECIFIED = "FILTER_SCOPE_UNSPECIFIED",
-  FILTER_SCOPE_HOME = "FILTER_SCOPE_HOME",
-  FILTER_SCOPE_LOCAL = "FILTER_SCOPE_LOCAL",
-  FILTER_SCOPE_TAG_FEED = "FILTER_SCOPE_TAG_FEED",
-  FILTER_SCOPE_COMMUNITY_FEED = "FILTER_SCOPE_COMMUNITY_FEED",
-  FILTER_SCOPE_NOTIFICATIONS = "FILTER_SCOPE_NOTIFICATIONS",
-  FILTER_SCOPE_SEARCH = "FILTER_SCOPE_SEARCH",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  FILTER_SCOPE_UNSPECIFIED = 'FILTER_SCOPE_UNSPECIFIED',
+  FILTER_SCOPE_HOME = 'FILTER_SCOPE_HOME',
+  FILTER_SCOPE_LOCAL = 'FILTER_SCOPE_LOCAL',
+  FILTER_SCOPE_TAG_FEED = 'FILTER_SCOPE_TAG_FEED',
+  FILTER_SCOPE_COMMUNITY_FEED = 'FILTER_SCOPE_COMMUNITY_FEED',
+  FILTER_SCOPE_NOTIFICATIONS = 'FILTER_SCOPE_NOTIFICATIONS',
+  FILTER_SCOPE_SEARCH = 'FILTER_SCOPE_SEARCH',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -48,17 +48,17 @@ export enum FilterScope {
  * (`labels.proto`).
  */
 export enum FilterAction {
-  FILTER_ACTION_UNSPECIFIED = "FILTER_ACTION_UNSPECIFIED",
+  FILTER_ACTION_UNSPECIFIED = 'FILTER_ACTION_UNSPECIFIED',
   /** FILTER_ACTION_HIDE - The row is not returned to the client at all — enforced by omission, on the server. */
-  FILTER_ACTION_HIDE = "FILTER_ACTION_HIDE",
+  FILTER_ACTION_HIDE = 'FILTER_ACTION_HIDE',
   /**
    * FILTER_ACTION_COLLAPSE - Returned, replaced client-side by one collapsed line naming the filter, expandable in
    * place.
    */
-  FILTER_ACTION_COLLAPSE = "FILTER_ACTION_COLLAPSE",
+  FILTER_ACTION_COLLAPSE = 'FILTER_ACTION_COLLAPSE',
   /** FILTER_ACTION_WARN - Returned and rendered normally with a "filtered: <name>" marker. */
-  FILTER_ACTION_WARN = "FILTER_ACTION_WARN",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  FILTER_ACTION_WARN = 'FILTER_ACTION_WARN',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /** A term as supplied by the caller (create/update/import) — no `id`, the server assigns one. */
@@ -135,8 +135,7 @@ export interface DeleteFilterRequest {
   id: string;
 }
 
-export interface DeleteFilterResponse {
-}
+export interface DeleteFilterResponse {}
 
 export interface ListFiltersRequest {
   cursor: string;
@@ -148,8 +147,7 @@ export interface ListFiltersResponse {
   page: PageInfo | undefined;
 }
 
-export interface ExportFiltersRequest {
-}
+export interface ExportFiltersRequest {}
 
 export interface ExportFiltersResponse {
   /**
@@ -175,7 +173,7 @@ export interface ImportFiltersResponse {
   added: Filter[];
 }
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * Bring-your-own filters (spec §198). A filter is a named, viewer-owned rule that removes or
@@ -198,14 +196,20 @@ export interface FilterServiceClient {
 
   /** A plain, documented JSON export (spec §198.5) — never a binary blob, never executable. */
 
-  exportFilters(request: ExportFiltersRequest, metadata?: Metadata): Observable<ExportFiltersResponse>;
+  exportFilters(
+    request: ExportFiltersRequest,
+    metadata?: Metadata,
+  ): Observable<ExportFiltersResponse>;
 
   /**
    * Additive and previewable: pass `apply = false` to see what would be added without
    * writing anything (spec §198.5).
    */
 
-  importFilters(request: ImportFiltersRequest, metadata?: Metadata): Observable<ImportFiltersResponse>;
+  importFilters(
+    request: ImportFiltersRequest,
+    metadata?: Metadata,
+  ): Observable<ImportFiltersResponse>;
 }
 
 /**
@@ -260,23 +264,23 @@ export interface FilterServiceController {
 export function FilterServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      "createFilter",
-      "updateFilter",
-      "deleteFilter",
-      "listFilters",
-      "exportFilters",
-      "importFilters",
+      'createFilter',
+      'updateFilter',
+      'deleteFilter',
+      'listFilters',
+      'exportFilters',
+      'importFilters',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("FilterService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('FilterService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("FilterService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('FilterService', method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const FILTER_SERVICE_NAME = "FilterService";
+export const FILTER_SERVICE_NAME = 'FilterService';

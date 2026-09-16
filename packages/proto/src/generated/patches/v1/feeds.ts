@@ -5,13 +5,13 @@
 // source: patches/v1/feeds.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { PageInfo } from "./common.js";
-import { Post } from "./posts.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { PageInfo } from './common.js';
+import { Post } from './posts.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 export interface ListHomeFeedRequest {
   cursor: string;
@@ -67,7 +67,7 @@ export interface ListCommunityFeedResponse {
   page: PageInfo | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * Chronological, fan-out-on-read feeds (spec §52, §59). Never `GetRecommendedFeed`/
@@ -81,11 +81,17 @@ export interface FeedServiceClient {
 
   /** All local public posts, chronological. */
 
-  listLocalFeed(request: ListLocalFeedRequest, metadata?: Metadata): Observable<ListLocalFeedResponse>;
+  listLocalFeed(
+    request: ListLocalFeedRequest,
+    metadata?: Metadata,
+  ): Observable<ListLocalFeedResponse>;
 
   /** A given actor's posts, chronological. */
 
-  listActorPosts(request: ListActorPostsRequest, metadata?: Metadata): Observable<ListActorPostsResponse>;
+  listActorPosts(
+    request: ListActorPostsRequest,
+    metadata?: Metadata,
+  ): Observable<ListActorPostsResponse>;
 
   /**
    * All public posts carrying a given tag, chronological. No ordering parameter — same
@@ -96,7 +102,10 @@ export interface FeedServiceClient {
 
   /** A community's posts, chronological. No ordering parameter (spec §182.2). */
 
-  listCommunityFeed(request: ListCommunityFeedRequest, metadata?: Metadata): Observable<ListCommunityFeedResponse>;
+  listCommunityFeed(
+    request: ListCommunityFeedRequest,
+    metadata?: Metadata,
+  ): Observable<ListCommunityFeedResponse>;
 }
 
 /**
@@ -141,28 +150,31 @@ export interface FeedServiceController {
   listCommunityFeed(
     request: ListCommunityFeedRequest,
     metadata?: Metadata,
-  ): Promise<ListCommunityFeedResponse> | Observable<ListCommunityFeedResponse> | ListCommunityFeedResponse;
+  ):
+    | Promise<ListCommunityFeedResponse>
+    | Observable<ListCommunityFeedResponse>
+    | ListCommunityFeedResponse;
 }
 
 export function FeedServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      "listHomeFeed",
-      "listLocalFeed",
-      "listActorPosts",
-      "listTagFeed",
-      "listCommunityFeed",
+      'listHomeFeed',
+      'listLocalFeed',
+      'listActorPosts',
+      'listTagFeed',
+      'listCommunityFeed',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("FeedService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('FeedService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("FeedService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('FeedService', method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const FEED_SERVICE_NAME = "FeedService";
+export const FEED_SERVICE_NAME = 'FeedService';

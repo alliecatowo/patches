@@ -5,13 +5,13 @@
 // source: patches/v1/tags.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
-import { PageInfo } from "./common.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
+import { PageInfo } from './common.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 export interface Tag {
   id: string;
@@ -40,15 +40,13 @@ export interface MuteTagRequest {
   tagId: string;
 }
 
-export interface MuteTagResponse {
-}
+export interface MuteTagResponse {}
 
 export interface UnmuteTagRequest {
   tagId: string;
 }
 
-export interface UnmuteTagResponse {
-}
+export interface UnmuteTagResponse {}
 
 export interface ListMutedTagsRequest {
   cursor: string;
@@ -60,7 +58,7 @@ export interface ListMutedTagsResponse {
   page: PageInfo | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * Hashtag search and per-actor tag mutes (spec §189–190). Deliberately no post-count/
@@ -83,7 +81,10 @@ export interface TagServiceClient {
 
   /** The caller's own muted tags, most-recent first. */
 
-  listMutedTags(request: ListMutedTagsRequest, metadata?: Metadata): Observable<ListMutedTagsResponse>;
+  listMutedTags(
+    request: ListMutedTagsRequest,
+    metadata?: Metadata,
+  ): Observable<ListMutedTagsResponse>;
 }
 
 /**
@@ -124,17 +125,17 @@ export interface TagServiceController {
 
 export function TagServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ["searchTags", "muteTag", "unmuteTag", "listMutedTags"];
+    const grpcMethods: string[] = ['searchTags', 'muteTag', 'unmuteTag', 'listMutedTags'];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("TagService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('TagService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("TagService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('TagService', method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const TAG_SERVICE_NAME = "TagService";
+export const TAG_SERVICE_NAME = 'TagService';

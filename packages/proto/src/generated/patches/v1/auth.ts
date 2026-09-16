@@ -5,41 +5,41 @@
 // source: patches/v1/auth.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
-import { Actor } from "./actors.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
+import { Actor } from './actors.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 export enum GitHubLoginStatus {
-  GIT_HUB_LOGIN_STATUS_UNSPECIFIED = "GIT_HUB_LOGIN_STATUS_UNSPECIFIED",
-  GIT_HUB_LOGIN_STATUS_PENDING = "GIT_HUB_LOGIN_STATUS_PENDING",
-  GIT_HUB_LOGIN_STATUS_SLOW_DOWN = "GIT_HUB_LOGIN_STATUS_SLOW_DOWN",
-  GIT_HUB_LOGIN_STATUS_EXPIRED = "GIT_HUB_LOGIN_STATUS_EXPIRED",
-  GIT_HUB_LOGIN_STATUS_DENIED = "GIT_HUB_LOGIN_STATUS_DENIED",
-  GIT_HUB_LOGIN_STATUS_COMPLETE = "GIT_HUB_LOGIN_STATUS_COMPLETE",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  GIT_HUB_LOGIN_STATUS_UNSPECIFIED = 'GIT_HUB_LOGIN_STATUS_UNSPECIFIED',
+  GIT_HUB_LOGIN_STATUS_PENDING = 'GIT_HUB_LOGIN_STATUS_PENDING',
+  GIT_HUB_LOGIN_STATUS_SLOW_DOWN = 'GIT_HUB_LOGIN_STATUS_SLOW_DOWN',
+  GIT_HUB_LOGIN_STATUS_EXPIRED = 'GIT_HUB_LOGIN_STATUS_EXPIRED',
+  GIT_HUB_LOGIN_STATUS_DENIED = 'GIT_HUB_LOGIN_STATUS_DENIED',
+  GIT_HUB_LOGIN_STATUS_COMPLETE = 'GIT_HUB_LOGIN_STATUS_COMPLETE',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 export enum OidcLoginStatus {
-  OIDC_LOGIN_STATUS_UNSPECIFIED = "OIDC_LOGIN_STATUS_UNSPECIFIED",
-  OIDC_LOGIN_STATUS_PENDING = "OIDC_LOGIN_STATUS_PENDING",
-  OIDC_LOGIN_STATUS_SLOW_DOWN = "OIDC_LOGIN_STATUS_SLOW_DOWN",
-  OIDC_LOGIN_STATUS_EXPIRED = "OIDC_LOGIN_STATUS_EXPIRED",
-  OIDC_LOGIN_STATUS_DENIED = "OIDC_LOGIN_STATUS_DENIED",
-  OIDC_LOGIN_STATUS_COMPLETE = "OIDC_LOGIN_STATUS_COMPLETE",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  OIDC_LOGIN_STATUS_UNSPECIFIED = 'OIDC_LOGIN_STATUS_UNSPECIFIED',
+  OIDC_LOGIN_STATUS_PENDING = 'OIDC_LOGIN_STATUS_PENDING',
+  OIDC_LOGIN_STATUS_SLOW_DOWN = 'OIDC_LOGIN_STATUS_SLOW_DOWN',
+  OIDC_LOGIN_STATUS_EXPIRED = 'OIDC_LOGIN_STATUS_EXPIRED',
+  OIDC_LOGIN_STATUS_DENIED = 'OIDC_LOGIN_STATUS_DENIED',
+  OIDC_LOGIN_STATUS_COMPLETE = 'OIDC_LOGIN_STATUS_COMPLETE',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 export enum DeviceLinkStatus {
-  DEVICE_LINK_STATUS_UNSPECIFIED = "DEVICE_LINK_STATUS_UNSPECIFIED",
-  DEVICE_LINK_STATUS_PENDING = "DEVICE_LINK_STATUS_PENDING",
-  DEVICE_LINK_STATUS_SLOW_DOWN = "DEVICE_LINK_STATUS_SLOW_DOWN",
-  DEVICE_LINK_STATUS_EXPIRED = "DEVICE_LINK_STATUS_EXPIRED",
-  DEVICE_LINK_STATUS_COMPLETE = "DEVICE_LINK_STATUS_COMPLETE",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  DEVICE_LINK_STATUS_UNSPECIFIED = 'DEVICE_LINK_STATUS_UNSPECIFIED',
+  DEVICE_LINK_STATUS_PENDING = 'DEVICE_LINK_STATUS_PENDING',
+  DEVICE_LINK_STATUS_SLOW_DOWN = 'DEVICE_LINK_STATUS_SLOW_DOWN',
+  DEVICE_LINK_STATUS_EXPIRED = 'DEVICE_LINK_STATUS_EXPIRED',
+  DEVICE_LINK_STATUS_COMPLETE = 'DEVICE_LINK_STATUS_COMPLETE',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -51,38 +51,38 @@ export enum DeviceLinkStatus {
  * publishing the value.
  */
 export enum PasswordAuthMode {
-  PASSWORD_AUTH_MODE_UNSPECIFIED = "PASSWORD_AUTH_MODE_UNSPECIFIED",
-  PASSWORD_AUTH_MODE_OFF = "PASSWORD_AUTH_MODE_OFF",
-  PASSWORD_AUTH_MODE_OPTIONAL = "PASSWORD_AUTH_MODE_OPTIONAL",
-  PASSWORD_AUTH_MODE_REQUIRED = "PASSWORD_AUTH_MODE_REQUIRED",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  PASSWORD_AUTH_MODE_UNSPECIFIED = 'PASSWORD_AUTH_MODE_UNSPECIFIED',
+  PASSWORD_AUTH_MODE_OFF = 'PASSWORD_AUTH_MODE_OFF',
+  PASSWORD_AUTH_MODE_OPTIONAL = 'PASSWORD_AUTH_MODE_OPTIONAL',
+  PASSWORD_AUTH_MODE_REQUIRED = 'PASSWORD_AUTH_MODE_REQUIRED',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 export enum CredentialType {
-  CREDENTIAL_TYPE_UNSPECIFIED = "CREDENTIAL_TYPE_UNSPECIFIED",
-  CREDENTIAL_TYPE_PASSWORD = "CREDENTIAL_TYPE_PASSWORD",
-  CREDENTIAL_TYPE_SSH_PUBLIC_KEY = "CREDENTIAL_TYPE_SSH_PUBLIC_KEY",
-  CREDENTIAL_TYPE_GITHUB = "CREDENTIAL_TYPE_GITHUB",
+  CREDENTIAL_TYPE_UNSPECIFIED = 'CREDENTIAL_TYPE_UNSPECIFIED',
+  CREDENTIAL_TYPE_PASSWORD = 'CREDENTIAL_TYPE_PASSWORD',
+  CREDENTIAL_TYPE_SSH_PUBLIC_KEY = 'CREDENTIAL_TYPE_SSH_PUBLIC_KEY',
+  CREDENTIAL_TYPE_GITHUB = 'CREDENTIAL_TYPE_GITHUB',
   /**
    * CREDENTIAL_TYPE_RECOVERY_CODE - A one-time recovery code (P15-003). Unlike the other three, an account can hold several
    * live credentials of this type at once (up to 10, minted together by
    * `GenerateRecoveryCodes`) — each redeemed code is immediately revoked, so
    * `ListCredentials` naturally shows only the still-unused ones.
    */
-  CREDENTIAL_TYPE_RECOVERY_CODE = "CREDENTIAL_TYPE_RECOVERY_CODE",
+  CREDENTIAL_TYPE_RECOVERY_CODE = 'CREDENTIAL_TYPE_RECOVERY_CODE',
   /**
    * CREDENTIAL_TYPE_PASSKEY - A WebAuthn/passkey credential (P15-004, ADR 0022, spec §165). `identifier` holds the
    * WebAuthn credential id, `public_material` the COSE public key — never any private key
    * material, which never leaves the authenticator.
    */
-  CREDENTIAL_TYPE_PASSKEY = "CREDENTIAL_TYPE_PASSKEY",
+  CREDENTIAL_TYPE_PASSKEY = 'CREDENTIAL_TYPE_PASSKEY',
   /**
    * CREDENTIAL_TYPE_OIDC - A generic OIDC-device-flow credential (P15-006, GitLab/Codeberg/any node-configured
    * provider) — same "credential, never an identity" contract as GITHUB. `identifier` holds
    * "<provider_id>:<subject>", namespaced so two providers' subjects can never collide.
    */
-  CREDENTIAL_TYPE_OIDC = "CREDENTIAL_TYPE_OIDC",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  CREDENTIAL_TYPE_OIDC = 'CREDENTIAL_TYPE_OIDC',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -159,11 +159,9 @@ export interface VerifyEmailResponse {
   emailVerified: boolean;
 }
 
-export interface ResendVerificationRequest {
-}
+export interface ResendVerificationRequest {}
 
-export interface ResendVerificationResponse {
-}
+export interface ResendVerificationResponse {}
 
 export interface LoginRequest {
   /** Either a recovery email address or a handle. */
@@ -187,40 +185,33 @@ export interface LogoutRequest {
   refreshToken: string;
 }
 
-export interface LogoutResponse {
-}
+export interface LogoutResponse {}
 
-export interface LogoutAllSessionsRequest {
-}
+export interface LogoutAllSessionsRequest {}
 
-export interface LogoutAllSessionsResponse {
-}
+export interface LogoutAllSessionsResponse {}
 
 export interface RequestPasswordResetRequest {
   email: string;
 }
 
-export interface RequestPasswordResetResponse {
-}
+export interface RequestPasswordResetResponse {}
 
 export interface ResetPasswordRequest {
   code: string;
   newPassword: string;
 }
 
-export interface ResetPasswordResponse {
-}
+export interface ResetPasswordResponse {}
 
 export interface ChangePasswordRequest {
   currentPassword: string;
   newPassword: string;
 }
 
-export interface ChangePasswordResponse {
-}
+export interface ChangePasswordResponse {}
 
-export interface GetCurrentSessionRequest {
-}
+export interface GetCurrentSessionRequest {}
 
 export interface GetCurrentSessionResponse {
   userId: string;
@@ -304,8 +295,7 @@ export interface BeginSshEnrollmentResponse {
   expiresAt: Timestamp | undefined;
 }
 
-export interface BeginGitHubLoginRequest {
-}
+export interface BeginGitHubLoginRequest {}
 
 export interface BeginGitHubLoginResponse {
   deviceCode: string;
@@ -356,8 +346,7 @@ export interface PollOidcLoginResponse {
   session: Session | undefined;
 }
 
-export interface BeginDeviceLinkRequest {
-}
+export interface BeginDeviceLinkRequest {}
 
 export interface BeginDeviceLinkResponse {
   /**
@@ -405,11 +394,9 @@ export interface ApproveDeviceLinkRequest {
   userCode: string;
 }
 
-export interface ApproveDeviceLinkResponse {
-}
+export interface ApproveDeviceLinkResponse {}
 
-export interface GetAuthPolicyRequest {
-}
+export interface GetAuthPolicyRequest {}
 
 export interface GetAuthPolicyResponse {
   passwordAuth: PasswordAuthMode;
@@ -448,15 +435,12 @@ export interface Credential {
    * string. Empty for PASSWORD, which has no `identifier`.
    */
   identifier: string;
-  createdAt:
-    | Timestamp
-    | undefined;
+  createdAt: Timestamp | undefined;
   /** Unset (zero value) if never used. */
   lastUsedAt: Timestamp | undefined;
 }
 
-export interface ListCredentialsRequest {
-}
+export interface ListCredentialsRequest {}
 
 export interface ListCredentialsResponse {
   credentials: Credential[];
@@ -499,11 +483,9 @@ export interface RevokeCredentialRequest {
   id: string;
 }
 
-export interface RevokeCredentialResponse {
-}
+export interface RevokeCredentialResponse {}
 
-export interface GenerateRecoveryCodesRequest {
-}
+export interface GenerateRecoveryCodesRequest {}
 
 export interface GenerateRecoveryCodesResponse {
   /**
@@ -529,8 +511,7 @@ export interface RecoveryLoginResponse {
  * `BeginSshEnrollmentRequest`. Carries no request fields — the RP id/name and the caller's
  * existing credential ids (for `excludeCredentials`) are all server-side state.
  */
-export interface BeginPasskeyRegistrationRequest {
-}
+export interface BeginPasskeyRegistrationRequest {}
 
 export interface BeginPasskeyRegistrationResponse {
   /**
@@ -564,8 +545,7 @@ export interface CompletePasskeyRegistrationResponse {
  * Unauthenticated, discoverable-credential login: no username/handle field exists anywhere in
  * this pair — the credential response identifies the account.
  */
-export interface BeginPasskeyLoginRequest {
-}
+export interface BeginPasskeyLoginRequest {}
 
 export interface BeginPasskeyLoginResponse {
   /**
@@ -590,7 +570,7 @@ export interface CompletePasskeyLoginResponse {
   session: Session | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * Local account authentication and credential management (spec §33–39, §48, and Amendment A
@@ -613,7 +593,10 @@ export interface AuthServiceClient {
    * the RPCs it actually gates (`Login`, `Register`, `AddCredential`).
    */
 
-  getAuthPolicy(request: GetAuthPolicyRequest, metadata?: Metadata): Observable<GetAuthPolicyResponse>;
+  getAuthPolicy(
+    request: GetAuthPolicyRequest,
+    metadata?: Metadata,
+  ): Observable<GetAuthPolicyResponse>;
 
   /**
    * Invite-gated in v0 (spec §33). Accepts an optional initial credential beyond the
@@ -637,7 +620,10 @@ export interface AuthServiceClient {
    * as to avoid leaking whether an email is registered, spec §177).
    */
 
-  resendVerification(request: ResendVerificationRequest, metadata?: Metadata): Observable<ResendVerificationResponse>;
+  resendVerification(
+    request: ResendVerificationRequest,
+    metadata?: Metadata,
+  ): Observable<ResendVerificationResponse>;
 
   /**
    * The **password** login (spec §168). Kept as a dedicated RPC, not a polymorphic
@@ -651,7 +637,10 @@ export interface AuthServiceClient {
    * whole session family.
    */
 
-  refreshSession(request: RefreshSessionRequest, metadata?: Metadata): Observable<RefreshSessionResponse>;
+  refreshSession(
+    request: RefreshSessionRequest,
+    metadata?: Metadata,
+  ): Observable<RefreshSessionResponse>;
 
   /** Revokes the session tied to the given refresh token. */
 
@@ -659,7 +648,10 @@ export interface AuthServiceClient {
 
   /** Revokes every session for the authenticated caller's account. */
 
-  logoutAllSessions(request: LogoutAllSessionsRequest, metadata?: Metadata): Observable<LogoutAllSessionsResponse>;
+  logoutAllSessions(
+    request: LogoutAllSessionsRequest,
+    metadata?: Metadata,
+  ): Observable<LogoutAllSessionsResponse>;
 
   /**
    * Applies only to accounts with a verified recovery email (spec §165). Always returns
@@ -673,18 +665,27 @@ export interface AuthServiceClient {
 
   /** Consumes a single-use `password_reset_codes` row. */
 
-  resetPassword(request: ResetPasswordRequest, metadata?: Metadata): Observable<ResetPasswordResponse>;
+  resetPassword(
+    request: ResetPasswordRequest,
+    metadata?: Metadata,
+  ): Observable<ResetPasswordResponse>;
 
   /**
    * Replaces the authenticated caller's PASSWORD credential after verifying the current
    * password. On success, all other live sessions are revoked.
    */
 
-  changePassword(request: ChangePasswordRequest, metadata?: Metadata): Observable<ChangePasswordResponse>;
+  changePassword(
+    request: ChangePasswordRequest,
+    metadata?: Metadata,
+  ): Observable<ChangePasswordResponse>;
 
   /** Returns session/actor info for the caller's current access token. */
 
-  getCurrentSession(request: GetCurrentSessionRequest, metadata?: Metadata): Observable<GetCurrentSessionResponse>;
+  getCurrentSession(
+    request: GetCurrentSessionRequest,
+    metadata?: Metadata,
+  ): Observable<GetCurrentSessionResponse>;
 
   /**
    * SSH public-key login (spec §166). `BeginSshLogin` issues a single-use, short-TTL
@@ -693,9 +694,15 @@ export interface AuthServiceClient {
    * requests, or transmits a private key — signing happens in the agent.
    */
 
-  beginSshLogin(request: BeginSshLoginRequest, metadata?: Metadata): Observable<BeginSshLoginResponse>;
+  beginSshLogin(
+    request: BeginSshLoginRequest,
+    metadata?: Metadata,
+  ): Observable<BeginSshLoginResponse>;
 
-  completeSshLogin(request: CompleteSshLoginRequest, metadata?: Metadata): Observable<CompleteSshLoginResponse>;
+  completeSshLogin(
+    request: CompleteSshLoginRequest,
+    metadata?: Metadata,
+  ): Observable<CompleteSshLoginResponse>;
 
   /**
    * GitHub credential via OAuth device flow (spec §167) — GitHub is a credential, never an
@@ -705,9 +712,15 @@ export interface AuthServiceClient {
    * §176), once the URL/timeout/SSRF validation baseline for outbound HTTP calls exists.
    */
 
-  beginGitHubLogin(request: BeginGitHubLoginRequest, metadata?: Metadata): Observable<BeginGitHubLoginResponse>;
+  beginGitHubLogin(
+    request: BeginGitHubLoginRequest,
+    metadata?: Metadata,
+  ): Observable<BeginGitHubLoginResponse>;
 
-  pollGitHubLogin(request: PollGitHubLoginRequest, metadata?: Metadata): Observable<PollGitHubLoginResponse>;
+  pollGitHubLogin(
+    request: PollGitHubLoginRequest,
+    metadata?: Metadata,
+  ): Observable<PollGitHubLoginResponse>;
 
   /**
    * Generic OIDC device flow (P15-006, spec §167 extended to "any OIDC-device-flow provider,
@@ -719,9 +732,15 @@ export interface AuthServiceClient {
    * providers' subjects can never collide.
    */
 
-  beginOidcLogin(request: BeginOidcLoginRequest, metadata?: Metadata): Observable<BeginOidcLoginResponse>;
+  beginOidcLogin(
+    request: BeginOidcLoginRequest,
+    metadata?: Metadata,
+  ): Observable<BeginOidcLoginResponse>;
 
-  pollOidcLogin(request: PollOidcLoginRequest, metadata?: Metadata): Observable<PollOidcLoginResponse>;
+  pollOidcLogin(
+    request: PollOidcLoginRequest,
+    metadata?: Metadata,
+  ): Observable<PollOidcLoginResponse>;
 
   /**
    * P15-005: a browser cannot prove possession of an SSH key, but the terminal it is already
@@ -748,18 +767,30 @@ export interface AuthServiceClient {
    * their own login from one talked into approving someone else's by social engineering.
    */
 
-  beginDeviceLink(request: BeginDeviceLinkRequest, metadata?: Metadata): Observable<BeginDeviceLinkResponse>;
+  beginDeviceLink(
+    request: BeginDeviceLinkRequest,
+    metadata?: Metadata,
+  ): Observable<BeginDeviceLinkResponse>;
 
-  pollDeviceLink(request: PollDeviceLinkRequest, metadata?: Metadata): Observable<PollDeviceLinkResponse>;
+  pollDeviceLink(
+    request: PollDeviceLinkRequest,
+    metadata?: Metadata,
+  ): Observable<PollDeviceLinkResponse>;
 
-  approveDeviceLink(request: ApproveDeviceLinkRequest, metadata?: Metadata): Observable<ApproveDeviceLinkResponse>;
+  approveDeviceLink(
+    request: ApproveDeviceLinkRequest,
+    metadata?: Metadata,
+  ): Observable<ApproveDeviceLinkResponse>;
 
   /**
    * Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
    * other secret material — type, label, identifier, timestamps only.
    */
 
-  listCredentials(request: ListCredentialsRequest, metadata?: Metadata): Observable<ListCredentialsResponse>;
+  listCredentials(
+    request: ListCredentialsRequest,
+    metadata?: Metadata,
+  ): Observable<ListCredentialsResponse>;
 
   /**
    * SSH credential enrollment challenge (spec §165-166, B-021). Authenticated: issues a
@@ -769,7 +800,10 @@ export interface AuthServiceClient {
    * instead of trusting the client's own local check.
    */
 
-  beginSshEnrollment(request: BeginSshEnrollmentRequest, metadata?: Metadata): Observable<BeginSshEnrollmentResponse>;
+  beginSshEnrollment(
+    request: BeginSshEnrollmentRequest,
+    metadata?: Metadata,
+  ): Observable<BeginSshEnrollmentResponse>;
 
   /**
    * Adds a PASSWORD or SSH_PUBLIC_KEY credential to the authenticated caller's account.
@@ -780,14 +814,20 @@ export interface AuthServiceClient {
    * proof is rejected.
    */
 
-  addCredential(request: AddCredentialRequest, metadata?: Metadata): Observable<AddCredentialResponse>;
+  addCredential(
+    request: AddCredentialRequest,
+    metadata?: Metadata,
+  ): Observable<AddCredentialResponse>;
 
   /**
    * Revoking a user's last active credential MUST fail server-side (spec §165) — an account
    * must always retain a way in.
    */
 
-  revokeCredential(request: RevokeCredentialRequest, metadata?: Metadata): Observable<RevokeCredentialResponse>;
+  revokeCredential(
+    request: RevokeCredentialRequest,
+    metadata?: Metadata,
+  ): Observable<RevokeCredentialResponse>;
 
   /**
    * Mints a fresh set of 10 single-use recovery codes for the authenticated caller, replacing
@@ -809,7 +849,10 @@ export interface AuthServiceClient {
    * error as `Login` on a bad handle/code combination, for the same no-enumeration reason.
    */
 
-  recoveryLogin(request: RecoveryLoginRequest, metadata?: Metadata): Observable<RecoveryLoginResponse>;
+  recoveryLogin(
+    request: RecoveryLoginRequest,
+    metadata?: Metadata,
+  ): Observable<RecoveryLoginResponse>;
 
   /**
    * Passkeys/WebAuthn (P15-004, ADR 0022, `docs/architecture/auth.md`). Web-client-only — the
@@ -842,7 +885,10 @@ export interface AuthServiceClient {
    * notification is written (mirrors `RecoveryLogin`'s convention).
    */
 
-  beginPasskeyLogin(request: BeginPasskeyLoginRequest, metadata?: Metadata): Observable<BeginPasskeyLoginResponse>;
+  beginPasskeyLogin(
+    request: BeginPasskeyLoginRequest,
+    metadata?: Metadata,
+  ): Observable<BeginPasskeyLoginResponse>;
 
   completePasskeyLogin(
     request: CompletePasskeyLoginRequest,
@@ -907,14 +953,20 @@ export interface AuthServiceController {
   resendVerification(
     request: ResendVerificationRequest,
     metadata?: Metadata,
-  ): Promise<ResendVerificationResponse> | Observable<ResendVerificationResponse> | ResendVerificationResponse;
+  ):
+    | Promise<ResendVerificationResponse>
+    | Observable<ResendVerificationResponse>
+    | ResendVerificationResponse;
 
   /**
    * The **password** login (spec §168). Kept as a dedicated RPC, not a polymorphic
    * grab-bag of credential types — SSH and GitHub each get their own RPC pair below.
    */
 
-  login(request: LoginRequest, metadata?: Metadata): Promise<LoginResponse> | Observable<LoginResponse> | LoginResponse;
+  login(
+    request: LoginRequest,
+    metadata?: Metadata,
+  ): Promise<LoginResponse> | Observable<LoginResponse> | LoginResponse;
 
   /**
    * Rotates the refresh token (spec §36). Reuse of an already-rotated token revokes the
@@ -938,7 +990,10 @@ export interface AuthServiceController {
   logoutAllSessions(
     request: LogoutAllSessionsRequest,
     metadata?: Metadata,
-  ): Promise<LogoutAllSessionsResponse> | Observable<LogoutAllSessionsResponse> | LogoutAllSessionsResponse;
+  ):
+    | Promise<LogoutAllSessionsResponse>
+    | Observable<LogoutAllSessionsResponse>
+    | LogoutAllSessionsResponse;
 
   /**
    * Applies only to accounts with a verified recovery email (spec §165). Always returns
@@ -948,7 +1003,10 @@ export interface AuthServiceController {
   requestPasswordReset(
     request: RequestPasswordResetRequest,
     metadata?: Metadata,
-  ): Promise<RequestPasswordResetResponse> | Observable<RequestPasswordResetResponse> | RequestPasswordResetResponse;
+  ):
+    | Promise<RequestPasswordResetResponse>
+    | Observable<RequestPasswordResetResponse>
+    | RequestPasswordResetResponse;
 
   /** Consumes a single-use `password_reset_codes` row. */
 
@@ -972,7 +1030,10 @@ export interface AuthServiceController {
   getCurrentSession(
     request: GetCurrentSessionRequest,
     metadata?: Metadata,
-  ): Promise<GetCurrentSessionResponse> | Observable<GetCurrentSessionResponse> | GetCurrentSessionResponse;
+  ):
+    | Promise<GetCurrentSessionResponse>
+    | Observable<GetCurrentSessionResponse>
+    | GetCurrentSessionResponse;
 
   /**
    * SSH public-key login (spec §166). `BeginSshLogin` issues a single-use, short-TTL
@@ -989,7 +1050,10 @@ export interface AuthServiceController {
   completeSshLogin(
     request: CompleteSshLoginRequest,
     metadata?: Metadata,
-  ): Promise<CompleteSshLoginResponse> | Observable<CompleteSshLoginResponse> | CompleteSshLoginResponse;
+  ):
+    | Promise<CompleteSshLoginResponse>
+    | Observable<CompleteSshLoginResponse>
+    | CompleteSshLoginResponse;
 
   /**
    * GitHub credential via OAuth device flow (spec §167) — GitHub is a credential, never an
@@ -1002,12 +1066,18 @@ export interface AuthServiceController {
   beginGitHubLogin(
     request: BeginGitHubLoginRequest,
     metadata?: Metadata,
-  ): Promise<BeginGitHubLoginResponse> | Observable<BeginGitHubLoginResponse> | BeginGitHubLoginResponse;
+  ):
+    | Promise<BeginGitHubLoginResponse>
+    | Observable<BeginGitHubLoginResponse>
+    | BeginGitHubLoginResponse;
 
   pollGitHubLogin(
     request: PollGitHubLoginRequest,
     metadata?: Metadata,
-  ): Promise<PollGitHubLoginResponse> | Observable<PollGitHubLoginResponse> | PollGitHubLoginResponse;
+  ):
+    | Promise<PollGitHubLoginResponse>
+    | Observable<PollGitHubLoginResponse>
+    | PollGitHubLoginResponse;
 
   /**
    * Generic OIDC device flow (P15-006, spec §167 extended to "any OIDC-device-flow provider,
@@ -1057,7 +1127,10 @@ export interface AuthServiceController {
   beginDeviceLink(
     request: BeginDeviceLinkRequest,
     metadata?: Metadata,
-  ): Promise<BeginDeviceLinkResponse> | Observable<BeginDeviceLinkResponse> | BeginDeviceLinkResponse;
+  ):
+    | Promise<BeginDeviceLinkResponse>
+    | Observable<BeginDeviceLinkResponse>
+    | BeginDeviceLinkResponse;
 
   pollDeviceLink(
     request: PollDeviceLinkRequest,
@@ -1067,7 +1140,10 @@ export interface AuthServiceController {
   approveDeviceLink(
     request: ApproveDeviceLinkRequest,
     metadata?: Metadata,
-  ): Promise<ApproveDeviceLinkResponse> | Observable<ApproveDeviceLinkResponse> | ApproveDeviceLinkResponse;
+  ):
+    | Promise<ApproveDeviceLinkResponse>
+    | Observable<ApproveDeviceLinkResponse>
+    | ApproveDeviceLinkResponse;
 
   /**
    * Credential management (spec §165). `ListCredentials` never returns `secret_hash` or any
@@ -1077,7 +1153,10 @@ export interface AuthServiceController {
   listCredentials(
     request: ListCredentialsRequest,
     metadata?: Metadata,
-  ): Promise<ListCredentialsResponse> | Observable<ListCredentialsResponse> | ListCredentialsResponse;
+  ):
+    | Promise<ListCredentialsResponse>
+    | Observable<ListCredentialsResponse>
+    | ListCredentialsResponse;
 
   /**
    * SSH credential enrollment challenge (spec §165-166, B-021). Authenticated: issues a
@@ -1090,7 +1169,10 @@ export interface AuthServiceController {
   beginSshEnrollment(
     request: BeginSshEnrollmentRequest,
     metadata?: Metadata,
-  ): Promise<BeginSshEnrollmentResponse> | Observable<BeginSshEnrollmentResponse> | BeginSshEnrollmentResponse;
+  ):
+    | Promise<BeginSshEnrollmentResponse>
+    | Observable<BeginSshEnrollmentResponse>
+    | BeginSshEnrollmentResponse;
 
   /**
    * Adds a PASSWORD or SSH_PUBLIC_KEY credential to the authenticated caller's account.
@@ -1114,7 +1196,10 @@ export interface AuthServiceController {
   revokeCredential(
     request: RevokeCredentialRequest,
     metadata?: Metadata,
-  ): Promise<RevokeCredentialResponse> | Observable<RevokeCredentialResponse> | RevokeCredentialResponse;
+  ):
+    | Promise<RevokeCredentialResponse>
+    | Observable<RevokeCredentialResponse>
+    | RevokeCredentialResponse;
 
   /**
    * Mints a fresh set of 10 single-use recovery codes for the authenticated caller, replacing
@@ -1127,7 +1212,10 @@ export interface AuthServiceController {
   generateRecoveryCodes(
     request: GenerateRecoveryCodesRequest,
     metadata?: Metadata,
-  ): Promise<GenerateRecoveryCodesResponse> | Observable<GenerateRecoveryCodesResponse> | GenerateRecoveryCodesResponse;
+  ):
+    | Promise<GenerateRecoveryCodesResponse>
+    | Observable<GenerateRecoveryCodesResponse>
+    | GenerateRecoveryCodesResponse;
 
   /**
    * Consumes one single-use recovery code and returns a session, the same way `Login` does for
@@ -1181,59 +1269,65 @@ export interface AuthServiceController {
   beginPasskeyLogin(
     request: BeginPasskeyLoginRequest,
     metadata?: Metadata,
-  ): Promise<BeginPasskeyLoginResponse> | Observable<BeginPasskeyLoginResponse> | BeginPasskeyLoginResponse;
+  ):
+    | Promise<BeginPasskeyLoginResponse>
+    | Observable<BeginPasskeyLoginResponse>
+    | BeginPasskeyLoginResponse;
 
   completePasskeyLogin(
     request: CompletePasskeyLoginRequest,
     metadata?: Metadata,
-  ): Promise<CompletePasskeyLoginResponse> | Observable<CompletePasskeyLoginResponse> | CompletePasskeyLoginResponse;
+  ):
+    | Promise<CompletePasskeyLoginResponse>
+    | Observable<CompletePasskeyLoginResponse>
+    | CompletePasskeyLoginResponse;
 }
 
 export function AuthServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      "getAuthPolicy",
-      "register",
-      "verifyEmail",
-      "resendVerification",
-      "login",
-      "refreshSession",
-      "logout",
-      "logoutAllSessions",
-      "requestPasswordReset",
-      "resetPassword",
-      "changePassword",
-      "getCurrentSession",
-      "beginSshLogin",
-      "completeSshLogin",
-      "beginGitHubLogin",
-      "pollGitHubLogin",
-      "beginOidcLogin",
-      "pollOidcLogin",
-      "beginDeviceLink",
-      "pollDeviceLink",
-      "approveDeviceLink",
-      "listCredentials",
-      "beginSshEnrollment",
-      "addCredential",
-      "revokeCredential",
-      "generateRecoveryCodes",
-      "recoveryLogin",
-      "beginPasskeyRegistration",
-      "completePasskeyRegistration",
-      "beginPasskeyLogin",
-      "completePasskeyLogin",
+      'getAuthPolicy',
+      'register',
+      'verifyEmail',
+      'resendVerification',
+      'login',
+      'refreshSession',
+      'logout',
+      'logoutAllSessions',
+      'requestPasswordReset',
+      'resetPassword',
+      'changePassword',
+      'getCurrentSession',
+      'beginSshLogin',
+      'completeSshLogin',
+      'beginGitHubLogin',
+      'pollGitHubLogin',
+      'beginOidcLogin',
+      'pollOidcLogin',
+      'beginDeviceLink',
+      'pollDeviceLink',
+      'approveDeviceLink',
+      'listCredentials',
+      'beginSshEnrollment',
+      'addCredential',
+      'revokeCredential',
+      'generateRecoveryCodes',
+      'recoveryLogin',
+      'beginPasskeyRegistration',
+      'completePasskeyRegistration',
+      'beginPasskeyLogin',
+      'completePasskeyLogin',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("AuthService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('AuthService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("AuthService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('AuthService', method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const AUTH_SERVICE_NAME = "AuthService";
+export const AUTH_SERVICE_NAME = 'AuthService';

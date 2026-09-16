@@ -5,43 +5,43 @@
 // source: patches/v1/notifications.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
-import { Actor } from "./actors.js";
-import { PageInfo } from "./common.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
+import { Actor } from './actors.js';
+import { PageInfo } from './common.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 export enum NotificationType {
-  NOTIFICATION_TYPE_UNSPECIFIED = "NOTIFICATION_TYPE_UNSPECIFIED",
-  NOTIFICATION_TYPE_FOLLOW = "NOTIFICATION_TYPE_FOLLOW",
-  NOTIFICATION_TYPE_LIKE = "NOTIFICATION_TYPE_LIKE",
-  NOTIFICATION_TYPE_REPLY = "NOTIFICATION_TYPE_REPLY",
-  NOTIFICATION_TYPE_MENTION = "NOTIFICATION_TYPE_MENTION",
+  NOTIFICATION_TYPE_UNSPECIFIED = 'NOTIFICATION_TYPE_UNSPECIFIED',
+  NOTIFICATION_TYPE_FOLLOW = 'NOTIFICATION_TYPE_FOLLOW',
+  NOTIFICATION_TYPE_LIKE = 'NOTIFICATION_TYPE_LIKE',
+  NOTIFICATION_TYPE_REPLY = 'NOTIFICATION_TYPE_REPLY',
+  NOTIFICATION_TYPE_MENTION = 'NOTIFICATION_TYPE_MENTION',
   /**
    * NOTIFICATION_TYPE_MODERATION - Reserved for moderator-initiated notices (e.g. "your post was removed"); no RPC creates
    * these yet — `ModerationService`'s admin-facing actions land with the admin CLI, spec §65.
    */
-  NOTIFICATION_TYPE_MODERATION = "NOTIFICATION_TYPE_MODERATION",
+  NOTIFICATION_TYPE_MODERATION = 'NOTIFICATION_TYPE_MODERATION',
   /** NOTIFICATION_TYPE_REPOST - A repost of one of the caller's posts (spec §190). */
-  NOTIFICATION_TYPE_REPOST = "NOTIFICATION_TYPE_REPOST",
+  NOTIFICATION_TYPE_REPOST = 'NOTIFICATION_TYPE_REPOST',
   /** NOTIFICATION_TYPE_QUOTE - A quote of one of the caller's posts. */
-  NOTIFICATION_TYPE_QUOTE = "NOTIFICATION_TYPE_QUOTE",
+  NOTIFICATION_TYPE_QUOTE = 'NOTIFICATION_TYPE_QUOTE',
   /**
    * NOTIFICATION_TYPE_MESSAGE - A new direct message or message request landed. Never carries the message body — see
    * `Notification.conversation_id`.
    */
-  NOTIFICATION_TYPE_MESSAGE = "NOTIFICATION_TYPE_MESSAGE",
+  NOTIFICATION_TYPE_MESSAGE = 'NOTIFICATION_TYPE_MESSAGE',
   /** NOTIFICATION_TYPE_COMMUNITY_INVITE - An invite to join a community. */
-  NOTIFICATION_TYPE_COMMUNITY_INVITE = "NOTIFICATION_TYPE_COMMUNITY_INVITE",
+  NOTIFICATION_TYPE_COMMUNITY_INVITE = 'NOTIFICATION_TYPE_COMMUNITY_INVITE',
   /**
    * NOTIFICATION_TYPE_FOLLOW_REQUEST - A follow request awaiting the caller's approval, because the caller's account is locked
    * (§197.5). Never fires for an ordinary follow of an unlocked account — that stays
    * `NOTIFICATION_TYPE_FOLLOW`, delivered once, on `AcceptFollowRequest`, not on request.
    */
-  NOTIFICATION_TYPE_FOLLOW_REQUEST = "NOTIFICATION_TYPE_FOLLOW_REQUEST",
+  NOTIFICATION_TYPE_FOLLOW_REQUEST = 'NOTIFICATION_TYPE_FOLLOW_REQUEST',
   /**
    * NOTIFICATION_TYPE_SECURITY - A security-relevant event on the caller's own account — currently: a successful
    * `AuthService.RecoveryLogin` (P15-003), so an account holder finds out promptly if a
@@ -49,8 +49,8 @@ export enum NotificationType {
    * is unset (there is no "other actor" for your own account's security event), so this is
    * exempt from the usual "never notify yourself" rule the other types follow.
    */
-  NOTIFICATION_TYPE_SECURITY = "NOTIFICATION_TYPE_SECURITY",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  NOTIFICATION_TYPE_SECURITY = 'NOTIFICATION_TYPE_SECURITY',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 export interface Notification {
@@ -60,18 +60,12 @@ export interface Notification {
    * The actor who triggered this notification (who liked/followed/replied/mentioned). Unset
    * for a MODERATION notification with no attributable actor.
    */
-  actor:
-    | Actor
-    | undefined;
+  actor: Actor | undefined;
   /** Set for LIKE/REPLY/MENTION; empty for FOLLOW/MODERATION. */
   postId: string;
-  createdAt:
-    | Timestamp
-    | undefined;
+  createdAt: Timestamp | undefined;
   /** Unset (zero value) while unread. */
-  readAt:
-    | Timestamp
-    | undefined;
+  readAt: Timestamp | undefined;
   /**
    * Set for MESSAGE; empty otherwise. Never resolves to a message body — the caller must call
    * `DirectMessageService.ListMessages` for that.
@@ -104,14 +98,13 @@ export interface MarkNotificationsReadResponse {
   markedCount: number;
 }
 
-export interface GetUnreadCountRequest {
-}
+export interface GetUnreadCountRequest {}
 
 export interface GetUnreadCountResponse {
   count: number;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * Notification rows (spec §56, §113) — no separate event service. The TUI polls
@@ -119,7 +112,10 @@ export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
  */
 
 export interface NotificationServiceClient {
-  listNotifications(request: ListNotificationsRequest, metadata?: Metadata): Observable<ListNotificationsResponse>;
+  listNotifications(
+    request: ListNotificationsRequest,
+    metadata?: Metadata,
+  ): Observable<ListNotificationsResponse>;
 
   /**
    * Collapses spec §56's `MarkNotificationRead`/`MarkAllNotificationsRead` into one idempotent
@@ -132,7 +128,10 @@ export interface NotificationServiceClient {
     metadata?: Metadata,
   ): Observable<MarkNotificationsReadResponse>;
 
-  getUnreadCount(request: GetUnreadCountRequest, metadata?: Metadata): Observable<GetUnreadCountResponse>;
+  getUnreadCount(
+    request: GetUnreadCountRequest,
+    metadata?: Metadata,
+  ): Observable<GetUnreadCountResponse>;
 }
 
 /**
@@ -144,7 +143,10 @@ export interface NotificationServiceController {
   listNotifications(
     request: ListNotificationsRequest,
     metadata?: Metadata,
-  ): Promise<ListNotificationsResponse> | Observable<ListNotificationsResponse> | ListNotificationsResponse;
+  ):
+    | Promise<ListNotificationsResponse>
+    | Observable<ListNotificationsResponse>
+    | ListNotificationsResponse;
 
   /**
    * Collapses spec §56's `MarkNotificationRead`/`MarkAllNotificationsRead` into one idempotent
@@ -155,7 +157,10 @@ export interface NotificationServiceController {
   markNotificationsRead(
     request: MarkNotificationsReadRequest,
     metadata?: Metadata,
-  ): Promise<MarkNotificationsReadResponse> | Observable<MarkNotificationsReadResponse> | MarkNotificationsReadResponse;
+  ):
+    | Promise<MarkNotificationsReadResponse>
+    | Observable<MarkNotificationsReadResponse>
+    | MarkNotificationsReadResponse;
 
   getUnreadCount(
     request: GetUnreadCountRequest,
@@ -165,17 +170,21 @@ export interface NotificationServiceController {
 
 export function NotificationServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ["listNotifications", "markNotificationsRead", "getUnreadCount"];
+    const grpcMethods: string[] = ['listNotifications', 'markNotificationsRead', 'getUnreadCount'];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("NotificationService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('NotificationService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("NotificationService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('NotificationService', method)(
+        constructor.prototype[method],
+        method,
+        descriptor,
+      );
     }
   };
 }
 
-export const NOTIFICATION_SERVICE_NAME = "NotificationService";
+export const NOTIFICATION_SERVICE_NAME = 'NotificationService';

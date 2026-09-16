@@ -5,14 +5,14 @@
 // source: patches/v1/social_graph.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
-import { Actor } from "./actors.js";
-import { PageInfo } from "./common.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
+import { Actor } from './actors.js';
+import { PageInfo } from './common.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 /**
  * Mirrors spec §50's future follow states — `PENDING` covers both a follow of a remote actor
@@ -22,11 +22,11 @@ export const protobufPackage = "patches.v1";
  * `Relationship.requested`/`requested_by` below disambiguate the locked-account case further.
  */
 export enum FollowState {
-  FOLLOW_STATE_UNSPECIFIED = "FOLLOW_STATE_UNSPECIFIED",
-  FOLLOW_STATE_NONE = "FOLLOW_STATE_NONE",
-  FOLLOW_STATE_PENDING = "FOLLOW_STATE_PENDING",
-  FOLLOW_STATE_FOLLOWING = "FOLLOW_STATE_FOLLOWING",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  FOLLOW_STATE_UNSPECIFIED = 'FOLLOW_STATE_UNSPECIFIED',
+  FOLLOW_STATE_NONE = 'FOLLOW_STATE_NONE',
+  FOLLOW_STATE_PENDING = 'FOLLOW_STATE_PENDING',
+  FOLLOW_STATE_FOLLOWING = 'FOLLOW_STATE_FOLLOWING',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 export interface Relationship {
@@ -61,9 +61,7 @@ export interface FollowActorRequest {
 }
 
 export interface FollowActorResponse {
-  relationship:
-    | Relationship
-    | undefined;
+  relationship: Relationship | undefined;
   /**
    * §197.5: true when this call created (or found already outstanding) a pending follow
    * request rather than an immediate follow, because the target is a locked local actor.
@@ -130,10 +128,9 @@ export interface RejectFollowRequestRequest {
   actorId: string;
 }
 
-export interface RejectFollowRequestResponse {
-}
+export interface RejectFollowRequestResponse {}
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * Follows and the block/mute-aware relationship view (spec §50, §61–63, Amendment C §197.5).
@@ -159,14 +156,20 @@ export interface SocialGraphServiceClient {
    * the RPC a client calls for "cancel my follow request", too.
    */
 
-  unfollowActor(request: UnfollowActorRequest, metadata?: Metadata): Observable<UnfollowActorResponse>;
+  unfollowActor(
+    request: UnfollowActorRequest,
+    metadata?: Metadata,
+  ): Observable<UnfollowActorResponse>;
 
   /**
    * The caller's relationship with `actor_id` — requires an authenticated session, since there
    * is no relationship to report for an anonymous caller.
    */
 
-  getRelationship(request: GetRelationshipRequest, metadata?: Metadata): Observable<GetRelationshipResponse>;
+  getRelationship(
+    request: GetRelationshipRequest,
+    metadata?: Metadata,
+  ): Observable<GetRelationshipResponse>;
 
   /**
    * B-024: actors `actor_id` both follows and is followed by ("mutuals"/"friends") — the RPC
@@ -176,14 +179,20 @@ export interface SocialGraphServiceClient {
    * Page's Friends block must be visible to a signed-out visitor.
    */
 
-  listMutualFollows(request: ListMutualFollowsRequest, metadata?: Metadata): Observable<ListMutualFollowsResponse>;
+  listMutualFollows(
+    request: ListMutualFollowsRequest,
+    metadata?: Metadata,
+  ): Observable<ListMutualFollowsResponse>;
 
   /**
    * §197.5: pending follow requests addressed to the caller's own (locked) account, newest
    * first. Requires an authenticated session — there is no one else's request queue to list.
    */
 
-  listFollowRequests(request: ListFollowRequestsRequest, metadata?: Metadata): Observable<ListFollowRequestsResponse>;
+  listFollowRequests(
+    request: ListFollowRequestsRequest,
+    metadata?: Metadata,
+  ): Observable<ListFollowRequestsResponse>;
 
   /**
    * Accepts a pending follow request from `actor_id` addressed to the caller: creates the
@@ -248,7 +257,10 @@ export interface SocialGraphServiceController {
   getRelationship(
     request: GetRelationshipRequest,
     metadata?: Metadata,
-  ): Promise<GetRelationshipResponse> | Observable<GetRelationshipResponse> | GetRelationshipResponse;
+  ):
+    | Promise<GetRelationshipResponse>
+    | Observable<GetRelationshipResponse>
+    | GetRelationshipResponse;
 
   /**
    * B-024: actors `actor_id` both follows and is followed by ("mutuals"/"friends") — the RPC
@@ -261,7 +273,10 @@ export interface SocialGraphServiceController {
   listMutualFollows(
     request: ListMutualFollowsRequest,
     metadata?: Metadata,
-  ): Promise<ListMutualFollowsResponse> | Observable<ListMutualFollowsResponse> | ListMutualFollowsResponse;
+  ):
+    | Promise<ListMutualFollowsResponse>
+    | Observable<ListMutualFollowsResponse>
+    | ListMutualFollowsResponse;
 
   /**
    * §197.5: pending follow requests addressed to the caller's own (locked) account, newest
@@ -271,7 +286,10 @@ export interface SocialGraphServiceController {
   listFollowRequests(
     request: ListFollowRequestsRequest,
     metadata?: Metadata,
-  ): Promise<ListFollowRequestsResponse> | Observable<ListFollowRequestsResponse> | ListFollowRequestsResponse;
+  ):
+    | Promise<ListFollowRequestsResponse>
+    | Observable<ListFollowRequestsResponse>
+    | ListFollowRequestsResponse;
 
   /**
    * Accepts a pending follow request from `actor_id` addressed to the caller: creates the
@@ -282,7 +300,10 @@ export interface SocialGraphServiceController {
   acceptFollowRequest(
     request: AcceptFollowRequestRequest,
     metadata?: Metadata,
-  ): Promise<AcceptFollowRequestResponse> | Observable<AcceptFollowRequestResponse> | AcceptFollowRequestResponse;
+  ):
+    | Promise<AcceptFollowRequestResponse>
+    | Observable<AcceptFollowRequestResponse>
+    | AcceptFollowRequestResponse;
 
   /**
    * Rejects (discards) a pending follow request from `actor_id` addressed to the caller — no
@@ -293,30 +314,37 @@ export interface SocialGraphServiceController {
   rejectFollowRequest(
     request: RejectFollowRequestRequest,
     metadata?: Metadata,
-  ): Promise<RejectFollowRequestResponse> | Observable<RejectFollowRequestResponse> | RejectFollowRequestResponse;
+  ):
+    | Promise<RejectFollowRequestResponse>
+    | Observable<RejectFollowRequestResponse>
+    | RejectFollowRequestResponse;
 }
 
 export function SocialGraphServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      "followActor",
-      "unfollowActor",
-      "getRelationship",
-      "listMutualFollows",
-      "listFollowRequests",
-      "acceptFollowRequest",
-      "rejectFollowRequest",
+      'followActor',
+      'unfollowActor',
+      'getRelationship',
+      'listMutualFollows',
+      'listFollowRequests',
+      'acceptFollowRequest',
+      'rejectFollowRequest',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("SocialGraphService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('SocialGraphService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("SocialGraphService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('SocialGraphService', method)(
+        constructor.prototype[method],
+        method,
+        descriptor,
+      );
     }
   };
 }
 
-export const SOCIAL_GRAPH_SERVICE_NAME = "SocialGraphService";
+export const SOCIAL_GRAPH_SERVICE_NAME = 'SocialGraphService';

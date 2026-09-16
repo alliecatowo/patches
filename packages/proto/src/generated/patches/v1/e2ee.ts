@@ -5,13 +5,13 @@
 // source: patches/v1/e2ee.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
-import { PageInfo } from "./common.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
+import { PageInfo } from './common.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 /**
  * Which security mode a conversation was created in. Immutable for the life of the row: there
@@ -21,14 +21,14 @@ export const protobufPackage = "patches.v1";
  * (`packages/database/src/entities/enums.ts`) exactly, so no translation layer can drift.
  */
 export enum ConversationSecurityMode {
-  CONVERSATION_SECURITY_MODE_UNSPECIFIED = "CONVERSATION_SECURITY_MODE_UNSPECIFIED",
+  CONVERSATION_SECURITY_MODE_UNSPECIFIED = 'CONVERSATION_SECURITY_MODE_UNSPECIFIED',
   /**
    * CONVERSATION_SECURITY_MODE_E2EE_V1 - ADR 0020. The node routes ciphertext it cannot read. This is now the only conversation
    * security mode a client will ever see — `E2eeService.CreateE2eeConversation` is the only
    * way to produce one.
    */
-  CONVERSATION_SECURITY_MODE_E2EE_V1 = "CONVERSATION_SECURITY_MODE_E2EE_V1",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  CONVERSATION_SECURITY_MODE_E2EE_V1 = 'CONVERSATION_SECURITY_MODE_E2EE_V1',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -42,21 +42,21 @@ export enum ConversationSecurityMode {
  * dark").
  */
 export enum E2eeCapabilityState {
-  E2EE_CAPABILITY_STATE_UNSPECIFIED = "E2EE_CAPABILITY_STATE_UNSPECIFIED",
+  E2EE_CAPABILITY_STATE_UNSPECIFIED = 'E2EE_CAPABILITY_STATE_UNSPECIFIED',
   /** E2EE_CAPABILITY_STATE_DISABLED - The reference node's value today, and the only correct value before ADR 0020 §12's gates. */
-  E2EE_CAPABILITY_STATE_DISABLED = "E2EE_CAPABILITY_STATE_DISABLED",
+  E2EE_CAPABILITY_STATE_DISABLED = 'E2EE_CAPABILITY_STATE_DISABLED',
   /** E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY - Valid only on an explicitly isolated test node. */
-  E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY = "E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY",
+  E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY = 'E2EE_CAPABILITY_STATE_ISOLATED_TEST_ONLY',
   /** E2EE_CAPABILITY_STATE_EXTERNAL_REVIEW_PENDING - Implementation complete, independent review not yet finished. Still not a product. */
-  E2EE_CAPABILITY_STATE_EXTERNAL_REVIEW_PENDING = "E2EE_CAPABILITY_STATE_EXTERNAL_REVIEW_PENDING",
+  E2EE_CAPABILITY_STATE_EXTERNAL_REVIEW_PENDING = 'E2EE_CAPABILITY_STATE_EXTERNAL_REVIEW_PENDING',
   /** E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY - Post-review, bounded canary, explicitly labelled experimental, with no automatic downgrade. */
-  E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY = "E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY",
+  E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY = 'E2EE_CAPABILITY_STATE_EXPERIMENTAL_CANARY',
   /**
    * E2EE_CAPABILITY_STATE_ENABLED - Post-canary. New conversations between capable members default to `E2EE_V1`; existing
    * conversations stay visibly legacy (ADR 0020 §11.7).
    */
-  E2EE_CAPABILITY_STATE_ENABLED = "E2EE_CAPABILITY_STATE_ENABLED",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  E2EE_CAPABILITY_STATE_ENABLED = 'E2EE_CAPABILITY_STATE_ENABLED',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -65,11 +65,11 @@ export enum E2eeCapabilityState {
  * certificate's own `expires_at`, both of which a client verifies for itself.
  */
 export enum E2eeDeviceStatus {
-  E2EE_DEVICE_STATUS_UNSPECIFIED = "E2EE_DEVICE_STATUS_UNSPECIFIED",
-  E2EE_DEVICE_STATUS_ACTIVE = "E2EE_DEVICE_STATUS_ACTIVE",
-  E2EE_DEVICE_STATUS_REVOKED = "E2EE_DEVICE_STATUS_REVOKED",
-  E2EE_DEVICE_STATUS_EXPIRED = "E2EE_DEVICE_STATUS_EXPIRED",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  E2EE_DEVICE_STATUS_UNSPECIFIED = 'E2EE_DEVICE_STATUS_UNSPECIFIED',
+  E2EE_DEVICE_STATUS_ACTIVE = 'E2EE_DEVICE_STATUS_ACTIVE',
+  E2EE_DEVICE_STATUS_REVOKED = 'E2EE_DEVICE_STATUS_REVOKED',
+  E2EE_DEVICE_STATUS_EXPIRED = 'E2EE_DEVICE_STATUS_EXPIRED',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -77,15 +77,15 @@ export enum E2eeDeviceStatus {
  * `e2ee_report_evidence.verification_status`.
  */
 export enum E2eeEvidenceVerificationStatus {
-  E2EE_EVIDENCE_VERIFICATION_STATUS_UNSPECIFIED = "E2EE_EVIDENCE_VERIFICATION_STATUS_UNSPECIFIED",
-  E2EE_EVIDENCE_VERIFICATION_STATUS_PENDING = "E2EE_EVIDENCE_VERIFICATION_STATUS_PENDING",
-  E2EE_EVIDENCE_VERIFICATION_STATUS_VERIFIED = "E2EE_EVIDENCE_VERIFICATION_STATUS_VERIFIED",
+  E2EE_EVIDENCE_VERIFICATION_STATUS_UNSPECIFIED = 'E2EE_EVIDENCE_VERIFICATION_STATUS_UNSPECIFIED',
+  E2EE_EVIDENCE_VERIFICATION_STATUS_PENDING = 'E2EE_EVIDENCE_VERIFICATION_STATUS_PENDING',
+  E2EE_EVIDENCE_VERIFICATION_STATUS_VERIFIED = 'E2EE_EVIDENCE_VERIFICATION_STATUS_VERIFIED',
   /**
    * E2EE_EVIDENCE_VERIFICATION_STATUS_UNVERIFIABLE - Verification failed. The report is **not** discarded — it is queued with the content marked
    * unverifiable (ADR 0020 §9). A failed franking check is not a finding of innocence.
    */
-  E2EE_EVIDENCE_VERIFICATION_STATUS_UNVERIFIABLE = "E2EE_EVIDENCE_VERIFICATION_STATUS_UNVERIFIABLE",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  E2EE_EVIDENCE_VERIFICATION_STATUS_UNVERIFIABLE = 'E2EE_EVIDENCE_VERIFICATION_STATUS_UNVERIFIABLE',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -94,10 +94,10 @@ export enum E2eeEvidenceVerificationStatus {
  * (`packages/database/src/entities/enums.ts`) exactly.
  */
 export enum E2eeGroupChangeKind {
-  E2EE_GROUP_CHANGE_KIND_UNSPECIFIED = "E2EE_GROUP_CHANGE_KIND_UNSPECIFIED",
-  E2EE_GROUP_CHANGE_KIND_ADDED = "E2EE_GROUP_CHANGE_KIND_ADDED",
-  E2EE_GROUP_CHANGE_KIND_REMOVED = "E2EE_GROUP_CHANGE_KIND_REMOVED",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  E2EE_GROUP_CHANGE_KIND_UNSPECIFIED = 'E2EE_GROUP_CHANGE_KIND_UNSPECIFIED',
+  E2EE_GROUP_CHANGE_KIND_ADDED = 'E2EE_GROUP_CHANGE_KIND_ADDED',
+  E2EE_GROUP_CHANGE_KIND_REMOVED = 'E2EE_GROUP_CHANGE_KIND_REMOVED',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -176,9 +176,7 @@ export interface E2eeIdentityRoot {
    * neither is silently trusted (ADR 0020 §3).
    */
   previousRootSignature: Buffer;
-  createdAt:
-    | Timestamp
-    | undefined;
+  createdAt: Timestamp | undefined;
   /** Set once superseded by a later generation. */
   rotatedAt: Timestamp | undefined;
 }
@@ -220,9 +218,7 @@ export interface E2eeDeviceCertificate {
    */
   supportedProtocolVersions: string[];
   createdAt: Timestamp | undefined;
-  expiresAt:
-    | Timestamp
-    | undefined;
+  expiresAt: Timestamp | undefined;
   /** The exact canonical bytes `root_signature` covers. */
   certificateBytes: Buffer;
   /** Ed25519 signature by the messaging root over `certificate_bytes`. */
@@ -328,9 +324,7 @@ export interface E2eePrekeyBundle {
   rootGeneration: number;
   rootPublicKey: Buffer;
   deviceCertificate: E2eeDeviceCertificate | undefined;
-  signedPrekey:
-    | E2eeSignedPrekey
-    | undefined;
+  signedPrekey: E2eeSignedPrekey | undefined;
   /**
    * Absent when exhausted. Consumed atomically by `ClaimPrekeyBundles`; the node never returns
    * the same one-time prekey twice.
@@ -520,8 +514,7 @@ export interface E2eeGroupControlEvent {
   createdAt: Timestamp | undefined;
 }
 
-export interface GetE2eeCapabilityRequest {
-}
+export interface GetE2eeCapabilityRequest {}
 
 export interface GetE2eeCapabilityResponse {
   capability: E2eeCapability | undefined;
@@ -532,9 +525,7 @@ export interface GetE2eeCapabilityResponse {
  * never has a live root with an unsigned device list.
  */
 export interface PublishIdentityRootRequest {
-  identityRoot:
-    | E2eeIdentityRoot
-    | undefined;
+  identityRoot: E2eeIdentityRoot | undefined;
   /** Required when `identity_root.generation > 1`. */
   roster: E2eeDeviceRoster | undefined;
 }
@@ -549,9 +540,7 @@ export interface GetIdentityRootRequest {
 }
 
 export interface GetIdentityRootResponse {
-  identityRoot:
-    | E2eeIdentityRoot
-    | undefined;
+  identityRoot: E2eeIdentityRoot | undefined;
   /**
    * True when this actor's root generation is higher than the one the caller last acknowledged.
    * The client blocks new sends and shows the hard identity-change warning; it never resolves
@@ -561,14 +550,10 @@ export interface GetIdentityRootResponse {
 }
 
 export interface EnrollDeviceRequest {
-  certificate:
-    | E2eeDeviceCertificate
-    | undefined;
+  certificate: E2eeDeviceCertificate | undefined;
   /** The next roster, including the new device, signed by the root. */
   roster: E2eeDeviceRoster | undefined;
-  signedPrekey:
-    | E2eeSignedPrekey
-    | undefined;
+  signedPrekey: E2eeSignedPrekey | undefined;
   /** Initial inventory, up to `E2eeCapability.one_time_prekey_target`. */
   oneTimePrekeys: E2eeOneTimePrekey[];
   /**
@@ -591,9 +576,7 @@ export interface RevokeDeviceRequest {
 }
 
 export interface RevokeDeviceResponse {
-  roster:
-    | E2eeDeviceRoster
-    | undefined;
+  roster: E2eeDeviceRoster | undefined;
   /**
    * Unused public one-time prekeys the node destroyed for the revoked device. Reported so a
    * client can state what revocation did — and, by omission, what it did not do: it cannot
@@ -627,9 +610,7 @@ export interface E2eeDeviceLinkOffer {
    * substitute for root certification, which only `EnrollDevice` grants.
    */
   deviceSignature: Buffer;
-  signedPrekey:
-    | E2eeSignedPrekey
-    | undefined;
+  signedPrekey: E2eeSignedPrekey | undefined;
   /** Initial inventory, up to `E2eeCapability.one_time_prekey_target`. */
   oneTimePrekeys: E2eeOneTimePrekey[];
   /**
@@ -638,9 +619,7 @@ export interface E2eeDeviceLinkOffer {
    */
   prekeyBundleBytes: Buffer;
   prekeyBundleSignature: Buffer;
-  createdAt:
-    | Timestamp
-    | undefined;
+  createdAt: Timestamp | undefined;
   /**
    * Always `created_at` + 10 minutes (ADR 0037 §1). An expired offer is deleted, never served,
    * and never silently retried.
@@ -661,8 +640,7 @@ export interface E2eeServiceBeginDeviceLinkResponse {
   expiresAt: Timestamp | undefined;
 }
 
-export interface E2eeServiceListPendingDeviceLinksRequest {
-}
+export interface E2eeServiceListPendingDeviceLinksRequest {}
 
 /**
  * Invariant: only the calling actor's own pending offers, in no particular authenticated order —
@@ -676,8 +654,7 @@ export interface E2eeServiceCancelDeviceLinkRequest {
   linkId: string;
 }
 
-export interface E2eeServiceCancelDeviceLinkResponse {
-}
+export interface E2eeServiceCancelDeviceLinkResponse {}
 
 export interface PublishDeviceRosterRequest {
   roster: E2eeDeviceRoster | undefined;
@@ -692,9 +669,7 @@ export interface GetDeviceRosterRequest {
 }
 
 export interface GetDeviceRosterResponse {
-  roster:
-    | E2eeDeviceRoster
-    | undefined;
+  roster: E2eeDeviceRoster | undefined;
   /**
    * The certificates referenced by the roster's entries, so a client can verify the chain
    * root → certificate → prekey bundle without another round trip.
@@ -724,9 +699,7 @@ export interface ListDeviceRostersResponse {
 export interface UploadPrekeysRequest {
   deviceId: string;
   /** Present on rotation. Rejected if it does not advance the device's signed prekey. */
-  signedPrekey:
-    | E2eeSignedPrekey
-    | undefined;
+  signedPrekey: E2eeSignedPrekey | undefined;
   /** Top-up. The node caps the stored total at `E2eeCapability.one_time_prekey_target`. */
   oneTimePrekeys: E2eeOneTimePrekey[];
   prekeyBundleBytes: Buffer;
@@ -919,13 +892,9 @@ export interface SendEnvelopesRequest {
 
 export interface SendEnvelopesResponse {
   logicalMessageId: string;
-  acceptedAt:
-    | Timestamp
-    | undefined;
+  acceptedAt: Timestamp | undefined;
   /** Issued only after the complete fanout was accepted. */
-  frankingTag:
-    | E2eeFrankingTag
-    | undefined;
+  frankingTag: E2eeFrankingTag | undefined;
   /** Echoed so the sender can assert the node stored the fanout it sent. */
   fanoutDigest: Buffer;
   acceptedRecipientDeviceIds: string[];
@@ -1032,7 +1001,7 @@ export interface AttachReportEvidenceResponse {
   reporterSelectedContext: boolean;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * End-to-end encrypted direct messages (spec §183, §194, §195.1; ADR 0020).
@@ -1065,7 +1034,10 @@ export interface E2eeServiceClient {
    * a client must be able to discover that E2EE is unavailable *before* it offers the option.
    */
 
-  getE2EeCapability(request: GetE2eeCapabilityRequest, metadata?: Metadata): Observable<GetE2eeCapabilityResponse>;
+  getE2EeCapability(
+    request: GetE2eeCapabilityRequest,
+    metadata?: Metadata,
+  ): Observable<GetE2eeCapabilityResponse>;
 
   /**
    * Publishes the caller's messaging identity root, or rotates it to a new generation. A
@@ -1084,7 +1056,10 @@ export interface E2eeServiceClient {
    * comparison over an authenticated channel exists to detect (ADR 0020 §3).
    */
 
-  getIdentityRoot(request: GetIdentityRootRequest, metadata?: Metadata): Observable<GetIdentityRootResponse>;
+  getIdentityRoot(
+    request: GetIdentityRootRequest,
+    metadata?: Metadata,
+  ): Observable<GetIdentityRootResponse>;
 
   /**
    * Registers one root-certified device and, in the same transaction, the roster that lists it
@@ -1148,7 +1123,10 @@ export interface E2eeServiceClient {
 
   /** The newest roster of an actor, with the device certificates it references. */
 
-  getDeviceRoster(request: GetDeviceRosterRequest, metadata?: Metadata): Observable<GetDeviceRosterResponse>;
+  getDeviceRoster(
+    request: GetDeviceRosterRequest,
+    metadata?: Metadata,
+  ): Observable<GetDeviceRosterResponse>;
 
   /**
    * The roster log from the caller's last verified sequence forward, so a client can verify the
@@ -1156,25 +1134,37 @@ export interface E2eeServiceClient {
    * node rollback or a split view detectable to communicating devices (ADR 0020 §2).
    */
 
-  listDeviceRosters(request: ListDeviceRostersRequest, metadata?: Metadata): Observable<ListDeviceRostersResponse>;
+  listDeviceRosters(
+    request: ListDeviceRostersRequest,
+    metadata?: Metadata,
+  ): Observable<ListDeviceRostersResponse>;
 
   /** Rotates the calling device's signed prekey and/or tops up its one-time prekeys. */
 
-  uploadPrekeys(request: UploadPrekeysRequest, metadata?: Metadata): Observable<UploadPrekeysResponse>;
+  uploadPrekeys(
+    request: UploadPrekeysRequest,
+    metadata?: Metadata,
+  ): Observable<UploadPrekeysResponse>;
 
   /**
    * The calling device's own prekey inventory, so it knows when to replenish or rotate. Never
    * another actor's: remaining-prekey counts for someone else are an availability oracle.
    */
 
-  getPrekeyInventory(request: GetPrekeyInventoryRequest, metadata?: Metadata): Observable<GetPrekeyInventoryResponse>;
+  getPrekeyInventory(
+    request: GetPrekeyInventoryRequest,
+    metadata?: Metadata,
+  ): Observable<GetPrekeyInventoryResponse>;
 
   /**
    * Claims one bundle per active recipient device for X3DH-class setup. Atomically removes at
    * most one one-time prekey per device per call, and rate-limits draining (ADR 0020 §5).
    */
 
-  claimPrekeyBundles(request: ClaimPrekeyBundlesRequest, metadata?: Metadata): Observable<ClaimPrekeyBundlesResponse>;
+  claimPrekeyBundles(
+    request: ClaimPrekeyBundlesRequest,
+    metadata?: Metadata,
+  ): Observable<ClaimPrekeyBundlesResponse>;
 
   /**
    * Reserves an `E2EE_V1` conversation: establishes membership and returns its id, carrying no
@@ -1206,7 +1196,10 @@ export interface E2eeServiceClient {
    * member receives future messages only — no history is re-encrypted or replayed to them.
    */
 
-  addE2EeMember(request: AddE2eeMemberRequest, metadata?: Metadata): Observable<AddE2eeMemberResponse>;
+  addE2EeMember(
+    request: AddE2eeMemberRequest,
+    metadata?: Metadata,
+  ): Observable<AddE2eeMemberResponse>;
 
   /**
    * Removes one member (a member removing themselves is a leave). The transition is a
@@ -1215,7 +1208,10 @@ export interface E2eeServiceClient {
    * old epoch is rejected rather than delivered to them (ADR 0020 §7).
    */
 
-  removeE2EeMember(request: RemoveE2eeMemberRequest, metadata?: Metadata): Observable<RemoveE2eeMemberResponse>;
+  removeE2EeMember(
+    request: RemoveE2eeMemberRequest,
+    metadata?: Metadata,
+  ): Observable<RemoveE2eeMemberResponse>;
 
   /**
    * The group-control transcript from the caller's last verified epoch forward, so a client
@@ -1233,7 +1229,10 @@ export interface E2eeServiceClient {
    * the node's franking tag over it (ADR 0020 §7, §9).
    */
 
-  sendEnvelopes(request: SendEnvelopesRequest, metadata?: Metadata): Observable<SendEnvelopesResponse>;
+  sendEnvelopes(
+    request: SendEnvelopesRequest,
+    metadata?: Metadata,
+  ): Observable<SendEnvelopesResponse>;
 
   /**
    * The calling device's mailbox, oldest first, keyset-paginated. Poll-based like every other
@@ -1301,7 +1300,10 @@ export interface E2eeServiceController {
   getE2EeCapability(
     request: GetE2eeCapabilityRequest,
     metadata?: Metadata,
-  ): Promise<GetE2eeCapabilityResponse> | Observable<GetE2eeCapabilityResponse> | GetE2eeCapabilityResponse;
+  ):
+    | Promise<GetE2eeCapabilityResponse>
+    | Observable<GetE2eeCapabilityResponse>
+    | GetE2eeCapabilityResponse;
 
   /**
    * Publishes the caller's messaging identity root, or rotates it to a new generation. A
@@ -1312,7 +1314,10 @@ export interface E2eeServiceController {
   publishIdentityRoot(
     request: PublishIdentityRootRequest,
     metadata?: Metadata,
-  ): Promise<PublishIdentityRootResponse> | Observable<PublishIdentityRootResponse> | PublishIdentityRootResponse;
+  ):
+    | Promise<PublishIdentityRootResponse>
+    | Observable<PublishIdentityRootResponse>
+    | PublishIdentityRootResponse;
 
   /**
    * The current messaging root of any actor the caller may message. This is first-contact
@@ -1323,7 +1328,10 @@ export interface E2eeServiceController {
   getIdentityRoot(
     request: GetIdentityRootRequest,
     metadata?: Metadata,
-  ): Promise<GetIdentityRootResponse> | Observable<GetIdentityRootResponse> | GetIdentityRootResponse;
+  ):
+    | Promise<GetIdentityRootResponse>
+    | Observable<GetIdentityRootResponse>
+    | GetIdentityRootResponse;
 
   /**
    * Registers one root-certified device and, in the same transaction, the roster that lists it
@@ -1398,14 +1406,20 @@ export interface E2eeServiceController {
   publishDeviceRoster(
     request: PublishDeviceRosterRequest,
     metadata?: Metadata,
-  ): Promise<PublishDeviceRosterResponse> | Observable<PublishDeviceRosterResponse> | PublishDeviceRosterResponse;
+  ):
+    | Promise<PublishDeviceRosterResponse>
+    | Observable<PublishDeviceRosterResponse>
+    | PublishDeviceRosterResponse;
 
   /** The newest roster of an actor, with the device certificates it references. */
 
   getDeviceRoster(
     request: GetDeviceRosterRequest,
     metadata?: Metadata,
-  ): Promise<GetDeviceRosterResponse> | Observable<GetDeviceRosterResponse> | GetDeviceRosterResponse;
+  ):
+    | Promise<GetDeviceRosterResponse>
+    | Observable<GetDeviceRosterResponse>
+    | GetDeviceRosterResponse;
 
   /**
    * The roster log from the caller's last verified sequence forward, so a client can verify the
@@ -1416,7 +1430,10 @@ export interface E2eeServiceController {
   listDeviceRosters(
     request: ListDeviceRostersRequest,
     metadata?: Metadata,
-  ): Promise<ListDeviceRostersResponse> | Observable<ListDeviceRostersResponse> | ListDeviceRostersResponse;
+  ):
+    | Promise<ListDeviceRostersResponse>
+    | Observable<ListDeviceRostersResponse>
+    | ListDeviceRostersResponse;
 
   /** Rotates the calling device's signed prekey and/or tops up its one-time prekeys. */
 
@@ -1433,7 +1450,10 @@ export interface E2eeServiceController {
   getPrekeyInventory(
     request: GetPrekeyInventoryRequest,
     metadata?: Metadata,
-  ): Promise<GetPrekeyInventoryResponse> | Observable<GetPrekeyInventoryResponse> | GetPrekeyInventoryResponse;
+  ):
+    | Promise<GetPrekeyInventoryResponse>
+    | Observable<GetPrekeyInventoryResponse>
+    | GetPrekeyInventoryResponse;
 
   /**
    * Claims one bundle per active recipient device for X3DH-class setup. Atomically removes at
@@ -1443,7 +1463,10 @@ export interface E2eeServiceController {
   claimPrekeyBundles(
     request: ClaimPrekeyBundlesRequest,
     metadata?: Metadata,
-  ): Promise<ClaimPrekeyBundlesResponse> | Observable<ClaimPrekeyBundlesResponse> | ClaimPrekeyBundlesResponse;
+  ):
+    | Promise<ClaimPrekeyBundlesResponse>
+    | Observable<ClaimPrekeyBundlesResponse>
+    | ClaimPrekeyBundlesResponse;
 
   /**
    * Reserves an `E2EE_V1` conversation: establishes membership and returns its id, carrying no
@@ -1496,7 +1519,10 @@ export interface E2eeServiceController {
   removeE2EeMember(
     request: RemoveE2eeMemberRequest,
     metadata?: Metadata,
-  ): Promise<RemoveE2eeMemberResponse> | Observable<RemoveE2eeMemberResponse> | RemoveE2eeMemberResponse;
+  ):
+    | Promise<RemoveE2eeMemberResponse>
+    | Observable<RemoveE2eeMemberResponse>
+    | RemoveE2eeMemberResponse;
 
   /**
    * The group-control transcript from the caller's last verified epoch forward, so a client
@@ -1530,7 +1556,10 @@ export interface E2eeServiceController {
   listMailboxEnvelopes(
     request: ListMailboxEnvelopesRequest,
     metadata?: Metadata,
-  ): Promise<ListMailboxEnvelopesResponse> | Observable<ListMailboxEnvelopesResponse> | ListMailboxEnvelopesResponse;
+  ):
+    | Promise<ListMailboxEnvelopesResponse>
+    | Observable<ListMailboxEnvelopesResponse>
+    | ListMailboxEnvelopesResponse;
 
   /**
    * Acknowledges envelopes the calling device has durably committed. An acknowledgement lets
@@ -1541,7 +1570,10 @@ export interface E2eeServiceController {
   acknowledgeEnvelopes(
     request: AcknowledgeEnvelopesRequest,
     metadata?: Metadata,
-  ): Promise<AcknowledgeEnvelopesResponse> | Observable<AcknowledgeEnvelopesResponse> | AcknowledgeEnvelopesResponse;
+  ):
+    | Promise<AcknowledgeEnvelopesResponse>
+    | Observable<AcknowledgeEnvelopesResponse>
+    | AcknowledgeEnvelopesResponse;
 
   /**
    * Attaches reporter-disclosed evidence to a report created by `ModerationService.CreateReport`.
@@ -1551,46 +1583,49 @@ export interface E2eeServiceController {
   attachReportEvidence(
     request: AttachReportEvidenceRequest,
     metadata?: Metadata,
-  ): Promise<AttachReportEvidenceResponse> | Observable<AttachReportEvidenceResponse> | AttachReportEvidenceResponse;
+  ):
+    | Promise<AttachReportEvidenceResponse>
+    | Observable<AttachReportEvidenceResponse>
+    | AttachReportEvidenceResponse;
 }
 
 export function E2eeServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      "getE2EeCapability",
-      "publishIdentityRoot",
-      "getIdentityRoot",
-      "enrollDevice",
-      "revokeDevice",
-      "beginDeviceLink",
-      "listPendingDeviceLinks",
-      "cancelDeviceLink",
-      "publishDeviceRoster",
-      "getDeviceRoster",
-      "listDeviceRosters",
-      "uploadPrekeys",
-      "getPrekeyInventory",
-      "claimPrekeyBundles",
-      "createE2EeConversation",
-      "getE2EeConversationState",
-      "addE2EeMember",
-      "removeE2EeMember",
-      "listE2EeGroupControlEvents",
-      "sendEnvelopes",
-      "listMailboxEnvelopes",
-      "acknowledgeEnvelopes",
-      "attachReportEvidence",
+      'getE2EeCapability',
+      'publishIdentityRoot',
+      'getIdentityRoot',
+      'enrollDevice',
+      'revokeDevice',
+      'beginDeviceLink',
+      'listPendingDeviceLinks',
+      'cancelDeviceLink',
+      'publishDeviceRoster',
+      'getDeviceRoster',
+      'listDeviceRosters',
+      'uploadPrekeys',
+      'getPrekeyInventory',
+      'claimPrekeyBundles',
+      'createE2EeConversation',
+      'getE2EeConversationState',
+      'addE2EeMember',
+      'removeE2EeMember',
+      'listE2EeGroupControlEvents',
+      'sendEnvelopes',
+      'listMailboxEnvelopes',
+      'acknowledgeEnvelopes',
+      'attachReportEvidence',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("E2eeService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('E2eeService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("E2eeService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('E2eeService', method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const E2EE_SERVICE_NAME = "E2eeService";
+export const E2EE_SERVICE_NAME = 'E2eeService';

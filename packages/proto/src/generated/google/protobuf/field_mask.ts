@@ -6,7 +6,7 @@
 
 /* eslint-disable */
 
-export const protobufPackage = "google.protobuf";
+export const protobufPackage = 'google.protobuf';
 
 /**
  * `FieldMask` represents a set of symbolic field paths, for example:
@@ -211,7 +211,7 @@ export interface FieldMask {
   paths: string[];
 }
 
-export const GOOGLE_PROTOBUF_PACKAGE_NAME = "google.protobuf";
+export const GOOGLE_PROTOBUF_PACKAGE_NAME = 'google.protobuf';
 
 function createBaseFieldMask(): FieldMask {
   return { paths: [] };
@@ -229,8 +229,7 @@ export const FieldMask: MessageFns<FieldMask> & FieldMaskWrapperFns = {
   },
 };
 
-export interface MessageFns<T> {
-}
+export interface MessageFns<T> {}
 
 export interface FieldMaskWrapperFns {
   wrap(paths: string[]): FieldMask;
