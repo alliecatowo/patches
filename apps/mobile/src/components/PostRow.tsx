@@ -1,8 +1,11 @@
-import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { MediaAttachment, Post } from '@patches/proto/es';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { getValidMediaAttachments, sanitizeAltText } from '../lib/postMedia.js';
+import { safePageHref } from '../pages/href.js';
 
 export interface PostRowProps {
   post: Post;
@@ -14,6 +17,71 @@ export interface PostRowProps {
   /** Open the author's Patches Page/wall — the mobile Pages viewer's entry point from a
    * timeline (B-082). Optional so contexts without a page stack render inert handles. */
   onOpenPage?: (handle: string) => void;
+}
+
+/**
+ * Single post media attachment image resolved via `GetMediaDownload` and validated via
+ * `safePageHref`.
+ */
+function PostAttachmentImage({ attachment }: { attachment: MediaAttachment }): JSX.Element {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.media
+      .getMediaDownload({ mediaId: attachment.mediaId })
+      .then((response) => {
+        if (cancelled) return;
+        const safe = safePageHref(response.downloadUrl);
+        if (safe === null) {
+          setFailed(true);
+          return;
+        }
+        setUrl(safe);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.mediaId]);
+
+  const alt = sanitizeAltText(attachment.altText);
+
+  if (failed || url === null) {
+    return (
+      <View style={styles.mediaPlaceholder}>
+        <Text style={styles.mediaMuted}>{failed ? 'Image unavailable.' : 'Loading image…'}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mediaCell}>
+      <Image source={{ uri: url }} style={styles.mediaImg} resizeMode="cover" />
+      {alt !== null ? (
+        <Text style={styles.mediaAltText} numberOfLines={2}>
+          {alt}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function PostMediaAttachments({
+  attachments,
+}: {
+  attachments: readonly MediaAttachment[];
+}): JSX.Element {
+  return (
+    <View style={styles.mediaGrid}>
+      {attachments.map((item) => (
+        <PostAttachmentImage key={item.mediaId} attachment={item} />
+      ))}
+    </View>
+  );
 }
 
 /**
@@ -35,6 +103,7 @@ export function PostRow({
   const [cwOpen, setCwOpen] = useState(post.contentWarning === '');
   const isOwn = viewerActorId !== undefined && post.author?.id === viewerActorId;
   const authorHandle = post.author?.handle;
+  const validMedia = getValidMediaAttachments(post.media);
 
   return (
     <View style={styles.row}>
@@ -70,7 +139,10 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              <Text style={styles.body}>{post.body}</Text>
+              {validMedia.length > 0 ? <PostMediaAttachments attachments={validMedia} /> : null}
+            </>
           )}
         </>
       )}
@@ -120,4 +192,17 @@ const styles = StyleSheet.create({
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
   action: { color: '#7c9cff', fontSize: 13 },
+  mediaGrid: { marginTop: 8, gap: 8 },
+  mediaCell: { borderRadius: 6, overflow: 'hidden', backgroundColor: '#161618' },
+  mediaImg: { width: '100%', height: 200, borderRadius: 6 },
+  mediaAltText: { color: '#888', fontSize: 12, marginTop: 4, marginHorizontal: 2 },
+  mediaPlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 6,
+    marginTop: 8,
+  },
+  mediaMuted: { color: '#888', fontSize: 13 },
 });
