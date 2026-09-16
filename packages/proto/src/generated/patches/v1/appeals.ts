@@ -5,21 +5,21 @@
 // source: patches/v1/appeals.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { Timestamp } from '../../google/protobuf/timestamp.js';
-import { PageInfo } from './common.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { Timestamp } from "../../google/protobuf/timestamp.js";
+import { PageInfo } from "./common.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 export enum AppealStatus {
-  APPEAL_STATUS_UNSPECIFIED = 'APPEAL_STATUS_UNSPECIFIED',
-  APPEAL_STATUS_OPEN = 'APPEAL_STATUS_OPEN',
-  APPEAL_STATUS_UPHELD = 'APPEAL_STATUS_UPHELD',
-  APPEAL_STATUS_OVERTURNED = 'APPEAL_STATUS_OVERTURNED',
-  APPEAL_STATUS_MODIFIED = 'APPEAL_STATUS_MODIFIED',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  APPEAL_STATUS_UNSPECIFIED = "APPEAL_STATUS_UNSPECIFIED",
+  APPEAL_STATUS_OPEN = "APPEAL_STATUS_OPEN",
+  APPEAL_STATUS_UPHELD = "APPEAL_STATUS_UPHELD",
+  APPEAL_STATUS_OVERTURNED = "APPEAL_STATUS_OVERTURNED",
+  APPEAL_STATUS_MODIFIED = "APPEAL_STATUS_MODIFIED",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 /**
@@ -32,9 +32,13 @@ export interface Appeal {
   /** Max 2,000 characters (spec §204). */
   statement: string;
   status: AppealStatus;
-  createdAt: Timestamp | undefined;
+  createdAt:
+    | Timestamp
+    | undefined;
   /** Unset until resolved. */
-  resolvedAt: Timestamp | undefined;
+  resolvedAt:
+    | Timestamp
+    | undefined;
   /**
    * Authored by the resolving moderator — never `reports.moderator_note` or any other
    * internal-only field (spec §55, §201.3, §208).
@@ -69,7 +73,7 @@ export interface ListMyAppealsResponse {
   page: PageInfo | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /**
  * Appeals against a node moderation notice (spec §201.3). Only the acted-upon actor may
@@ -92,10 +96,7 @@ export interface AppealServiceClient {
 
   /** The caller's own appeals, most-recent first. */
 
-  listMyAppeals(
-    request: ListMyAppealsRequest,
-    metadata?: Metadata,
-  ): Observable<ListMyAppealsResponse>;
+  listMyAppeals(request: ListMyAppealsRequest, metadata?: Metadata): Observable<ListMyAppealsResponse>;
 }
 
 /**
@@ -133,17 +134,17 @@ export interface AppealServiceController {
 
 export function AppealServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ['createAppeal', 'getAppeal', 'listMyAppeals'];
+    const grpcMethods: string[] = ["createAppeal", "getAppeal", "listMyAppeals"];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('AppealService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("AppealService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('AppealService', method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod("AppealService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const APPEAL_SERVICE_NAME = 'AppealService';
+export const APPEAL_SERVICE_NAME = "AppealService";

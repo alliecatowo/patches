@@ -141,9 +141,7 @@ export function PostRow({
           ) : (
             <>
               <Text style={styles.body}>{post.body}</Text>
-              {validMedia.length > 0 ? (
-                <PostMediaAttachments attachments={validMedia} />
-              ) : null}
+              {validMedia.length > 0 ? <PostMediaAttachments attachments={validMedia} /> : null}
             </>
           )}
         </>

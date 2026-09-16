@@ -403,11 +403,22 @@ jobs:
         # builders share none of those, and their cold path measured ~1m50s per
         # deploy). Process groups, checks, and autostop all come from the generated
         # fly config as before.
+        id: fly_deploy
         run: |
           set -euo pipefail
-          flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
+          if ! flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
             --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
-            --ha=false --strategy immediate --yes
+            --ha=false --strategy immediate --yes 2>"$RUNNER_TEMP/fly-deploy-err.txt"; then
+            if grep -qi 'machine limit' "$RUNNER_TEMP/fly-deploy-err.txt" || grep -qi 'reached its machine limit' "$RUNNER_TEMP/fly-deploy-err.txt"; then
+              echo 'Fly machine limit reached; preview Fly deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "deploy_status=skipped" >> "$GITHUB_OUTPUT"
+            else
+              cat "$RUNNER_TEMP/fly-deploy-err.txt" >&2
+              exit 1
+            fi
+          else
+            echo "deploy_status=success" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Allow the web preview origin in Connect CORS
         # An empty/unset WEB_ORIGINS denies every cross-origin browser request (see
@@ -415,7 +426,7 @@ jobs:
         # blocked until the Pages origin is allow-listed. Set it (as a Fly secret,
         # like the other runtime secrets) to the deterministic branch alias AND the
         # live deployment URL wrangler printed. Setting a secret restarts the machine.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && steps.fly_deploy.outputs.deploy_status == 'success'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
@@ -445,7 +456,7 @@ jobs:
         # now fixed in teardown), but this probe proves the LIVE path every deploy:
         # the Pages origin must get CORS approval from the Connect edge and healthz
         # must answer, exactly as the browser client's login fetch does.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && steps.fly_deploy.outputs.deploy_status == 'success'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}

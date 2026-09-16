@@ -5,20 +5,20 @@
 // source: patches/v1/media.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { Timestamp } from '../../google/protobuf/timestamp.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { Timestamp } from "../../google/protobuf/timestamp.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 export enum MediaStatus {
-  MEDIA_STATUS_UNSPECIFIED = 'MEDIA_STATUS_UNSPECIFIED',
-  MEDIA_STATUS_PENDING = 'MEDIA_STATUS_PENDING',
-  MEDIA_STATUS_PROCESSING = 'MEDIA_STATUS_PROCESSING',
-  MEDIA_STATUS_READY = 'MEDIA_STATUS_READY',
-  MEDIA_STATUS_FAILED = 'MEDIA_STATUS_FAILED',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  MEDIA_STATUS_UNSPECIFIED = "MEDIA_STATUS_UNSPECIFIED",
+  MEDIA_STATUS_PENDING = "MEDIA_STATUS_PENDING",
+  MEDIA_STATUS_PROCESSING = "MEDIA_STATUS_PROCESSING",
+  MEDIA_STATUS_READY = "MEDIA_STATUS_READY",
+  MEDIA_STATUS_FAILED = "MEDIA_STATUS_FAILED",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 export interface BeginMediaUploadRequest {
@@ -66,7 +66,7 @@ export interface GetMediaDownloadResponse {
   expiresAt: Timestamp | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /**
  * Direct-to-object-storage media upload (spec §29–32, §54). Image bytes are never proxied
@@ -79,20 +79,14 @@ export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
  */
 
 export interface MediaServiceClient {
-  beginMediaUpload(
-    request: BeginMediaUploadRequest,
-    metadata?: Metadata,
-  ): Observable<BeginMediaUploadResponse>;
+  beginMediaUpload(request: BeginMediaUploadRequest, metadata?: Metadata): Observable<BeginMediaUploadResponse>;
 
   finalizeMediaUpload(
     request: FinalizeMediaUploadRequest,
     metadata?: Metadata,
   ): Observable<FinalizeMediaUploadResponse>;
 
-  getMediaDownload(
-    request: GetMediaDownloadRequest,
-    metadata?: Metadata,
-  ): Observable<GetMediaDownloadResponse>;
+  getMediaDownload(request: GetMediaDownloadRequest, metadata?: Metadata): Observable<GetMediaDownloadResponse>;
 }
 
 /**
@@ -109,41 +103,32 @@ export interface MediaServiceController {
   beginMediaUpload(
     request: BeginMediaUploadRequest,
     metadata?: Metadata,
-  ):
-    | Promise<BeginMediaUploadResponse>
-    | Observable<BeginMediaUploadResponse>
-    | BeginMediaUploadResponse;
+  ): Promise<BeginMediaUploadResponse> | Observable<BeginMediaUploadResponse> | BeginMediaUploadResponse;
 
   finalizeMediaUpload(
     request: FinalizeMediaUploadRequest,
     metadata?: Metadata,
-  ):
-    | Promise<FinalizeMediaUploadResponse>
-    | Observable<FinalizeMediaUploadResponse>
-    | FinalizeMediaUploadResponse;
+  ): Promise<FinalizeMediaUploadResponse> | Observable<FinalizeMediaUploadResponse> | FinalizeMediaUploadResponse;
 
   getMediaDownload(
     request: GetMediaDownloadRequest,
     metadata?: Metadata,
-  ):
-    | Promise<GetMediaDownloadResponse>
-    | Observable<GetMediaDownloadResponse>
-    | GetMediaDownloadResponse;
+  ): Promise<GetMediaDownloadResponse> | Observable<GetMediaDownloadResponse> | GetMediaDownloadResponse;
 }
 
 export function MediaServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ['beginMediaUpload', 'finalizeMediaUpload', 'getMediaDownload'];
+    const grpcMethods: string[] = ["beginMediaUpload", "finalizeMediaUpload", "getMediaDownload"];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('MediaService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("MediaService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('MediaService', method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod("MediaService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const MEDIA_SERVICE_NAME = 'MediaService';
+export const MEDIA_SERVICE_NAME = "MediaService";

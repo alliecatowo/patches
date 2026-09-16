@@ -5,16 +5,16 @@
 // source: patches/v1/filter_lists.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { Timestamp } from '../../google/protobuf/timestamp.js';
-import { Actor } from './actors.js';
-import { PageInfo } from './common.js';
-import { Community } from './communities.js';
-import { FilterAction, FilterScope, FilterTermInput, FilterTermKind } from './filters.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { Timestamp } from "../../google/protobuf/timestamp.js";
+import { Actor } from "./actors.js";
+import { PageInfo } from "./common.js";
+import { Community } from "./communities.js";
+import { FilterAction, FilterScope, FilterTermInput, FilterTermKind } from "./filters.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 export interface FilterListEntry {
   id: string;
@@ -78,7 +78,8 @@ export interface DeleteFilterListRequest {
   id: string;
 }
 
-export interface DeleteFilterListResponse {}
+export interface DeleteFilterListResponse {
+}
 
 export interface GetFilterListRequest {
   id: string;
@@ -137,12 +138,15 @@ export interface UnsubscribeFilterListRequest {
   filterListId: string;
 }
 
-export interface UnsubscribeFilterListResponse {}
+export interface UnsubscribeFilterListResponse {
+}
 
 export interface FilterListSubscription {
   filterList: FilterList | undefined;
   action: FilterAction;
-  createdAt: Timestamp | undefined;
+  createdAt:
+    | Timestamp
+    | undefined;
   /** The subscriber-chosen scopes this subscription's entries apply to (spec §199.1, P14-022). */
   scopes: FilterScope[];
 }
@@ -164,9 +168,10 @@ export interface SetFilterListEntryExceptionRequest {
   excepted: boolean;
 }
 
-export interface SetFilterListEntryExceptionResponse {}
+export interface SetFilterListEntryExceptionResponse {
+}
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /**
  * Filter lists: publishable, subscribable, revocable (spec §199) — the decentralized
@@ -179,32 +184,17 @@ export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
  */
 
 export interface FilterListServiceClient {
-  publishFilterList(
-    request: PublishFilterListRequest,
-    metadata?: Metadata,
-  ): Observable<PublishFilterListResponse>;
+  publishFilterList(request: PublishFilterListRequest, metadata?: Metadata): Observable<PublishFilterListResponse>;
 
-  updateFilterList(
-    request: UpdateFilterListRequest,
-    metadata?: Metadata,
-  ): Observable<UpdateFilterListResponse>;
+  updateFilterList(request: UpdateFilterListRequest, metadata?: Metadata): Observable<UpdateFilterListResponse>;
 
-  deleteFilterList(
-    request: DeleteFilterListRequest,
-    metadata?: Metadata,
-  ): Observable<DeleteFilterListResponse>;
+  deleteFilterList(request: DeleteFilterListRequest, metadata?: Metadata): Observable<DeleteFilterListResponse>;
 
-  getFilterList(
-    request: GetFilterListRequest,
-    metadata?: Metadata,
-  ): Observable<GetFilterListResponse>;
+  getFilterList(request: GetFilterListRequest, metadata?: Metadata): Observable<GetFilterListResponse>;
 
   /** Publicly published lists, most-recently-updated first. */
 
-  listFilterLists(
-    request: ListFilterListsRequest,
-    metadata?: Metadata,
-  ): Observable<ListFilterListsResponse>;
+  listFilterLists(request: ListFilterListsRequest, metadata?: Metadata): Observable<ListFilterListsResponse>;
 
   /**
    * The full entry set, visible to any subscriber at any time — an unauditable list is a
@@ -266,26 +256,17 @@ export interface FilterListServiceController {
   publishFilterList(
     request: PublishFilterListRequest,
     metadata?: Metadata,
-  ):
-    | Promise<PublishFilterListResponse>
-    | Observable<PublishFilterListResponse>
-    | PublishFilterListResponse;
+  ): Promise<PublishFilterListResponse> | Observable<PublishFilterListResponse> | PublishFilterListResponse;
 
   updateFilterList(
     request: UpdateFilterListRequest,
     metadata?: Metadata,
-  ):
-    | Promise<UpdateFilterListResponse>
-    | Observable<UpdateFilterListResponse>
-    | UpdateFilterListResponse;
+  ): Promise<UpdateFilterListResponse> | Observable<UpdateFilterListResponse> | UpdateFilterListResponse;
 
   deleteFilterList(
     request: DeleteFilterListRequest,
     metadata?: Metadata,
-  ):
-    | Promise<DeleteFilterListResponse>
-    | Observable<DeleteFilterListResponse>
-    | DeleteFilterListResponse;
+  ): Promise<DeleteFilterListResponse> | Observable<DeleteFilterListResponse> | DeleteFilterListResponse;
 
   getFilterList(
     request: GetFilterListRequest,
@@ -297,10 +278,7 @@ export interface FilterListServiceController {
   listFilterLists(
     request: ListFilterListsRequest,
     metadata?: Metadata,
-  ):
-    | Promise<ListFilterListsResponse>
-    | Observable<ListFilterListsResponse>
-    | ListFilterListsResponse;
+  ): Promise<ListFilterListsResponse> | Observable<ListFilterListsResponse> | ListFilterListsResponse;
 
   /**
    * The full entry set, visible to any subscriber at any time — an unauditable list is a
@@ -310,10 +288,7 @@ export interface FilterListServiceController {
   listFilterListEntries(
     request: ListFilterListEntriesRequest,
     metadata?: Metadata,
-  ):
-    | Promise<ListFilterListEntriesResponse>
-    | Observable<ListFilterListEntriesResponse>
-    | ListFilterListEntriesResponse;
+  ): Promise<ListFilterListEntriesResponse> | Observable<ListFilterListEntriesResponse> | ListFilterListEntriesResponse;
 
   /**
    * Applies the list's entries as filters/mutes with an action and scopes the subscriber
@@ -323,18 +298,12 @@ export interface FilterListServiceController {
   subscribeFilterList(
     request: SubscribeFilterListRequest,
     metadata?: Metadata,
-  ):
-    | Promise<SubscribeFilterListResponse>
-    | Observable<SubscribeFilterListResponse>
-    | SubscribeFilterListResponse;
+  ): Promise<SubscribeFilterListResponse> | Observable<SubscribeFilterListResponse> | SubscribeFilterListResponse;
 
   unsubscribeFilterList(
     request: UnsubscribeFilterListRequest,
     metadata?: Metadata,
-  ):
-    | Promise<UnsubscribeFilterListResponse>
-    | Observable<UnsubscribeFilterListResponse>
-    | UnsubscribeFilterListResponse;
+  ): Promise<UnsubscribeFilterListResponse> | Observable<UnsubscribeFilterListResponse> | UnsubscribeFilterListResponse;
 
   /**
    * The caller's own subscriptions. Subscriber counts are never published anywhere (§199.3,
@@ -366,31 +335,27 @@ export interface FilterListServiceController {
 export function FilterListServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      'publishFilterList',
-      'updateFilterList',
-      'deleteFilterList',
-      'getFilterList',
-      'listFilterLists',
-      'listFilterListEntries',
-      'subscribeFilterList',
-      'unsubscribeFilterList',
-      'listFilterListSubscriptions',
-      'setFilterListEntryException',
+      "publishFilterList",
+      "updateFilterList",
+      "deleteFilterList",
+      "getFilterList",
+      "listFilterLists",
+      "listFilterListEntries",
+      "subscribeFilterList",
+      "unsubscribeFilterList",
+      "listFilterListSubscriptions",
+      "setFilterListEntryException",
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('FilterListService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("FilterListService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('FilterListService', method)(
-        constructor.prototype[method],
-        method,
-        descriptor,
-      );
+      GrpcStreamMethod("FilterListService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const FILTER_LIST_SERVICE_NAME = 'FilterListService';
+export const FILTER_LIST_SERVICE_NAME = "FilterListService";

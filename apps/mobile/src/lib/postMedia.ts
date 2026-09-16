@@ -8,9 +8,10 @@ export function getValidMediaAttachments(
   media?: readonly MediaAttachment[] | null,
 ): MediaAttachment[] {
   if (!media || media.length === 0) return [];
-  return media.filter(
-    (attachment): attachment is MediaAttachment =>
-      Boolean(attachment && typeof attachment.mediaId === 'string' && attachment.mediaId.trim() !== ''),
+  return media.filter((attachment): attachment is MediaAttachment =>
+    Boolean(
+      attachment && typeof attachment.mediaId === 'string' && attachment.mediaId.trim() !== '',
+    ),
   );
 }
 
