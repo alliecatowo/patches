@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX, type TouchEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX, type TouchEvent } from 'react';
 
 import { ChevronLeftIcon, CloseIcon } from './icons/Icons.js';
 import styles from './MediaLightbox.module.css';
@@ -24,6 +24,8 @@ export function MediaLightbox({
 }: MediaLightboxProps): JSX.Element | null {
   const [overrideIndex, setOverrideIndex] = useState<number | null>(null);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const currentIndex = overrideIndex ?? initialIndex;
 
@@ -31,6 +33,16 @@ export function MediaLightbox({
     setOverrideIndex(null);
     onClose();
   }, [onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      previousFocusRef.current = document.activeElement as HTMLElement | null;
+      overlayRef.current?.focus();
+    } else if (previousFocusRef.current && typeof previousFocusRef.current.focus === 'function') {
+      previousFocusRef.current.focus();
+      previousFocusRef.current = null;
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -95,6 +107,8 @@ export function MediaLightbox({
 
   return (
     <div
+      ref={overlayRef}
+      tabIndex={-1}
       className={styles['overlay']}
       onClick={handleClose}
       role="dialog"
@@ -121,7 +135,15 @@ export function MediaLightbox({
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <img src={current.url} alt={current.altText ?? ''} className={styles['image']} />
+        <img
+          src={current.url}
+          alt={
+            current.altText && current.altText.trim() !== ''
+              ? current.altText
+              : `Image ${currentIndex + 1} of ${images.length}`
+          }
+          className={styles['image']}
+        />
       </div>
 
       {images.length > 1 ? (

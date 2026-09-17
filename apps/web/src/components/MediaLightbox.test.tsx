@@ -41,4 +41,32 @@ describe('MediaLightbox', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('manages focus on open and restores focus on close', () => {
+    const triggerBtn = document.createElement('button');
+    document.body.appendChild(triggerBtn);
+    triggerBtn.focus();
+    expect(document.activeElement).toBe(triggerBtn);
+
+    const onClose = vi.fn();
+    const { rerender } = render(<MediaLightbox images={images} isOpen={true} onClose={onClose} />);
+
+    const dialog = screen.getByRole('dialog', { name: 'Image lightbox' });
+    expect(document.activeElement).toBe(dialog);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close lightbox' }));
+    expect(onClose).toHaveBeenCalled();
+
+    rerender(<MediaLightbox images={images} isOpen={false} onClose={onClose} />);
+    expect(document.activeElement).toBe(triggerBtn);
+    document.body.removeChild(triggerBtn);
+  });
+
+  it('provides fallback alt text when altText is missing or empty', () => {
+    const imagesWithoutAlt = [{ mediaId: 'm1', url: 'https://example.com/no-alt.jpg' }];
+    render(<MediaLightbox images={imagesWithoutAlt} isOpen={true} onClose={vi.fn()} />);
+
+    const img = screen.getByRole('img');
+    expect(img).toHaveAttribute('alt', 'Image 1 of 1');
+  });
 });
