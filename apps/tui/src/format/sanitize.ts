@@ -1,6 +1,19 @@
-/** Match any C0 control char (except \n 0x0a), tab (0x09), DEL (0x7f), or C1 control char (0x80-0x9f).
- * If this test returns false, the input contains no control characters needing modification. */
-const NEEDS_SANITIZATION = /[\x00-\x09\x0b-\x1f\x7f-\x9f]/;
+// C0 control chars (0..9, 11..31), DEL (127), C1 control chars (128..159)
+const C0_AND_C1_PATTERN =
+  '[' +
+  String.fromCharCode(0) +
+  '-' +
+  String.fromCharCode(9) +
+  String.fromCharCode(11) +
+  '-' +
+  String.fromCharCode(31) +
+  String.fromCharCode(127) +
+  '-' +
+  String.fromCharCode(159) +
+  ']';
+
+/** Fast-path test: returns false if text contains no tabs or control characters. */
+const NEEDS_SANITIZATION = new RegExp(C0_AND_C1_PATTERN);
 
 /**
  * Strips ASCII control characters from user-supplied text before it reaches a
