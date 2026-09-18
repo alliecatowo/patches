@@ -48,7 +48,13 @@ export function Button({
     .join(' ');
 
   return (
-    <button {...rest} type={type} className={classNames} disabled={disabled === true || loading}>
+    <button
+      {...rest}
+      type={type}
+      className={classNames}
+      disabled={disabled === true || loading}
+      aria-busy={loading ? true : undefined}
+    >
       {loading ? (
         <span className={styles['spinner']} aria-hidden="true" />
       ) : icon !== undefined ? (
