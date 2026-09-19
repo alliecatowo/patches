@@ -78,12 +78,18 @@ export function MediaLightbox({
         const last = focusables[focusables.length - 1];
 
         if (e.shiftKey) {
-          if (document.activeElement === first || !dialogRef.current.contains(document.activeElement)) {
+          if (
+            document.activeElement === first ||
+            !dialogRef.current.contains(document.activeElement)
+          ) {
             e.preventDefault();
             last?.focus();
           }
         } else {
-          if (document.activeElement === last || !dialogRef.current.contains(document.activeElement)) {
+          if (
+            document.activeElement === last ||
+            !dialogRef.current.contains(document.activeElement)
+          ) {
             e.preventDefault();
             first?.focus();
           }
