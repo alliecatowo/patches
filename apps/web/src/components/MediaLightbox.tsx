@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX, type TouchEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX, type TouchEvent } from 'react';
 
 import { ChevronLeftIcon, CloseIcon } from './icons/Icons.js';
 import styles from './MediaLightbox.module.css';
@@ -24,6 +24,8 @@ export function MediaLightbox({
 }: MediaLightboxProps): JSX.Element | null {
   const [overrideIndex, setOverrideIndex] = useState<number | null>(null);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
 
   const currentIndex = overrideIndex ?? initialIndex;
 
@@ -32,13 +34,64 @@ export function MediaLightbox({
     onClose();
   }, [onClose]);
 
+  // Store and restore focused trigger element on modal open/close
+  useEffect(() => {
+    if (!isOpen) return;
+
+    previousActiveElementRef.current = document.activeElement as HTMLElement | null;
+
+    const timer = requestAnimationFrame(() => {
+      const closeBtn = dialogRef.current?.querySelector<HTMLElement>('button');
+      closeBtn?.focus();
+    });
+
+    const prevEl = previousActiveElementRef.current;
+    return () => {
+      cancelAnimationFrame(timer);
+      prevEl?.focus();
+    };
+  }, [isOpen]);
+
+  // Keyboard navigation & focus trapping
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         handleClose();
-      } else if (e.key === 'ArrowLeft') {
+        return;
+      }
+
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = Array.from(
+          dialogRef.current.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+          ),
+        ).filter((el) => !el.hasAttribute('disabled'));
+
+        if (focusables.length === 0) {
+          e.preventDefault();
+          return;
+        }
+
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first || !dialogRef.current.contains(document.activeElement)) {
+            e.preventDefault();
+            last?.focus();
+          }
+        } else {
+          if (document.activeElement === last || !dialogRef.current.contains(document.activeElement)) {
+            e.preventDefault();
+            first?.focus();
+          }
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowLeft') {
         setOverrideIndex((i) => {
           const curr = i ?? initialIndex;
           return curr > 0 ? curr - 1 : images.length - 1;
@@ -95,6 +148,7 @@ export function MediaLightbox({
 
   return (
     <div
+      ref={dialogRef}
       className={styles['overlay']}
       onClick={handleClose}
       role="dialog"
