@@ -41,4 +41,32 @@ describe('MediaLightbox', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('traps focus inside lightbox on Tab and restores focus on close', () => {
+    const trigger = document.createElement('button');
+    trigger.textContent = 'Open Lightbox';
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const { rerender } = render(<MediaLightbox images={images} isOpen={true} onClose={vi.fn()} />);
+
+    const closeBtn = screen.getByRole('button', { name: 'Close lightbox' });
+    const nextBtn = screen.getByRole('button', { name: 'Next image' });
+
+    // Focus last element and press Tab -> loops to first element
+    nextBtn.focus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(document.activeElement).toBe(closeBtn);
+
+    // Focus first element and press Shift+Tab -> loops to last element
+    closeBtn.focus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(nextBtn);
+
+    // When closed, restores focus to trigger button
+    rerender(<MediaLightbox images={images} isOpen={false} onClose={vi.fn()} />);
+    expect(document.activeElement).toBe(trigger);
+
+    document.body.removeChild(trigger);
+  });
 });
