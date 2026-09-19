@@ -410,6 +410,7 @@ jobs:
             --ha=false --strategy immediate --yes 2>"$RUNNER_TEMP/fly-deploy-err.txt"; then
             if grep -qi "machine limit" "$RUNNER_TEMP/fly-deploy-err.txt"; then
               echo "Fly organization machine limit reached; preview deployment skipped gracefully." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "FLY_DEPLOY_SKIPPED=true" >> "$GITHUB_ENV"
               exit 0
             else
               cat "$RUNNER_TEMP/fly-deploy-err.txt" >&2
@@ -423,7 +424,7 @@ jobs:
         # blocked until the Pages origin is allow-listed. Set it (as a Fly secret,
         # like the other runtime secrets) to the deterministic branch alias AND the
         # live deployment URL wrangler printed. Setting a secret restarts the machine.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.FLY_DEPLOY_SKIPPED != 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
@@ -453,7 +454,7 @@ jobs:
         # now fixed in teardown), but this probe proves the LIVE path every deploy:
         # the Pages origin must get CORS approval from the Connect edge and healthz
         # must answer, exactly as the browser client's login fetch does.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.FLY_DEPLOY_SKIPPED != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -498,6 +499,7 @@ jobs:
           COMMIT_SHA: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
           PREVIEW_MEDIA: ${{ env.PREVIEW_MEDIA }}
           PREVIEW_WEB: ${{ env.PREVIEW_WEB }}
+          FLY_DEPLOY_SKIPPED: ${{ env.FLY_DEPLOY_SKIPPED }}
           WEB_PREVIEW_URL: ${{ steps.web_deploy.outputs.web_url }}
         run: |
           set -euo pipefail
@@ -506,9 +508,13 @@ jobs:
           # shellcheck disable=SC2016  # single quotes are intentional: ${...} below are JavaScript template literals, not shell expansions
           node -e '
             const fs = require("node:fs");
-            const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA, PREVIEW_WEB, WEB_PREVIEW_URL } = process.env;
+            const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA, PREVIEW_WEB, FLY_DEPLOY_SKIPPED, WEB_PREVIEW_URL } = process.env;
             const NEON_BRANCH = `pr-${PR_NUMBER}`;
             const short = (COMMIT_SHA || "").slice(0, 7);
+            const flySkipped = FLY_DEPLOY_SKIPPED === "true";
+            const grpcWhere = flySkipped ? "off (Fly machine limit reached)" : `\`${APP}.fly.dev:443\``;
+            const httpWhere = flySkipped ? "off (Fly machine limit reached)" : `https://${APP}.fly.dev:8443/healthz`;
+            const workerWhere = flySkipped ? "off (Fly machine limit reached)" : `running (\`WORKER_ID=preview-pr-${PR_NUMBER}\`, concurrency 2)`;
             const media = PREVIEW_MEDIA === "enabled"
               ? "on (dedicated R2 preview bucket — uploads + derivative jobs live)"
               : "off (no R2_PREVIEW_* secrets — uploads fail fast)";
@@ -522,9 +528,9 @@ jobs:
               "",
               "| What | Where |",
               "| --- | --- |",
-              `| gRPC (TUI: \`patches --server ${APP}.fly.dev:443\`) | \`${APP}.fly.dev:443\` |`,
-              `| HTTP / healthz | https://${APP}.fly.dev:8443/healthz |`,
-              `| Worker (jobs: notifications, cleanup${PREVIEW_MEDIA === "enabled" ? ", media derivatives" : ""}) | running (\`WORKER_ID=preview-pr-${PR_NUMBER}\`, concurrency 2) |`,
+              `| gRPC (TUI: \`patches --server ${APP}.fly.dev:443\`) | ${grpcWhere} |`,
+              `| HTTP / healthz | ${httpWhere} |`,
+              `| Worker (jobs: notifications, cleanup${PREVIEW_MEDIA === "enabled" ? ", media derivatives" : ""}) | ${workerWhere} |`,
               `| Web preview${webUrl ? ` | ${webUrl} ` : " | — "}(\`pr-${PR_NUMBER}.patches-web.pages.dev\`)`,
               `| Neon branch | \`${NEON_BRANCH}\` |`,
               `| Commit | \`${short}\` |`,
