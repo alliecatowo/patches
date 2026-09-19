@@ -5,28 +5,28 @@
 // source: patches/v1/communities.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { Timestamp } from '../../google/protobuf/timestamp.js';
-import { Actor } from './actors.js';
-import { PageInfo } from './common.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { Timestamp } from "../../google/protobuf/timestamp.js";
+import { Actor } from "./actors.js";
+import { PageInfo } from "./common.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 export enum CommunityRole {
-  COMMUNITY_ROLE_UNSPECIFIED = 'COMMUNITY_ROLE_UNSPECIFIED',
-  COMMUNITY_ROLE_MEMBER = 'COMMUNITY_ROLE_MEMBER',
-  COMMUNITY_ROLE_MODERATOR = 'COMMUNITY_ROLE_MODERATOR',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  COMMUNITY_ROLE_UNSPECIFIED = "COMMUNITY_ROLE_UNSPECIFIED",
+  COMMUNITY_ROLE_MEMBER = "COMMUNITY_ROLE_MEMBER",
+  COMMUNITY_ROLE_MODERATOR = "COMMUNITY_ROLE_MODERATOR",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 export enum CommunityInviteStatus {
-  COMMUNITY_INVITE_STATUS_UNSPECIFIED = 'COMMUNITY_INVITE_STATUS_UNSPECIFIED',
-  COMMUNITY_INVITE_STATUS_PENDING = 'COMMUNITY_INVITE_STATUS_PENDING',
-  COMMUNITY_INVITE_STATUS_ACCEPTED = 'COMMUNITY_INVITE_STATUS_ACCEPTED',
-  COMMUNITY_INVITE_STATUS_DECLINED = 'COMMUNITY_INVITE_STATUS_DECLINED',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  COMMUNITY_INVITE_STATUS_UNSPECIFIED = "COMMUNITY_INVITE_STATUS_UNSPECIFIED",
+  COMMUNITY_INVITE_STATUS_PENDING = "COMMUNITY_INVITE_STATUS_PENDING",
+  COMMUNITY_INVITE_STATUS_ACCEPTED = "COMMUNITY_INVITE_STATUS_ACCEPTED",
+  COMMUNITY_INVITE_STATUS_DECLINED = "COMMUNITY_INVITE_STATUS_DECLINED",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 export interface CommunityCounts {
@@ -48,7 +48,9 @@ export interface Community {
   isPublic: boolean;
   createdAt: Timestamp | undefined;
   updatedAt: Timestamp | undefined;
-  counts: CommunityCounts | undefined;
+  counts:
+    | CommunityCounts
+    | undefined;
   /**
    * `COMMUNITY_ROLE_UNSPECIFIED` when the viewer is not a member (including an anonymous
    * read).
@@ -153,7 +155,8 @@ export interface RemovePostFromCommunityRequest {
   postId: string;
 }
 
-export interface RemovePostFromCommunityResponse {}
+export interface RemovePostFromCommunityResponse {
+}
 
 export interface BanFromCommunityRequest {
   communityId: string;
@@ -162,7 +165,8 @@ export interface BanFromCommunityRequest {
   reason: string;
 }
 
-export interface BanFromCommunityResponse {}
+export interface BanFromCommunityResponse {
+}
 
 export interface CommunityInvite {
   id: string;
@@ -191,7 +195,7 @@ export interface RespondToCommunityInviteResponse {
   invite: CommunityInvite | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /**
  * Topical communities a post may optionally belong to (spec §189–190). A community
@@ -200,31 +204,19 @@ export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
  */
 
 export interface CommunityServiceClient {
-  createCommunity(
-    request: CreateCommunityRequest,
-    metadata?: Metadata,
-  ): Observable<CreateCommunityResponse>;
+  createCommunity(request: CreateCommunityRequest, metadata?: Metadata): Observable<CreateCommunityResponse>;
 
   getCommunity(request: GetCommunityRequest, metadata?: Metadata): Observable<GetCommunityResponse>;
 
-  listCommunities(
-    request: ListCommunitiesRequest,
-    metadata?: Metadata,
-  ): Observable<ListCommunitiesResponse>;
+  listCommunities(request: ListCommunitiesRequest, metadata?: Metadata): Observable<ListCommunitiesResponse>;
 
   /** Idempotent: joining a community the caller already belongs to is not an error. */
 
-  joinCommunity(
-    request: JoinCommunityRequest,
-    metadata?: Metadata,
-  ): Observable<JoinCommunityResponse>;
+  joinCommunity(request: JoinCommunityRequest, metadata?: Metadata): Observable<JoinCommunityResponse>;
 
   /** Idempotent: leaving a community the caller doesn't belong to is not an error. */
 
-  leaveCommunity(
-    request: LeaveCommunityRequest,
-    metadata?: Metadata,
-  ): Observable<LeaveCommunityResponse>;
+  leaveCommunity(request: LeaveCommunityRequest, metadata?: Metadata): Observable<LeaveCommunityResponse>;
 
   listCommunityMembers(
     request: ListCommunityMembersRequest,
@@ -236,20 +228,14 @@ export interface CommunityServiceClient {
    * Requires the caller to be a moderator of the community.
    */
 
-  updateCommunity(
-    request: UpdateCommunityRequest,
-    metadata?: Metadata,
-  ): Observable<UpdateCommunityResponse>;
+  updateCommunity(request: UpdateCommunityRequest, metadata?: Metadata): Observable<UpdateCommunityResponse>;
 
   /**
    * Promotes/demotes a member between `member` and `moderator`. Requires the caller to be a
    * moderator.
    */
 
-  setCommunityRole(
-    request: SetCommunityRoleRequest,
-    metadata?: Metadata,
-  ): Observable<SetCommunityRoleResponse>;
+  setCommunityRole(request: SetCommunityRoleRequest, metadata?: Metadata): Observable<SetCommunityRoleResponse>;
 
   /** Moderator-only: detaches a post from the community without deleting the post itself. */
 
@@ -258,20 +244,14 @@ export interface CommunityServiceClient {
     metadata?: Metadata,
   ): Observable<RemovePostFromCommunityResponse>;
 
-  banFromCommunity(
-    request: BanFromCommunityRequest,
-    metadata?: Metadata,
-  ): Observable<BanFromCommunityResponse>;
+  banFromCommunity(request: BanFromCommunityRequest, metadata?: Metadata): Observable<BanFromCommunityResponse>;
 
   /**
    * Rate-limited, block-aware unsolicited-contact vector (spec §188, §192). Never
    * auto-joins the invitee.
    */
 
-  inviteToCommunity(
-    request: InviteToCommunityRequest,
-    metadata?: Metadata,
-  ): Observable<InviteToCommunityResponse>;
+  inviteToCommunity(request: InviteToCommunityRequest, metadata?: Metadata): Observable<InviteToCommunityResponse>;
 
   respondToCommunityInvite(
     request: RespondToCommunityInviteRequest,
@@ -289,10 +269,7 @@ export interface CommunityServiceController {
   createCommunity(
     request: CreateCommunityRequest,
     metadata?: Metadata,
-  ):
-    | Promise<CreateCommunityResponse>
-    | Observable<CreateCommunityResponse>
-    | CreateCommunityResponse;
+  ): Promise<CreateCommunityResponse> | Observable<CreateCommunityResponse> | CreateCommunityResponse;
 
   getCommunity(
     request: GetCommunityRequest,
@@ -302,10 +279,7 @@ export interface CommunityServiceController {
   listCommunities(
     request: ListCommunitiesRequest,
     metadata?: Metadata,
-  ):
-    | Promise<ListCommunitiesResponse>
-    | Observable<ListCommunitiesResponse>
-    | ListCommunitiesResponse;
+  ): Promise<ListCommunitiesResponse> | Observable<ListCommunitiesResponse> | ListCommunitiesResponse;
 
   /** Idempotent: joining a community the caller already belongs to is not an error. */
 
@@ -324,10 +298,7 @@ export interface CommunityServiceController {
   listCommunityMembers(
     request: ListCommunityMembersRequest,
     metadata?: Metadata,
-  ):
-    | Promise<ListCommunityMembersResponse>
-    | Observable<ListCommunityMembersResponse>
-    | ListCommunityMembersResponse;
+  ): Promise<ListCommunityMembersResponse> | Observable<ListCommunityMembersResponse> | ListCommunityMembersResponse;
 
   /**
    * Partial update, `update_mask`-driven — same pattern as `ActorService.UpdateProfile`.
@@ -337,10 +308,7 @@ export interface CommunityServiceController {
   updateCommunity(
     request: UpdateCommunityRequest,
     metadata?: Metadata,
-  ):
-    | Promise<UpdateCommunityResponse>
-    | Observable<UpdateCommunityResponse>
-    | UpdateCommunityResponse;
+  ): Promise<UpdateCommunityResponse> | Observable<UpdateCommunityResponse> | UpdateCommunityResponse;
 
   /**
    * Promotes/demotes a member between `member` and `moderator`. Requires the caller to be a
@@ -350,10 +318,7 @@ export interface CommunityServiceController {
   setCommunityRole(
     request: SetCommunityRoleRequest,
     metadata?: Metadata,
-  ):
-    | Promise<SetCommunityRoleResponse>
-    | Observable<SetCommunityRoleResponse>
-    | SetCommunityRoleResponse;
+  ): Promise<SetCommunityRoleResponse> | Observable<SetCommunityRoleResponse> | SetCommunityRoleResponse;
 
   /** Moderator-only: detaches a post from the community without deleting the post itself. */
 
@@ -368,10 +333,7 @@ export interface CommunityServiceController {
   banFromCommunity(
     request: BanFromCommunityRequest,
     metadata?: Metadata,
-  ):
-    | Promise<BanFromCommunityResponse>
-    | Observable<BanFromCommunityResponse>
-    | BanFromCommunityResponse;
+  ): Promise<BanFromCommunityResponse> | Observable<BanFromCommunityResponse> | BanFromCommunityResponse;
 
   /**
    * Rate-limited, block-aware unsolicited-contact vector (spec §188, §192). Never
@@ -381,10 +343,7 @@ export interface CommunityServiceController {
   inviteToCommunity(
     request: InviteToCommunityRequest,
     metadata?: Metadata,
-  ):
-    | Promise<InviteToCommunityResponse>
-    | Observable<InviteToCommunityResponse>
-    | InviteToCommunityResponse;
+  ): Promise<InviteToCommunityResponse> | Observable<InviteToCommunityResponse> | InviteToCommunityResponse;
 
   respondToCommunityInvite(
     request: RespondToCommunityInviteRequest,
@@ -398,33 +357,29 @@ export interface CommunityServiceController {
 export function CommunityServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      'createCommunity',
-      'getCommunity',
-      'listCommunities',
-      'joinCommunity',
-      'leaveCommunity',
-      'listCommunityMembers',
-      'updateCommunity',
-      'setCommunityRole',
-      'removePostFromCommunity',
-      'banFromCommunity',
-      'inviteToCommunity',
-      'respondToCommunityInvite',
+      "createCommunity",
+      "getCommunity",
+      "listCommunities",
+      "joinCommunity",
+      "leaveCommunity",
+      "listCommunityMembers",
+      "updateCommunity",
+      "setCommunityRole",
+      "removePostFromCommunity",
+      "banFromCommunity",
+      "inviteToCommunity",
+      "respondToCommunityInvite",
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('CommunityService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("CommunityService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('CommunityService', method)(
-        constructor.prototype[method],
-        method,
-        descriptor,
-      );
+      GrpcStreamMethod("CommunityService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const COMMUNITY_SERVICE_NAME = 'CommunityService';
+export const COMMUNITY_SERVICE_NAME = "CommunityService";

@@ -5,14 +5,14 @@
 // source: patches/v1/reactions.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { Actor } from './actors.js';
-import { PageInfo } from './common.js';
-import { Post, PostCounts, PostViewerState } from './posts.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { Actor } from "./actors.js";
+import { PageInfo } from "./common.js";
+import { Post, PostCounts, PostViewerState } from "./posts.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 export interface LikePostRequest {
   postId: string;
@@ -98,7 +98,7 @@ export interface ListPostRepostersResponse {
   page: PageInfo | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /**
  * Likes and bookmarks (spec §53). Bookmarks are private — never exposed on another actor's
@@ -116,27 +116,18 @@ export interface ReactionServiceClient {
 
   /** Idempotent: unbookmarking a post the caller has not bookmarked is not an error. */
 
-  unbookmarkPost(
-    request: UnbookmarkPostRequest,
-    metadata?: Metadata,
-  ): Observable<UnbookmarkPostResponse>;
+  unbookmarkPost(request: UnbookmarkPostRequest, metadata?: Metadata): Observable<UnbookmarkPostResponse>;
 
   /**
    * The caller's own bookmarks, most-recent first (spec §52 MVP note, §53). Requires an
    * authenticated session — there is no such thing as an anonymous bookmark list.
    */
 
-  listBookmarks(
-    request: ListBookmarksRequest,
-    metadata?: Metadata,
-  ): Observable<ListBookmarksResponse>;
+  listBookmarks(request: ListBookmarksRequest, metadata?: Metadata): Observable<ListBookmarksResponse>;
 
   /** Actors who liked a post, most-recent first. */
 
-  listPostLikers(
-    request: ListPostLikersRequest,
-    metadata?: Metadata,
-  ): Observable<ListPostLikersResponse>;
+  listPostLikers(request: ListPostLikersRequest, metadata?: Metadata): Observable<ListPostLikersResponse>;
 
   /**
    * A repost is a pointer row like a like or a bookmark (spec §190) — it never duplicates the
@@ -151,10 +142,7 @@ export interface ReactionServiceClient {
 
   /** Actors who reposted a post, most-recent first. */
 
-  listPostReposters(
-    request: ListPostRepostersRequest,
-    metadata?: Metadata,
-  ): Observable<ListPostRepostersResponse>;
+  listPostReposters(request: ListPostRepostersRequest, metadata?: Metadata): Observable<ListPostRepostersResponse>;
 }
 
 /**
@@ -226,39 +214,32 @@ export interface ReactionServiceController {
   listPostReposters(
     request: ListPostRepostersRequest,
     metadata?: Metadata,
-  ):
-    | Promise<ListPostRepostersResponse>
-    | Observable<ListPostRepostersResponse>
-    | ListPostRepostersResponse;
+  ): Promise<ListPostRepostersResponse> | Observable<ListPostRepostersResponse> | ListPostRepostersResponse;
 }
 
 export function ReactionServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      'likePost',
-      'unlikePost',
-      'bookmarkPost',
-      'unbookmarkPost',
-      'listBookmarks',
-      'listPostLikers',
-      'repostPost',
-      'unrepostPost',
-      'listPostReposters',
+      "likePost",
+      "unlikePost",
+      "bookmarkPost",
+      "unbookmarkPost",
+      "listBookmarks",
+      "listPostLikers",
+      "repostPost",
+      "unrepostPost",
+      "listPostReposters",
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('ReactionService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("ReactionService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('ReactionService', method)(
-        constructor.prototype[method],
-        method,
-        descriptor,
-      );
+      GrpcStreamMethod("ReactionService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const REACTION_SERVICE_NAME = 'ReactionService';
+export const REACTION_SERVICE_NAME = "ReactionService";

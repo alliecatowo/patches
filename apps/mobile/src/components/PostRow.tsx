@@ -75,9 +75,7 @@ export function PostRow({
           ) : (
             <>
               {post.body !== '' ? <Text style={styles.body}>{post.body}</Text> : null}
-              {post.media && post.media.length > 0 ? (
-                <PostMediaList media={post.media} />
-              ) : null}
+              {post.media && post.media.length > 0 ? <PostMediaList media={post.media} /> : null}
             </>
           )}
         </>

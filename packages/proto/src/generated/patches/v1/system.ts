@@ -5,14 +5,15 @@
 // source: patches/v1/system.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { Timestamp } from '../../google/protobuf/timestamp.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { Timestamp } from "../../google/protobuf/timestamp.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
-export interface GetServerInfoRequest {}
+export interface GetServerInfoRequest {
+}
 
 export interface GetServerInfoResponse {
   /** Server build version, semver (e.g. "0.1.0"). */
@@ -31,7 +32,9 @@ export interface GetServerInfoResponse {
    * Server wall clock, used by clients to render sane relative timestamps even
    * when the local clock is wrong.
    */
-  serverTime: Timestamp | undefined;
+  serverTime:
+    | Timestamp
+    | undefined;
   /** Human-readable name of this instance (e.g. "patches.social"). */
   instanceName: string;
   /**
@@ -53,7 +56,7 @@ export interface PingResponse {
   serverTime: Timestamp | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /**
  * Server identity, protocol version negotiation and liveness (spec §83).
@@ -68,10 +71,7 @@ export interface SystemServiceClient {
    * oldest client build it still accepts. Never requires authentication.
    */
 
-  getServerInfo(
-    request: GetServerInfoRequest,
-    metadata?: Metadata,
-  ): Observable<GetServerInfoResponse>;
+  getServerInfo(request: GetServerInfoRequest, metadata?: Metadata): Observable<GetServerInfoResponse>;
 
   /**
    * Cheap liveness/latency probe. Echoes back the nonce it was given so a
@@ -104,25 +104,22 @@ export interface SystemServiceController {
    * client can distinguish a fresh reply from a cached one.
    */
 
-  ping(
-    request: PingRequest,
-    metadata?: Metadata,
-  ): Promise<PingResponse> | Observable<PingResponse> | PingResponse;
+  ping(request: PingRequest, metadata?: Metadata): Promise<PingResponse> | Observable<PingResponse> | PingResponse;
 }
 
 export function SystemServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ['getServerInfo', 'ping'];
+    const grpcMethods: string[] = ["getServerInfo", "ping"];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('SystemService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("SystemService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('SystemService', method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod("SystemService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const SYSTEM_SERVICE_NAME = 'SystemService';
+export const SYSTEM_SERVICE_NAME = "SystemService";
