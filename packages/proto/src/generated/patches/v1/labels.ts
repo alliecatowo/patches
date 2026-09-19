@@ -5,24 +5,24 @@
 // source: patches/v1/labels.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { Timestamp } from '../../google/protobuf/timestamp.js';
-import { Actor } from './actors.js';
-import { PageInfo } from './common.js';
-import { Community } from './communities.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { Timestamp } from "../../google/protobuf/timestamp.js";
+import { Actor } from "./actors.js";
+import { PageInfo } from "./common.js";
+import { Community } from "./communities.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 /** The §198.3 actions plus `ignore` (spec §200.1). */
 export enum LabelAction {
-  LABEL_ACTION_UNSPECIFIED = 'LABEL_ACTION_UNSPECIFIED',
-  LABEL_ACTION_IGNORE = 'LABEL_ACTION_IGNORE',
-  LABEL_ACTION_WARN = 'LABEL_ACTION_WARN',
-  LABEL_ACTION_COLLAPSE = 'LABEL_ACTION_COLLAPSE',
-  LABEL_ACTION_HIDE = 'LABEL_ACTION_HIDE',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  LABEL_ACTION_UNSPECIFIED = "LABEL_ACTION_UNSPECIFIED",
+  LABEL_ACTION_IGNORE = "LABEL_ACTION_IGNORE",
+  LABEL_ACTION_WARN = "LABEL_ACTION_WARN",
+  LABEL_ACTION_COLLAPSE = "LABEL_ACTION_COLLAPSE",
+  LABEL_ACTION_HIDE = "LABEL_ACTION_HIDE",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 /**
@@ -62,9 +62,13 @@ export interface Label {
   subjectActorId: string;
   subjectPostId: string;
   value: string;
-  createdAt: Timestamp | undefined;
+  createdAt:
+    | Timestamp
+    | undefined;
   /** Unset means this label never expires. */
-  expiresAt: Timestamp | undefined;
+  expiresAt:
+    | Timestamp
+    | undefined;
   /** Unset means not retracted. */
   retractedAt: Timestamp | undefined;
 }
@@ -126,13 +130,15 @@ export interface SubscribeLabelerRequest {
   labelerId: string;
 }
 
-export interface SubscribeLabelerResponse {}
+export interface SubscribeLabelerResponse {
+}
 
 export interface UnsubscribeLabelerRequest {
   labelerId: string;
 }
 
-export interface UnsubscribeLabelerResponse {}
+export interface UnsubscribeLabelerResponse {
+}
 
 export interface SetLabelerSubscriptionActionRequest {
   labelerId: string;
@@ -140,7 +146,8 @@ export interface SetLabelerSubscriptionActionRequest {
   action: LabelAction;
 }
 
-export interface SetLabelerSubscriptionActionResponse {}
+export interface SetLabelerSubscriptionActionResponse {
+}
 
 export interface ListLabelsOnSubjectRequest {
   /** Exactly one of these. */
@@ -155,7 +162,7 @@ export interface ListLabelsOnSubjectResponse {
   page: PageInfo | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /**
  * Labelers and labels (spec §200): subscriber-scoped annotation, never global truth. A label
@@ -167,10 +174,7 @@ export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
  */
 
 export interface LabelServiceClient {
-  createLabeler(
-    request: CreateLabelerRequest,
-    metadata?: Metadata,
-  ): Observable<CreateLabelerResponse>;
+  createLabeler(request: CreateLabelerRequest, metadata?: Metadata): Observable<CreateLabelerResponse>;
 
   getLabeler(request: GetLabelerRequest, metadata?: Metadata): Observable<GetLabelerResponse>;
 
@@ -191,15 +195,9 @@ export interface LabelServiceClient {
 
   retractLabel(request: RetractLabelRequest, metadata?: Metadata): Observable<RetractLabelResponse>;
 
-  subscribeLabeler(
-    request: SubscribeLabelerRequest,
-    metadata?: Metadata,
-  ): Observable<SubscribeLabelerResponse>;
+  subscribeLabeler(request: SubscribeLabelerRequest, metadata?: Metadata): Observable<SubscribeLabelerResponse>;
 
-  unsubscribeLabeler(
-    request: UnsubscribeLabelerRequest,
-    metadata?: Metadata,
-  ): Observable<UnsubscribeLabelerResponse>;
+  unsubscribeLabeler(request: UnsubscribeLabelerRequest, metadata?: Metadata): Observable<UnsubscribeLabelerResponse>;
 
   /**
    * Per-value action override for the caller's own subscription (spec §200.1's action map).
@@ -273,18 +271,12 @@ export interface LabelServiceController {
   subscribeLabeler(
     request: SubscribeLabelerRequest,
     metadata?: Metadata,
-  ):
-    | Promise<SubscribeLabelerResponse>
-    | Observable<SubscribeLabelerResponse>
-    | SubscribeLabelerResponse;
+  ): Promise<SubscribeLabelerResponse> | Observable<SubscribeLabelerResponse> | SubscribeLabelerResponse;
 
   unsubscribeLabeler(
     request: UnsubscribeLabelerRequest,
     metadata?: Metadata,
-  ):
-    | Promise<UnsubscribeLabelerResponse>
-    | Observable<UnsubscribeLabelerResponse>
-    | UnsubscribeLabelerResponse;
+  ): Promise<UnsubscribeLabelerResponse> | Observable<UnsubscribeLabelerResponse> | UnsubscribeLabelerResponse;
 
   /**
    * Per-value action override for the caller's own subscription (spec §200.1's action map).
@@ -309,35 +301,32 @@ export interface LabelServiceController {
   listLabelsOnSubject(
     request: ListLabelsOnSubjectRequest,
     metadata?: Metadata,
-  ):
-    | Promise<ListLabelsOnSubjectResponse>
-    | Observable<ListLabelsOnSubjectResponse>
-    | ListLabelsOnSubjectResponse;
+  ): Promise<ListLabelsOnSubjectResponse> | Observable<ListLabelsOnSubjectResponse> | ListLabelsOnSubjectResponse;
 }
 
 export function LabelServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      'createLabeler',
-      'getLabeler',
-      'listLabelers',
-      'applyLabel',
-      'retractLabel',
-      'subscribeLabeler',
-      'unsubscribeLabeler',
-      'setLabelerSubscriptionAction',
-      'listLabelsOnSubject',
+      "createLabeler",
+      "getLabeler",
+      "listLabelers",
+      "applyLabel",
+      "retractLabel",
+      "subscribeLabeler",
+      "unsubscribeLabeler",
+      "setLabelerSubscriptionAction",
+      "listLabelsOnSubject",
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('LabelService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("LabelService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('LabelService', method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod("LabelService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const LABEL_SERVICE_NAME = 'LabelService';
+export const LABEL_SERVICE_NAME = "LabelService";

@@ -5,19 +5,19 @@
 // source: patches/v1/node.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { LabelVocabularyEntry } from './labels.js';
-import { ModerationReasonCategory } from './moderation.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { LabelVocabularyEntry } from "./labels.js";
+import { ModerationReasonCategory } from "./moderation.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 export enum RegistrationMode {
-  REGISTRATION_MODE_UNSPECIFIED = 'REGISTRATION_MODE_UNSPECIFIED',
-  REGISTRATION_MODE_OPEN = 'REGISTRATION_MODE_OPEN',
-  REGISTRATION_MODE_INVITE_ONLY = 'REGISTRATION_MODE_INVITE_ONLY',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  REGISTRATION_MODE_UNSPECIFIED = "REGISTRATION_MODE_UNSPECIFIED",
+  REGISTRATION_MODE_OPEN = "REGISTRATION_MODE_OPEN",
+  REGISTRATION_MODE_INVITE_ONLY = "REGISTRATION_MODE_INVITE_ONLY",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 /**
@@ -29,10 +29,10 @@ export enum RegistrationMode {
  * does to a capability). Clients cache this list with a TTL rather than re-fetching per render.
  */
 export enum FeatureFlagKind {
-  FEATURE_FLAG_KIND_UNSPECIFIED = 'FEATURE_FLAG_KIND_UNSPECIFIED',
-  FEATURE_FLAG_KIND_COSMETIC = 'FEATURE_FLAG_KIND_COSMETIC',
-  FEATURE_FLAG_KIND_ROLLOUT = 'FEATURE_FLAG_KIND_ROLLOUT',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  FEATURE_FLAG_KIND_UNSPECIFIED = "FEATURE_FLAG_KIND_UNSPECIFIED",
+  FEATURE_FLAG_KIND_COSMETIC = "FEATURE_FLAG_KIND_COSMETIC",
+  FEATURE_FLAG_KIND_ROLLOUT = "FEATURE_FLAG_KIND_ROLLOUT",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 /**
@@ -40,11 +40,11 @@ export enum FeatureFlagKind {
  * blocklist: federates with any domain except those on `domain_policies` (spec §197.6).
  */
 export enum FederationStance {
-  FEDERATION_STANCE_UNSPECIFIED = 'FEDERATION_STANCE_UNSPECIFIED',
-  FEDERATION_STANCE_DISABLED = 'FEDERATION_STANCE_DISABLED',
-  FEDERATION_STANCE_ALLOWLIST = 'FEDERATION_STANCE_ALLOWLIST',
-  FEDERATION_STANCE_OPEN_WITH_BLOCKLIST = 'FEDERATION_STANCE_OPEN_WITH_BLOCKLIST',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  FEDERATION_STANCE_UNSPECIFIED = "FEDERATION_STANCE_UNSPECIFIED",
+  FEDERATION_STANCE_DISABLED = "FEDERATION_STANCE_DISABLED",
+  FEDERATION_STANCE_ALLOWLIST = "FEDERATION_STANCE_ALLOWLIST",
+  FEDERATION_STANCE_OPEN_WITH_BLOCKLIST = "FEDERATION_STANCE_OPEN_WITH_BLOCKLIST",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 /**
@@ -52,9 +52,9 @@ export enum FederationStance {
  * forward compatibility with a graduated `limit`/`silence` tier, a §210 sign-off item.
  */
 export enum DomainPolicyAction {
-  DOMAIN_POLICY_ACTION_UNSPECIFIED = 'DOMAIN_POLICY_ACTION_UNSPECIFIED',
-  DOMAIN_POLICY_ACTION_BLOCK = 'DOMAIN_POLICY_ACTION_BLOCK',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  DOMAIN_POLICY_ACTION_UNSPECIFIED = "DOMAIN_POLICY_ACTION_UNSPECIFIED",
+  DOMAIN_POLICY_ACTION_BLOCK = "DOMAIN_POLICY_ACTION_BLOCK",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 /**
@@ -128,7 +128,8 @@ export interface FeatureFlag {
   kind: FeatureFlagKind;
 }
 
-export interface GetNodeInfoRequest {}
+export interface GetNodeInfoRequest {
+}
 
 export interface GetNodeInfoResponse {
   /** Canonical domain of this node (spec §91, §163). Empty until a domain is fixed. */
@@ -140,7 +141,9 @@ export interface GetNodeInfoResponse {
    */
   softwareVersion: string;
   registrationMode: RegistrationMode;
-  limits: NodeLimits | undefined;
+  limits:
+    | NodeLimits
+    | undefined;
   /**
    * Capabilities this node grants (spec §174). There is deliberately no `tier`/`plan`/
    * `premium` field anywhere in this message, and there never will be — clients branch on
@@ -148,7 +151,9 @@ export interface GetNodeInfoResponse {
    */
   capabilities: string[];
   /** Value-carrying capabilities added by Amendment B (spec §188, §190). */
-  socialCapabilities: SocialCapabilities | undefined;
+  socialCapabilities:
+    | SocialCapabilities
+    | undefined;
   /**
    * Owner decision (2026-08-19): whether this node's public content is readable without
    * signing in. Default true — `registration_mode ==
@@ -208,7 +213,9 @@ export interface NodePolicy {
   domainPolicies: DomainPolicyEntry[];
   /** Operator-declared jurisdiction/provider, free text (spec §197.6). */
   dataLocation: string;
-  retention: RetentionWindows | undefined;
+  retention:
+    | RetentionWindows
+    | undefined;
   /** Who runs this node, or an explicit "anonymous operator" statement (spec §197.6). */
   operatorIdentity: string;
   /** The closed label vocabulary this node's own labeler publishes (spec §200.2). */
@@ -219,7 +226,8 @@ export interface NodePolicy {
   appealWindowDays: number;
 }
 
-export interface GetNodePolicyRequest {}
+export interface GetNodePolicyRequest {
+}
 
 export interface GetNodePolicyResponse {
   /**
@@ -229,7 +237,7 @@ export interface GetNodePolicyResponse {
   policy: NodePolicy | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /**
  * Node discovery (spec §163, §168, §174) — always unauthenticated. A client calls
@@ -248,10 +256,7 @@ export interface NodeServiceClient {
    * rather than hiding the screen.
    */
 
-  getNodePolicy(
-    request: GetNodePolicyRequest,
-    metadata?: Metadata,
-  ): Observable<GetNodePolicyResponse>;
+  getNodePolicy(request: GetNodePolicyRequest, metadata?: Metadata): Observable<GetNodePolicyResponse>;
 }
 
 /**
@@ -282,17 +287,17 @@ export interface NodeServiceController {
 
 export function NodeServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ['getNodeInfo', 'getNodePolicy'];
+    const grpcMethods: string[] = ["getNodeInfo", "getNodePolicy"];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('NodeService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("NodeService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('NodeService', method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod("NodeService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const NODE_SERVICE_NAME = 'NodeService';
+export const NODE_SERVICE_NAME = "NodeService";

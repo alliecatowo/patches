@@ -121,7 +121,7 @@ jobs:
 
       - name: Fetch main (buf breaking diff target)
         if: github.event_name == 'pull_request'
-        run: git fetch origin main:main
+        run: git fetch origin main --quiet
 
       - run: pnpm proto:format
       - run: pnpm proto:lint

@@ -5,15 +5,15 @@
 // source: patches/v1/pages.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { Timestamp } from '../../google/protobuf/timestamp.js';
-import { Actor } from './actors.js';
-import { PageInfo } from './common.js';
-import { ReportReason } from './moderation.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { Timestamp } from "../../google/protobuf/timestamp.js";
+import { Actor } from "./actors.js";
+import { PageInfo } from "./common.js";
+import { ReportReason } from "./moderation.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 /**
  * Mirrors `packages/domain`'s `PageTheme` — a convenience extract of `document`'s embedded
@@ -96,7 +96,9 @@ export interface GuestbookEntry {
    * nullable) — never absent for anything `SignGuestbook` itself creates in v0, since that
    * RPC requires an authenticated session.
    */
-  author: Actor | undefined;
+  author:
+    | Actor
+    | undefined;
   /** Plain text, sanitized, at most 500 characters (spec §171). */
   body: string;
   createdAt: Timestamp | undefined;
@@ -146,7 +148,7 @@ export interface ReportGuestbookEntryResponse {
   reportId: string;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /**
  * Patches Pages (spec §170-172, §176 Phase 4.5). The server stores, validates, versions and
@@ -176,20 +178,14 @@ export interface PageServiceClient {
 
   /** The caller's own page's revision history, most-recent first. Owner only. */
 
-  listPageRevisions(
-    request: ListPageRevisionsRequest,
-    metadata?: Metadata,
-  ): Observable<ListPageRevisionsResponse>;
+  listPageRevisions(request: ListPageRevisionsRequest, metadata?: Metadata): Observable<ListPageRevisionsResponse>;
 
   /**
    * Guestbook entries for a page, most-recent first. Anonymous-callable, block-aware like
    * `GetPage`.
    */
 
-  listGuestbook(
-    request: ListGuestbookRequest,
-    metadata?: Metadata,
-  ): Observable<ListGuestbookResponse>;
+  listGuestbook(request: ListGuestbookRequest, metadata?: Metadata): Observable<ListGuestbookResponse>;
 
   /**
    * Rate-limited (spec §102) and block-aware: a blocked-either-direction caller cannot sign
@@ -197,10 +193,7 @@ export interface PageServiceClient {
    * signature.
    */
 
-  signGuestbook(
-    request: SignGuestbookRequest,
-    metadata?: Metadata,
-  ): Observable<SignGuestbookResponse>;
+  signGuestbook(request: SignGuestbookRequest, metadata?: Metadata): Observable<SignGuestbookResponse>;
 
   /**
    * Removable by the page's owner (moderator removal is a documented follow-up — see
@@ -264,10 +257,7 @@ export interface PageServiceController {
   listPageRevisions(
     request: ListPageRevisionsRequest,
     metadata?: Metadata,
-  ):
-    | Promise<ListPageRevisionsResponse>
-    | Observable<ListPageRevisionsResponse>
-    | ListPageRevisionsResponse;
+  ): Promise<ListPageRevisionsResponse> | Observable<ListPageRevisionsResponse> | ListPageRevisionsResponse;
 
   /**
    * Guestbook entries for a page, most-recent first. Anonymous-callable, block-aware like
@@ -299,10 +289,7 @@ export interface PageServiceController {
   removeGuestbookEntry(
     request: RemoveGuestbookEntryRequest,
     metadata?: Metadata,
-  ):
-    | Promise<RemoveGuestbookEntryResponse>
-    | Observable<RemoveGuestbookEntryResponse>
-    | RemoveGuestbookEntryResponse;
+  ): Promise<RemoveGuestbookEntryResponse> | Observable<RemoveGuestbookEntryResponse> | RemoveGuestbookEntryResponse;
 
   /**
    * Bounded report of a guestbook entry (spec §64, §172). `ModerationService` (moderation
@@ -315,33 +302,30 @@ export interface PageServiceController {
   reportGuestbookEntry(
     request: ReportGuestbookEntryRequest,
     metadata?: Metadata,
-  ):
-    | Promise<ReportGuestbookEntryResponse>
-    | Observable<ReportGuestbookEntryResponse>
-    | ReportGuestbookEntryResponse;
+  ): Promise<ReportGuestbookEntryResponse> | Observable<ReportGuestbookEntryResponse> | ReportGuestbookEntryResponse;
 }
 
 export function PageServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      'getPage',
-      'updatePage',
-      'listPageRevisions',
-      'listGuestbook',
-      'signGuestbook',
-      'removeGuestbookEntry',
-      'reportGuestbookEntry',
+      "getPage",
+      "updatePage",
+      "listPageRevisions",
+      "listGuestbook",
+      "signGuestbook",
+      "removeGuestbookEntry",
+      "reportGuestbookEntry",
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('PageService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("PageService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('PageService', method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod("PageService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const PAGE_SERVICE_NAME = 'PageService';
+export const PAGE_SERVICE_NAME = "PageService";
