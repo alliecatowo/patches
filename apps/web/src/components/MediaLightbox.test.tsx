@@ -41,4 +41,10 @@ describe('MediaLightbox', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('focuses close button when lightbox opens', () => {
+    render(<MediaLightbox images={images} isOpen={true} onClose={vi.fn()} />);
+    const closeBtn = screen.getByRole('button', { name: 'Close lightbox' });
+    expect(closeBtn).toHaveFocus();
+  });
 });
