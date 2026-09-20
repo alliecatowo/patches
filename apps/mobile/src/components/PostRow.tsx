@@ -3,6 +3,7 @@ import { useState, type JSX } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { PostMedia } from './PostMedia.js';
 
 export interface PostRowProps {
   post: Post;
@@ -70,7 +71,10 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              <Text style={styles.body}>{post.body}</Text>
+              <PostMedia media={post.media} />
+            </>
           )}
         </>
       )}
