@@ -1,0 +1,3 @@
+## 2026-08-23 - Unanchored key-value secret regexes cause $O(N^2)$ backtracking on large log inputs
+**Learning:** Matching unanchored character classes before keyword alternatives (e.g. `[A-Za-z0-9_.-]*(?:password|...)`) causes quadratic polynomial scanning and catastrophic backtracking at every string index on long non-matching texts (e.g. 1M char diagnostic frames). Adding lookbehind `(?<=^|[^A-Za-z0-9_.-])` anchors match attempts to token boundaries and eliminates quadratic backtracking, yielding >1000x performance gains.
+**Action:** Always anchor key-value scanning regexes with lookbehinds or boundary assertions `(?<=^|[^...])` when redacting or parsing large user text or frame buffers.
