@@ -190,7 +190,7 @@ jobs:
             if ! create_branch; then
               if grep -qiE 'limit|quota' "$RUNNER_TEMP/neon-branch-err.txt"; then
                 echo 'Neon branch limit or compute quota exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
-                exit 0
+                echo "PREVIEW_SKIPPED=true" >> "$GITHUB_ENV"
               else
                 cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
                 exit 1
@@ -199,6 +199,7 @@ jobs:
           fi
 
       - name: Fetch branch connection string
+        if: env.PREVIEW_SKIPPED != 'true'
         run: |
           set -euo pipefail
           if ! neon connection-string "pr-${PR_NUMBER}" \
@@ -250,6 +251,7 @@ jobs:
           rm -f "$RUNNER_TEMP/preview-keys.env"
 
       - name: Create Fly app if needed (patches-pr-<N>)
+        if: env.PREVIEW_SKIPPED != 'true'
         run: |
           set -euo pipefail
           org="${FLY_PREVIEW_ORG:-personal}"
@@ -266,6 +268,7 @@ jobs:
       # "can't connect to backend" while the machine itself is perfectly healthy.
       # Allocate the free org-shared IPv4 idempotently; re-runs are no-ops.
       - name: Ensure shared IPv4 (DNS for <app>.fly.dev)
+        if: env.PREVIEW_SKIPPED != 'true'
         run: |
           set -euo pipefail
           if flyctl ips list --app "patches-pr-${PR_NUMBER}" 2>/dev/null | grep -q "v4"; then
@@ -312,6 +315,7 @@ jobs:
           fi
 
       - name: Set Fly secrets (branch DATABASE_URL + throwaway keys + optional R2)
+        if: env.PREVIEW_SKIPPED != 'true'
         run: |
           set -euo pipefail
           args=(DATABASE_URL="${DATABASE_URL:-}" DATABASE_SSL=true
@@ -384,6 +388,7 @@ jobs:
           echo "Web preview deployed at $web_url" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Stage self-contained app dirs (pnpm deploy)
+        if: env.PREVIEW_SKIPPED != 'true'
         run: |
           set -euo pipefail
           ctx="infra/preview/.image-context"
@@ -393,6 +398,7 @@ jobs:
           cp infra/docker/migrate.mjs "$ctx/migrate.mjs"
 
       - name: Assemble image (COPY-only — no toolchain in CI docker)
+        if: env.PREVIEW_SKIPPED != 'true'
         run: >-
           docker build -f infra/docker/Dockerfile.prebuilt
           -t "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}"
@@ -404,6 +410,7 @@ jobs:
       # ref. `flyctl auth docker` honors FLY_API_TOKEN; the per-app registry path is
       # org-scoped so no extra credentials exist to rotate.
       - name: Push image to the Fly registry
+        if: env.PREVIEW_SKIPPED != 'true'
         run: |
           set -euo pipefail
           flyctl auth docker
@@ -414,11 +421,19 @@ jobs:
         # builders share none of those, and their cold path measured ~1m50s per
         # deploy). Process groups, checks, and autostop all come from the generated
         # fly config as before.
+        if: env.PREVIEW_SKIPPED != 'true'
         run: |
           set -euo pipefail
-          flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
+          if ! flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
             --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
-            --ha=false --strategy immediate --yes
+            --ha=false --strategy immediate --yes 2>"$RUNNER_TEMP/fly-deploy-err.txt"; then
+            if grep -qiE 'machine limit|quota|limit' "$RUNNER_TEMP/fly-deploy-err.txt"; then
+              echo 'Fly machine limit reached; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              cat "$RUNNER_TEMP/fly-deploy-err.txt" >&2
+              exit 1
+            fi
+          fi
 
       - name: Allow the web preview origin in Connect CORS
         # An empty/unset WEB_ORIGINS denies every cross-origin browser request (see
@@ -426,7 +441,7 @@ jobs:
         # blocked until the Pages origin is allow-listed. Set it (as a Fly secret,
         # like the other runtime secrets) to the deterministic branch alias AND the
         # live deployment URL wrangler printed. Setting a secret restarts the machine.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_SKIPPED != 'true' && env.PREVIEW_WEB == 'enabled'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
@@ -456,7 +471,7 @@ jobs:
         # now fixed in teardown), but this probe proves the LIVE path every deploy:
         # the Pages origin must get CORS approval from the Connect edge and healthz
         # must answer, exactly as the browser client's login fetch does.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_SKIPPED != 'true' && env.PREVIEW_WEB == 'enabled'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
