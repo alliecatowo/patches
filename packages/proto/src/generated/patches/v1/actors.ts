@@ -5,13 +5,13 @@
 // source: patches/v1/actors.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
-import { PageInfo } from "./common.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
+import { PageInfo } from './common.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 /**
  * Rapid personalization (owner request 2026-08-25): a profile-level frame effect. Pure
@@ -19,12 +19,12 @@ export const protobufPackage = "patches.v1";
  * for UNSPECIFIED/NONE or any value it cannot render.
  */
 export enum ProfileFrame {
-  PROFILE_FRAME_UNSPECIFIED = "PROFILE_FRAME_UNSPECIFIED",
-  PROFILE_FRAME_NONE = "PROFILE_FRAME_NONE",
-  PROFILE_FRAME_BORDER = "PROFILE_FRAME_BORDER",
-  PROFILE_FRAME_GLOW = "PROFILE_FRAME_GLOW",
-  PROFILE_FRAME_GRADIENT = "PROFILE_FRAME_GRADIENT",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  PROFILE_FRAME_UNSPECIFIED = 'PROFILE_FRAME_UNSPECIFIED',
+  PROFILE_FRAME_NONE = 'PROFILE_FRAME_NONE',
+  PROFILE_FRAME_BORDER = 'PROFILE_FRAME_BORDER',
+  PROFILE_FRAME_GLOW = 'PROFILE_FRAME_GLOW',
+  PROFILE_FRAME_GRADIENT = 'PROFILE_FRAME_GRADIENT',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -32,12 +32,12 @@ export enum ProfileFrame {
  * `ProfileFrame`).
  */
 export enum NameTagStyle {
-  NAME_TAG_STYLE_UNSPECIFIED = "NAME_TAG_STYLE_UNSPECIFIED",
-  NAME_TAG_STYLE_NONE = "NAME_TAG_STYLE_NONE",
-  NAME_TAG_STYLE_BADGE = "NAME_TAG_STYLE_BADGE",
-  NAME_TAG_STYLE_RIBBON = "NAME_TAG_STYLE_RIBBON",
-  NAME_TAG_STYLE_PILLED = "NAME_TAG_STYLE_PILLED",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  NAME_TAG_STYLE_UNSPECIFIED = 'NAME_TAG_STYLE_UNSPECIFIED',
+  NAME_TAG_STYLE_NONE = 'NAME_TAG_STYLE_NONE',
+  NAME_TAG_STYLE_BADGE = 'NAME_TAG_STYLE_BADGE',
+  NAME_TAG_STYLE_RIBBON = 'NAME_TAG_STYLE_RIBBON',
+  NAME_TAG_STYLE_PILLED = 'NAME_TAG_STYLE_PILLED',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -129,23 +129,15 @@ export interface Actor {
   locationText: string;
   /** Max 2,048 characters (spec §58); validated http/https-only server-side (spec §104). */
   websiteUrl: string;
-  avatar:
-    | MediaRef
-    | undefined;
+  avatar: MediaRef | undefined;
   /** False once federation introduces remote actors (spec §19). */
   isLocal: boolean;
   joinedAt: Timestamp | undefined;
-  counts:
-    | ActorCounts
-    | undefined;
+  counts: ActorCounts | undefined;
   /** Unset when the actor has never customized their presentation (spec §173). */
-  nameplate:
-    | Nameplate
-    | undefined;
+  nameplate: Nameplate | undefined;
   /** Unset when the actor has never set flair (spec §189, §192). */
-  flair:
-    | ActorFlair
-    | undefined;
+  flair: ActorFlair | undefined;
   /** Up to 3, in display order (spec §188). */
   pinnedPostIds: string[];
   /**
@@ -198,16 +190,12 @@ export interface UpdateProfileRequest {
   bio: string;
   locationText: string;
   websiteUrl: string;
-  updateMask:
-    | string[]
-    | undefined;
+  updateMask: string[] | undefined;
   /**
    * `badges` is ignored server-side even when `"nameplate"` is in `update_mask` — badges are
    * server-attested only (spec §173).
    */
-  nameplate:
-    | Nameplate
-    | undefined;
+  nameplate: Nameplate | undefined;
   /** Applied when `"flair"` is in `update_mask` (spec §189, §190). */
   flair: ActorFlair | undefined;
   profileFrame: ProfileFrame;
@@ -274,7 +262,7 @@ export interface ResolveActorResponse {
   actor: Actor | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * Social identities: local accounts today, remote (federated) actors later (spec §19, §21,
@@ -291,14 +279,20 @@ export interface ActorServiceClient {
    * unique per node, not globally (spec §163) — this never crosses node boundaries.
    */
 
-  getActorByHandle(request: GetActorByHandleRequest, metadata?: Metadata): Observable<GetActorByHandleResponse>;
+  getActorByHandle(
+    request: GetActorByHandleRequest,
+    metadata?: Metadata,
+  ): Observable<GetActorByHandleResponse>;
 
   /**
    * Partial update of the caller's own profile, driven by `update_mask` (see the message
    * comment below). Requires an authenticated session; the target actor is the caller's.
    */
 
-  updateProfile(request: UpdateProfileRequest, metadata?: Metadata): Observable<UpdateProfileResponse>;
+  updateProfile(
+    request: UpdateProfileRequest,
+    metadata?: Metadata,
+  ): Observable<UpdateProfileResponse>;
 
   /**
    * Handle-prefix + display-name search (spec §112). Elasticsearch is explicitly out of
@@ -309,11 +303,17 @@ export interface ActorServiceClient {
 
   /** Cursor-paginated list of actors following `actor_id`. */
 
-  listFollowers(request: ListFollowersRequest, metadata?: Metadata): Observable<ListFollowersResponse>;
+  listFollowers(
+    request: ListFollowersRequest,
+    metadata?: Metadata,
+  ): Observable<ListFollowersResponse>;
 
   /** Cursor-paginated list of actors `actor_id` follows. */
 
-  listFollowing(request: ListFollowingRequest, metadata?: Metadata): Observable<ListFollowingResponse>;
+  listFollowing(
+    request: ListFollowingRequest,
+    metadata?: Metadata,
+  ): Observable<ListFollowingResponse>;
 
   /**
    * B-028: discovers a remote actor by `acct:user@domain` via WebFinger and returns it (as a
@@ -347,7 +347,10 @@ export interface ActorServiceController {
   getActorByHandle(
     request: GetActorByHandleRequest,
     metadata?: Metadata,
-  ): Promise<GetActorByHandleResponse> | Observable<GetActorByHandleResponse> | GetActorByHandleResponse;
+  ):
+    | Promise<GetActorByHandleResponse>
+    | Observable<GetActorByHandleResponse>
+    | GetActorByHandleResponse;
 
   /**
    * Partial update of the caller's own profile, driven by `update_mask` (see the message
@@ -400,24 +403,24 @@ export interface ActorServiceController {
 export function ActorServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      "getActor",
-      "getActorByHandle",
-      "updateProfile",
-      "searchActors",
-      "listFollowers",
-      "listFollowing",
-      "resolveActor",
+      'getActor',
+      'getActorByHandle',
+      'updateProfile',
+      'searchActors',
+      'listFollowers',
+      'listFollowing',
+      'resolveActor',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("ActorService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('ActorService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("ActorService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('ActorService', method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const ACTOR_SERVICE_NAME = "ActorService";
+export const ACTOR_SERVICE_NAME = 'ActorService';

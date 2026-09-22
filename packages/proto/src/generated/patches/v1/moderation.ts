@@ -5,25 +5,25 @@
 // source: patches/v1/moderation.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
-import { Actor } from "./actors.js";
-import { PageInfo } from "./common.js";
-import { Relationship } from "./social_graph.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
+import { Actor } from './actors.js';
+import { PageInfo } from './common.js';
+import { Relationship } from './social_graph.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 export enum ReportReason {
-  REPORT_REASON_UNSPECIFIED = "REPORT_REASON_UNSPECIFIED",
-  REPORT_REASON_SPAM = "REPORT_REASON_SPAM",
-  REPORT_REASON_HARASSMENT = "REPORT_REASON_HARASSMENT",
-  REPORT_REASON_HATE_SPEECH = "REPORT_REASON_HATE_SPEECH",
-  REPORT_REASON_ILLEGAL_CONTENT = "REPORT_REASON_ILLEGAL_CONTENT",
-  REPORT_REASON_IMPERSONATION = "REPORT_REASON_IMPERSONATION",
-  REPORT_REASON_OTHER = "REPORT_REASON_OTHER",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  REPORT_REASON_UNSPECIFIED = 'REPORT_REASON_UNSPECIFIED',
+  REPORT_REASON_SPAM = 'REPORT_REASON_SPAM',
+  REPORT_REASON_HARASSMENT = 'REPORT_REASON_HARASSMENT',
+  REPORT_REASON_HATE_SPEECH = 'REPORT_REASON_HATE_SPEECH',
+  REPORT_REASON_ILLEGAL_CONTENT = 'REPORT_REASON_ILLEGAL_CONTENT',
+  REPORT_REASON_IMPERSONATION = 'REPORT_REASON_IMPERSONATION',
+  REPORT_REASON_OTHER = 'REPORT_REASON_OTHER',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -33,18 +33,18 @@ export enum ReportReason {
  * operator's free-text `reason`) and on every `ModerationLogEntry`.
  */
 export enum ModerationReasonCategory {
-  MODERATION_REASON_CATEGORY_UNSPECIFIED = "MODERATION_REASON_CATEGORY_UNSPECIFIED",
-  MODERATION_REASON_CATEGORY_HARASSMENT = "MODERATION_REASON_CATEGORY_HARASSMENT",
-  MODERATION_REASON_CATEGORY_HATE = "MODERATION_REASON_CATEGORY_HATE",
-  MODERATION_REASON_CATEGORY_THREATS = "MODERATION_REASON_CATEGORY_THREATS",
-  MODERATION_REASON_CATEGORY_DOXXING = "MODERATION_REASON_CATEGORY_DOXXING",
-  MODERATION_REASON_CATEGORY_IMPERSONATION = "MODERATION_REASON_CATEGORY_IMPERSONATION",
-  MODERATION_REASON_CATEGORY_SPAM = "MODERATION_REASON_CATEGORY_SPAM",
-  MODERATION_REASON_CATEGORY_ILLEGAL_CONTENT = "MODERATION_REASON_CATEGORY_ILLEGAL_CONTENT",
-  MODERATION_REASON_CATEGORY_NCII = "MODERATION_REASON_CATEGORY_NCII",
-  MODERATION_REASON_CATEGORY_INFRASTRUCTURE_ABUSE = "MODERATION_REASON_CATEGORY_INFRASTRUCTURE_ABUSE",
-  MODERATION_REASON_CATEGORY_OTHER = "MODERATION_REASON_CATEGORY_OTHER",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  MODERATION_REASON_CATEGORY_UNSPECIFIED = 'MODERATION_REASON_CATEGORY_UNSPECIFIED',
+  MODERATION_REASON_CATEGORY_HARASSMENT = 'MODERATION_REASON_CATEGORY_HARASSMENT',
+  MODERATION_REASON_CATEGORY_HATE = 'MODERATION_REASON_CATEGORY_HATE',
+  MODERATION_REASON_CATEGORY_THREATS = 'MODERATION_REASON_CATEGORY_THREATS',
+  MODERATION_REASON_CATEGORY_DOXXING = 'MODERATION_REASON_CATEGORY_DOXXING',
+  MODERATION_REASON_CATEGORY_IMPERSONATION = 'MODERATION_REASON_CATEGORY_IMPERSONATION',
+  MODERATION_REASON_CATEGORY_SPAM = 'MODERATION_REASON_CATEGORY_SPAM',
+  MODERATION_REASON_CATEGORY_ILLEGAL_CONTENT = 'MODERATION_REASON_CATEGORY_ILLEGAL_CONTENT',
+  MODERATION_REASON_CATEGORY_NCII = 'MODERATION_REASON_CATEGORY_NCII',
+  MODERATION_REASON_CATEGORY_INFRASTRUCTURE_ABUSE = 'MODERATION_REASON_CATEGORY_INFRASTRUCTURE_ABUSE',
+  MODERATION_REASON_CATEGORY_OTHER = 'MODERATION_REASON_CATEGORY_OTHER',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 /**
@@ -52,23 +52,23 @@ export enum ModerationReasonCategory {
  * domain-level action published in the moderation log (spec §201.4-§201.5).
  */
 export enum ModerationActionType {
-  MODERATION_ACTION_TYPE_UNSPECIFIED = "MODERATION_ACTION_TYPE_UNSPECIFIED",
-  MODERATION_ACTION_TYPE_WARN = "MODERATION_ACTION_TYPE_WARN",
-  MODERATION_ACTION_TYPE_SUSPEND = "MODERATION_ACTION_TYPE_SUSPEND",
-  MODERATION_ACTION_TYPE_BAN = "MODERATION_ACTION_TYPE_BAN",
-  MODERATION_ACTION_TYPE_POST_REMOVAL = "MODERATION_ACTION_TYPE_POST_REMOVAL",
-  MODERATION_ACTION_TYPE_MEDIA_TAKEDOWN = "MODERATION_ACTION_TYPE_MEDIA_TAKEDOWN",
-  MODERATION_ACTION_TYPE_DOMAIN_BLOCK = "MODERATION_ACTION_TYPE_DOMAIN_BLOCK",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  MODERATION_ACTION_TYPE_UNSPECIFIED = 'MODERATION_ACTION_TYPE_UNSPECIFIED',
+  MODERATION_ACTION_TYPE_WARN = 'MODERATION_ACTION_TYPE_WARN',
+  MODERATION_ACTION_TYPE_SUSPEND = 'MODERATION_ACTION_TYPE_SUSPEND',
+  MODERATION_ACTION_TYPE_BAN = 'MODERATION_ACTION_TYPE_BAN',
+  MODERATION_ACTION_TYPE_POST_REMOVAL = 'MODERATION_ACTION_TYPE_POST_REMOVAL',
+  MODERATION_ACTION_TYPE_MEDIA_TAKEDOWN = 'MODERATION_ACTION_TYPE_MEDIA_TAKEDOWN',
+  MODERATION_ACTION_TYPE_DOMAIN_BLOCK = 'MODERATION_ACTION_TYPE_DOMAIN_BLOCK',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 export enum ModerationLogSubjectKind {
-  MODERATION_LOG_SUBJECT_KIND_UNSPECIFIED = "MODERATION_LOG_SUBJECT_KIND_UNSPECIFIED",
-  MODERATION_LOG_SUBJECT_KIND_DOMAIN = "MODERATION_LOG_SUBJECT_KIND_DOMAIN",
-  MODERATION_LOG_SUBJECT_KIND_ACCOUNT = "MODERATION_LOG_SUBJECT_KIND_ACCOUNT",
-  MODERATION_LOG_SUBJECT_KIND_POST = "MODERATION_LOG_SUBJECT_KIND_POST",
-  MODERATION_LOG_SUBJECT_KIND_MEDIA = "MODERATION_LOG_SUBJECT_KIND_MEDIA",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  MODERATION_LOG_SUBJECT_KIND_UNSPECIFIED = 'MODERATION_LOG_SUBJECT_KIND_UNSPECIFIED',
+  MODERATION_LOG_SUBJECT_KIND_DOMAIN = 'MODERATION_LOG_SUBJECT_KIND_DOMAIN',
+  MODERATION_LOG_SUBJECT_KIND_ACCOUNT = 'MODERATION_LOG_SUBJECT_KIND_ACCOUNT',
+  MODERATION_LOG_SUBJECT_KIND_POST = 'MODERATION_LOG_SUBJECT_KIND_POST',
+  MODERATION_LOG_SUBJECT_KIND_MEDIA = 'MODERATION_LOG_SUBJECT_KIND_MEDIA',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 export interface BlockActorRequest {
@@ -210,16 +210,12 @@ export interface ModerationNotice {
    * (spec §55, §201.2, §208).
    */
   explanation: string;
-  createdAt:
-    | Timestamp
-    | undefined;
+  createdAt: Timestamp | undefined;
   /**
    * Deadline to file an appeal (`AppealService.CreateAppeal`); unset if the appeal window has
    * already closed or no appeal applies to this action.
    */
-  appealDeadline:
-    | Timestamp
-    | undefined;
+  appealDeadline: Timestamp | undefined;
   /** True once the caller has filed an appeal against this notice. */
   appealed: boolean;
 }
@@ -234,7 +230,7 @@ export interface ListMyModerationNoticesResponse {
   page: PageInfo | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * User-facing block/mute/report surface (spec §55, §61–64, Phase 6 spec §140). Moderator/admin
@@ -285,7 +281,10 @@ export interface ModerationServiceClient {
    * plus disclosed evidence is the whole moderation story for DMs now.
    */
 
-  reportE2EeMessage(request: ReportE2eeMessageRequest, metadata?: Metadata): Observable<ReportE2eeMessageResponse>;
+  reportE2EeMessage(
+    request: ReportE2eeMessageRequest,
+    metadata?: Metadata,
+  ): Observable<ReportE2eeMessageResponse>;
 
   /**
    * A public transparency instrument about the node's own conduct, not a public record of
@@ -294,7 +293,10 @@ export interface ModerationServiceClient {
    * id, or post id, ever.
    */
 
-  listModerationLog(request: ListModerationLogRequest, metadata?: Metadata): Observable<ListModerationLogResponse>;
+  listModerationLog(
+    request: ListModerationLogRequest,
+    metadata?: Metadata,
+  ): Observable<ListModerationLogResponse>;
 
   /**
    * The caller's own moderation notices — the private, notified, appealable read projection
@@ -383,7 +385,10 @@ export interface ModerationServiceController {
   reportE2EeMessage(
     request: ReportE2eeMessageRequest,
     metadata?: Metadata,
-  ): Promise<ReportE2eeMessageResponse> | Observable<ReportE2eeMessageResponse> | ReportE2eeMessageResponse;
+  ):
+    | Promise<ReportE2eeMessageResponse>
+    | Observable<ReportE2eeMessageResponse>
+    | ReportE2eeMessageResponse;
 
   /**
    * A public transparency instrument about the node's own conduct, not a public record of
@@ -395,7 +400,10 @@ export interface ModerationServiceController {
   listModerationLog(
     request: ListModerationLogRequest,
     metadata?: Metadata,
-  ): Promise<ListModerationLogResponse> | Observable<ListModerationLogResponse> | ListModerationLogResponse;
+  ):
+    | Promise<ListModerationLogResponse>
+    | Observable<ListModerationLogResponse>
+    | ListModerationLogResponse;
 
   /**
    * The caller's own moderation notices — the private, notified, appealable read projection
@@ -414,28 +422,32 @@ export interface ModerationServiceController {
 export function ModerationServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      "blockActor",
-      "unblockActor",
-      "muteActor",
-      "unmuteActor",
-      "listBlocks",
-      "listMutes",
-      "reportPost",
-      "reportActor",
-      "reportE2EeMessage",
-      "listModerationLog",
-      "listMyModerationNotices",
+      'blockActor',
+      'unblockActor',
+      'muteActor',
+      'unmuteActor',
+      'listBlocks',
+      'listMutes',
+      'reportPost',
+      'reportActor',
+      'reportE2EeMessage',
+      'listModerationLog',
+      'listMyModerationNotices',
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("ModerationService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('ModerationService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("ModerationService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('ModerationService', method)(
+        constructor.prototype[method],
+        method,
+        descriptor,
+      );
     }
   };
 }
 
-export const MODERATION_SERVICE_NAME = "ModerationService";
+export const MODERATION_SERVICE_NAME = 'ModerationService';

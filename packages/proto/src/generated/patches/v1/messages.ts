@@ -5,32 +5,28 @@
 // source: patches/v1/messages.proto
 
 /* eslint-disable */
-import type { Metadata } from "@grpc/grpc-js";
-import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { Observable } from "rxjs";
-import { Timestamp } from "../../google/protobuf/timestamp.js";
-import { Actor } from "./actors.js";
-import { PageInfo } from "./common.js";
-import { ConversationSecurityMode } from "./e2ee.js";
+import type { Metadata } from '@grpc/grpc-js';
+import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
+import { Observable } from 'rxjs';
+import { Timestamp } from '../../google/protobuf/timestamp.js';
+import { Actor } from './actors.js';
+import { PageInfo } from './common.js';
+import { ConversationSecurityMode } from './e2ee.js';
 
-export const protobufPackage = "patches.v1";
+export const protobufPackage = 'patches.v1';
 
 export enum ConversationKind {
-  CONVERSATION_KIND_UNSPECIFIED = "CONVERSATION_KIND_UNSPECIFIED",
-  CONVERSATION_KIND_DIRECT = "CONVERSATION_KIND_DIRECT",
-  CONVERSATION_KIND_GROUP = "CONVERSATION_KIND_GROUP",
-  UNRECOGNIZED = "UNRECOGNIZED",
+  CONVERSATION_KIND_UNSPECIFIED = 'CONVERSATION_KIND_UNSPECIFIED',
+  CONVERSATION_KIND_DIRECT = 'CONVERSATION_KIND_DIRECT',
+  CONVERSATION_KIND_GROUP = 'CONVERSATION_KIND_GROUP',
+  UNRECOGNIZED = 'UNRECOGNIZED',
 }
 
 export interface ConversationMember {
   actor: Actor | undefined;
-  joinedAt:
-    | Timestamp
-    | undefined;
+  joinedAt: Timestamp | undefined;
   /** Unset while still a member. */
-  leftAt:
-    | Timestamp
-    | undefined;
+  leftAt: Timestamp | undefined;
   /**
    * Empty if nothing has been read yet. An `E2eeLogicalMessage` id (opaque to this service) —
    * never a plaintext message id, since the node holds no plaintext (ADR 0020, ADR 0030).
@@ -45,9 +41,7 @@ export interface Conversation {
   createdBy: Actor | undefined;
   members: ConversationMember[];
   createdAt: Timestamp | undefined;
-  lastMessageAt:
-    | Timestamp
-    | undefined;
+  lastMessageAt: Timestamp | undefined;
   /** Unread count for the caller specifically — never populated for anyone else. */
   unreadCount: number;
   /**
@@ -81,8 +75,7 @@ export interface LeaveConversationRequest {
   conversationId: string;
 }
 
-export interface LeaveConversationResponse {
-}
+export interface LeaveConversationResponse {}
 
 export interface MarkConversationReadRequest {
   conversationId: string;
@@ -90,10 +83,9 @@ export interface MarkConversationReadRequest {
   throughMessageId: string;
 }
 
-export interface MarkConversationReadResponse {
-}
+export interface MarkConversationReadResponse {}
 
-export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
+export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
 
 /**
  * The generic conversation surface (spec §183, §188–190; ADR 0030 §B-095). Every conversation
@@ -107,9 +99,15 @@ export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
  */
 
 export interface DirectMessageServiceClient {
-  listConversations(request: ListConversationsRequest, metadata?: Metadata): Observable<ListConversationsResponse>;
+  listConversations(
+    request: ListConversationsRequest,
+    metadata?: Metadata,
+  ): Observable<ListConversationsResponse>;
 
-  getConversation(request: GetConversationRequest, metadata?: Metadata): Observable<GetConversationResponse>;
+  getConversation(
+    request: GetConversationRequest,
+    metadata?: Metadata,
+  ): Observable<GetConversationResponse>;
 
   /**
    * Always rejected with `UNIMPLEMENTED` (ADR 0030 §B-095): every conversation is `E2EE_V1`,
@@ -118,7 +116,10 @@ export interface DirectMessageServiceClient {
    * `E2eeService.RemoveE2eeMember` with `actor_id` set to the caller.
    */
 
-  leaveConversation(request: LeaveConversationRequest, metadata?: Metadata): Observable<LeaveConversationResponse>;
+  leaveConversation(
+    request: LeaveConversationRequest,
+    metadata?: Metadata,
+  ): Observable<LeaveConversationResponse>;
 
   markConversationRead(
     request: MarkConversationReadRequest,
@@ -141,12 +142,18 @@ export interface DirectMessageServiceController {
   listConversations(
     request: ListConversationsRequest,
     metadata?: Metadata,
-  ): Promise<ListConversationsResponse> | Observable<ListConversationsResponse> | ListConversationsResponse;
+  ):
+    | Promise<ListConversationsResponse>
+    | Observable<ListConversationsResponse>
+    | ListConversationsResponse;
 
   getConversation(
     request: GetConversationRequest,
     metadata?: Metadata,
-  ): Promise<GetConversationResponse> | Observable<GetConversationResponse> | GetConversationResponse;
+  ):
+    | Promise<GetConversationResponse>
+    | Observable<GetConversationResponse>
+    | GetConversationResponse;
 
   /**
    * Always rejected with `UNIMPLEMENTED` (ADR 0030 §B-095): every conversation is `E2EE_V1`,
@@ -158,27 +165,42 @@ export interface DirectMessageServiceController {
   leaveConversation(
     request: LeaveConversationRequest,
     metadata?: Metadata,
-  ): Promise<LeaveConversationResponse> | Observable<LeaveConversationResponse> | LeaveConversationResponse;
+  ):
+    | Promise<LeaveConversationResponse>
+    | Observable<LeaveConversationResponse>
+    | LeaveConversationResponse;
 
   markConversationRead(
     request: MarkConversationReadRequest,
     metadata?: Metadata,
-  ): Promise<MarkConversationReadResponse> | Observable<MarkConversationReadResponse> | MarkConversationReadResponse;
+  ):
+    | Promise<MarkConversationReadResponse>
+    | Observable<MarkConversationReadResponse>
+    | MarkConversationReadResponse;
 }
 
 export function DirectMessageServiceControllerMethods() {
   return function (constructor: Function) {
-    const grpcMethods: string[] = ["listConversations", "getConversation", "leaveConversation", "markConversationRead"];
+    const grpcMethods: string[] = [
+      'listConversations',
+      'getConversation',
+      'leaveConversation',
+      'markConversationRead',
+    ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod("DirectMessageService", method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod('DirectMessageService', method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod("DirectMessageService", method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod('DirectMessageService', method)(
+        constructor.prototype[method],
+        method,
+        descriptor,
+      );
     }
   };
 }
 
-export const DIRECT_MESSAGE_SERVICE_NAME = "DirectMessageService";
+export const DIRECT_MESSAGE_SERVICE_NAME = 'DirectMessageService';
