@@ -52,6 +52,11 @@ describe('PostCard', () => {
     expect(screen.getByText('Allie')).toBeInTheDocument();
   });
 
+  it('renders quote post button with aria-label', () => {
+    renderPostCard(mockPost);
+    expect(screen.getByRole('link', { name: 'Quote post' })).toBeInTheDocument();
+  });
+
   it('navigates to thread when card is clicked', () => {
     renderPostCard(mockPost);
     const card = screen.getByRole('article', { name: /Post by @allie/ });
