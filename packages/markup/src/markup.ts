@@ -220,8 +220,21 @@ export function looksLikeHtml(source: string): boolean {
   return false;
 }
 
+// Cache compiled RegExp instances by attribute name to avoid dynamic RegExp compilation on every lookup.
+const ATTRIBUTE_PATTERNS = new Map<string, RegExp>();
+
+function getAttributePattern(name: string): RegExp {
+  const key = name.toLowerCase();
+  let pattern = ATTRIBUTE_PATTERNS.get(key);
+  if (pattern === undefined) {
+    pattern = new RegExp(`${key}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'iu');
+    ATTRIBUTE_PATTERNS.set(key, pattern);
+  }
+  return pattern;
+}
+
 function attributeValue(attributes: string, name: string): string | undefined {
-  const pattern = new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'iu');
+  const pattern = getAttributePattern(name);
   const match = pattern.exec(attributes);
   if (match === null) return undefined;
   return decodeEntities(match[2] ?? match[3] ?? match[4] ?? '');
