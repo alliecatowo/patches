@@ -6,7 +6,7 @@
 
 /* eslint-disable */
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 /**
  * Cursor pagination envelope (spec §46).
@@ -40,4 +40,4 @@ export interface PageInfo {
   hasMore: boolean;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";

@@ -5,31 +5,31 @@
 // source: patches/v1/posts.proto
 
 /* eslint-disable */
-import type { Metadata } from '@grpc/grpc-js';
-import { GrpcMethod, GrpcStreamMethod } from '@nestjs/microservices';
-import { Observable } from 'rxjs';
-import { Timestamp } from '../../google/protobuf/timestamp.js';
-import { Actor } from './actors.js';
-import { PageInfo } from './common.js';
-import { Community } from './communities.js';
-import { FilterAction } from './filters.js';
-import { Label } from './labels.js';
+import type { Metadata } from "@grpc/grpc-js";
+import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { Observable } from "rxjs";
+import { Timestamp } from "../../google/protobuf/timestamp.js";
+import { Actor } from "./actors.js";
+import { PageInfo } from "./common.js";
+import { Community } from "./communities.js";
+import { FilterAction } from "./filters.js";
+import { Label } from "./labels.js";
 
-export const protobufPackage = 'patches.v1';
+export const protobufPackage = "patches.v1";
 
 export enum PostType {
-  POST_TYPE_UNSPECIFIED = 'POST_TYPE_UNSPECIFIED',
-  POST_TYPE_NOTE = 'POST_TYPE_NOTE',
-  POST_TYPE_LINK = 'POST_TYPE_LINK',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  POST_TYPE_UNSPECIFIED = "POST_TYPE_UNSPECIFIED",
+  POST_TYPE_NOTE = "POST_TYPE_NOTE",
+  POST_TYPE_LINK = "POST_TYPE_LINK",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 export enum PostVisibility {
-  POST_VISIBILITY_UNSPECIFIED = 'POST_VISIBILITY_UNSPECIFIED',
-  POST_VISIBILITY_PUBLIC = 'POST_VISIBILITY_PUBLIC',
-  POST_VISIBILITY_UNLISTED = 'POST_VISIBILITY_UNLISTED',
-  POST_VISIBILITY_FOLLOWERS = 'POST_VISIBILITY_FOLLOWERS',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  POST_VISIBILITY_UNSPECIFIED = "POST_VISIBILITY_UNSPECIFIED",
+  POST_VISIBILITY_PUBLIC = "POST_VISIBILITY_PUBLIC",
+  POST_VISIBILITY_UNLISTED = "POST_VISIBILITY_UNLISTED",
+  POST_VISIBILITY_FOLLOWERS = "POST_VISIBILITY_FOLLOWERS",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 /**
@@ -37,11 +37,11 @@ export enum PostVisibility {
  * never inferred from what the client was shown).
  */
 export enum QuotePolicy {
-  QUOTE_POLICY_UNSPECIFIED = 'QUOTE_POLICY_UNSPECIFIED',
-  QUOTE_POLICY_ANYONE = 'QUOTE_POLICY_ANYONE',
-  QUOTE_POLICY_FOLLOWERS = 'QUOTE_POLICY_FOLLOWERS',
-  QUOTE_POLICY_NOBODY = 'QUOTE_POLICY_NOBODY',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  QUOTE_POLICY_UNSPECIFIED = "QUOTE_POLICY_UNSPECIFIED",
+  QUOTE_POLICY_ANYONE = "QUOTE_POLICY_ANYONE",
+  QUOTE_POLICY_FOLLOWERS = "QUOTE_POLICY_FOLLOWERS",
+  QUOTE_POLICY_NOBODY = "QUOTE_POLICY_NOBODY",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 /**
@@ -49,10 +49,10 @@ export enum QuotePolicy {
  * "a viewer must always be able to answer 'why did this disappear, and who decided that?'").
  */
 export enum FilteredByProvenance {
-  FILTERED_BY_PROVENANCE_UNSPECIFIED = 'FILTERED_BY_PROVENANCE_UNSPECIFIED',
-  FILTERED_BY_PROVENANCE_FILTER = 'FILTERED_BY_PROVENANCE_FILTER',
-  FILTERED_BY_PROVENANCE_FILTER_LIST = 'FILTERED_BY_PROVENANCE_FILTER_LIST',
-  UNRECOGNIZED = 'UNRECOGNIZED',
+  FILTERED_BY_PROVENANCE_UNSPECIFIED = "FILTERED_BY_PROVENANCE_UNSPECIFIED",
+  FILTERED_BY_PROVENANCE_FILTER = "FILTERED_BY_PROVENANCE_FILTER",
+  FILTERED_BY_PROVENANCE_FILTER_LIST = "FILTERED_BY_PROVENANCE_FILTER_LIST",
+  UNRECOGNIZED = "UNRECOGNIZED",
 }
 
 /**
@@ -97,14 +97,18 @@ export interface FilteredByHint {
    * Set only when `provenance == FILTERED_BY_PROVENANCE_FILTER_LIST` — the list's publisher,
    * rendered as "via @alice" (spec §199.3).
    */
-  listOwner: Actor | undefined;
+  listOwner:
+    | Actor
+    | undefined;
   /** Never `FILTER_ACTION_HIDE` (a hidden post is never returned to the client at all). */
   action: FilterAction;
 }
 
 export interface Post {
   id: string;
-  author: Actor | undefined;
+  author:
+    | Actor
+    | undefined;
   /** Empty when `deleted` is true, or when the post is media/link-only. */
   body: string;
   postType: PostType;
@@ -116,16 +120,22 @@ export interface Post {
   /** A root post's `root_post_id` equals its own `id` (spec §24). */
   rootPostId: string;
   media: MediaAttachment[];
-  createdAt: Timestamp | undefined;
+  createdAt:
+    | Timestamp
+    | undefined;
   /** Unset (zero value) if the post has never been edited (spec §26). */
-  editedAt: Timestamp | undefined;
+  editedAt:
+    | Timestamp
+    | undefined;
   /**
    * Tombstone flag (spec §25). `body`/`media` are empty and the client should render
    * `[deleted]` when true.
    */
   deleted: boolean;
   counts: PostCounts | undefined;
-  viewerState: PostViewerState | undefined;
+  viewerState:
+    | PostViewerState
+    | undefined;
   /**
    * Optional click-to-reveal label (e.g. "spoilers"); empty means none. Same length budget as
    * `body` (spec §58).
@@ -136,7 +146,9 @@ export interface Post {
    * quoted post itself quotes another post — quoted-post nesting renders one level deep
    * (spec §188).
    */
-  quotedPost: Post | undefined;
+  quotedPost:
+    | Post
+    | undefined;
   /** Unset for a post not posted into a community. */
   community: Community | undefined;
   quotePolicy: QuotePolicy;
@@ -158,7 +170,9 @@ export interface Post {
    * `collapse`/`warn` (spec §198.3, §203). Unset for a `hide` match — that post is never
    * returned at all — and unset when nothing matched.
    */
-  filteredBy: FilteredByHint | undefined;
+  filteredBy:
+    | FilteredByHint
+    | undefined;
   /**
    * Labels from labelers the viewer subscribes to only (spec §200.3, §203) — never a global
    * annotation. Empty for an anonymous read or a viewer with no labeler subscriptions.
@@ -315,7 +329,7 @@ export interface SearchPostsResponse {
   page: PageInfo | undefined;
 }
 
-export const PATCHES_V1_PACKAGE_NAME = 'patches.v1';
+export const PATCHES_V1_PACKAGE_NAME = "patches.v1";
 
 /** Posts and replies — there is no separate comment entity (spec §23–26, §51). */
 
@@ -351,10 +365,7 @@ export interface PostServiceClient {
 
   /** The edit history of a post, most-recent first. */
 
-  listPostEdits(
-    request: ListPostEditsRequest,
-    metadata?: Metadata,
-  ): Observable<ListPostEditsResponse>;
+  listPostEdits(request: ListPostEditsRequest, metadata?: Metadata): Observable<ListPostEditsResponse>;
 
   /**
    * Pins one of the caller's own posts to their profile. Up to 3 pinned posts per actor
@@ -462,26 +473,26 @@ export interface PostServiceController {
 export function PostServiceControllerMethods() {
   return function (constructor: Function) {
     const grpcMethods: string[] = [
-      'createPost',
-      'getPost',
-      'deletePost',
-      'listReplies',
-      'editPost',
-      'listPostEdits',
-      'pinPost',
-      'unpinPost',
-      'searchPosts',
+      "createPost",
+      "getPost",
+      "deletePost",
+      "listReplies",
+      "editPost",
+      "listPostEdits",
+      "pinPost",
+      "unpinPost",
+      "searchPosts",
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcMethod('PostService', method)(constructor.prototype[method], method, descriptor);
+      GrpcMethod("PostService", method)(constructor.prototype[method], method, descriptor);
     }
     const grpcStreamMethods: string[] = [];
     for (const method of grpcStreamMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
-      GrpcStreamMethod('PostService', method)(constructor.prototype[method], method, descriptor);
+      GrpcStreamMethod("PostService", method)(constructor.prototype[method], method, descriptor);
     }
   };
 }
 
-export const POST_SERVICE_NAME = 'PostService';
+export const POST_SERVICE_NAME = "PostService";
