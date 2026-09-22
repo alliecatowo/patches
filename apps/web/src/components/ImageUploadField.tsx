@@ -139,6 +139,7 @@ export function ImageUploadField({
         <button
           type="button"
           className={styles['removeBtn']}
+          aria-label={`Remove ${shape}`}
           onClick={() => {
             setPendingFile(null);
             onChange('');
