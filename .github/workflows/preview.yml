@@ -173,12 +173,19 @@ jobs:
             # --suspend-timeout is plan-gated ("modifying the suspend interval is not
             # permitted on this account" on plans without scale-to-zero control) — retry
             # once without it rather than failing the deploy over an idle-suspend knob.
-            if ! neon branches create "${args[@]}" --suspend-timeout 300 2>"$RUNNER_TEMP/neon-branch-err.txt" >/dev/null; then
-              if grep -q 'suspend interval is not permitted' "$RUNNER_TEMP/neon-branch-err.txt"; then
+            create_branch() {
+              neon branches create "${args[@]}" "$@" 2>"$RUNNER_TEMP/neon-branch-err.txt" >/dev/null
+            }
+            if ! create_branch --suspend-timeout 300; then
+              if grep -qi 'suspend interval is not permitted' "$RUNNER_TEMP/neon-branch-err.txt"; then
                 echo 'Plan does not allow --suspend-timeout; creating the branch without it.'
-                neon branches create "${args[@]}" >/dev/null
-              elif grep -q 'branches limit exceeded' "$RUNNER_TEMP/neon-branch-err.txt"; then
-                echo 'Neon branches limit exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+                create_branch || true
+              fi
+            fi
+            if [ -s "$RUNNER_TEMP/neon-branch-err.txt" ] && ! neon branches get "$branch" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null 2>&1; then
+              err_msg="$(cat "$RUNNER_TEMP/neon-branch-err.txt")"
+              if echo "$err_msg" | grep -qiE 'limit|quota|exceeded|locked|not permitted'; then
+                echo "Neon branch creation skipped gracefully (${err_msg}); preview backend deployment will proceed without DB branch." | tee -a "$GITHUB_STEP_SUMMARY"
                 exit 0
               else
                 cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
@@ -194,8 +201,8 @@ jobs:
             --project-id "$NEON_PROJECT_ID" \
             --database-name neondb --role-name neondb_owner --no-color 2>"$RUNNER_TEMP/neon-conn-err.txt" \
             | sed 's/&channel_binding=require//' > "$RUNNER_TEMP/neon-conn-url.txt"; then
-            if grep -qi "not found" "$RUNNER_TEMP/neon-conn-err.txt" || grep -qi "limit" "$RUNNER_TEMP/neon-conn-err.txt"; then
-              echo 'Neon branch not found (likely limit exceeded during branch creation); skipping connection string fetch.'
+            if grep -qiE "not found|limit|quota|exceeded|locked" "$RUNNER_TEMP/neon-conn-err.txt"; then
+              echo 'Neon branch not found (likely limit/quota exceeded during branch creation); skipping connection string fetch.'
               echo "DATABASE_URL=" >> "$GITHUB_ENV"
               exit 0
             else
@@ -405,9 +412,20 @@ jobs:
         # fly config as before.
         run: |
           set -euo pipefail
-          flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
+          if ! flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
             --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
-            --ha=false --strategy immediate --yes
+            --ha=false --strategy immediate --yes 2>"$RUNNER_TEMP/fly-deploy-err.txt"; then
+            err_msg="$(cat "$RUNNER_TEMP/fly-deploy-err.txt")"
+            if echo "$err_msg" | grep -qiE 'machine limit|quota|exceeded|limit reached|reached its machine limit'; then
+              echo "FLY_DEPLOYED=false" >> "$GITHUB_ENV"
+              echo "Fly.io compute deployment skipped gracefully (organization machine limit reached)." | tee -a "$GITHUB_STEP_SUMMARY"
+            else
+              cat "$RUNNER_TEMP/fly-deploy-err.txt" >&2
+              exit 1
+            fi
+          else
+            echo "FLY_DEPLOYED=true" >> "$GITHUB_ENV"
+          fi
 
       - name: Allow the web preview origin in Connect CORS
         # An empty/unset WEB_ORIGINS denies every cross-origin browser request (see
@@ -415,7 +433,7 @@ jobs:
         # blocked until the Pages origin is allow-listed. Set it (as a Fly secret,
         # like the other runtime secrets) to the deterministic branch alias AND the
         # live deployment URL wrangler printed. Setting a secret restarts the machine.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.FLY_DEPLOYED == 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
@@ -445,7 +463,7 @@ jobs:
         # now fixed in teardown), but this probe proves the LIVE path every deploy:
         # the Pages origin must get CORS approval from the Connect edge and healthz
         # must answer, exactly as the browser client's login fetch does.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.FLY_DEPLOYED == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
@@ -490,6 +508,7 @@ jobs:
           COMMIT_SHA: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
           PREVIEW_MEDIA: ${{ env.PREVIEW_MEDIA }}
           PREVIEW_WEB: ${{ env.PREVIEW_WEB }}
+          FLY_DEPLOYED: ${{ env.FLY_DEPLOYED }}
           WEB_PREVIEW_URL: ${{ steps.web_deploy.outputs.web_url }}
         run: |
           set -euo pipefail
@@ -498,7 +517,7 @@ jobs:
           # shellcheck disable=SC2016  # single quotes are intentional: ${...} below are JavaScript template literals, not shell expansions
           node -e '
             const fs = require("node:fs");
-            const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA, PREVIEW_WEB, WEB_PREVIEW_URL } = process.env;
+            const { PR_NUMBER, APP, COMMIT_SHA, PREVIEW_MEDIA, PREVIEW_WEB, FLY_DEPLOYED, WEB_PREVIEW_URL } = process.env;
             const NEON_BRANCH = `pr-${PR_NUMBER}`;
             const short = (COMMIT_SHA || "").slice(0, 7);
             const media = PREVIEW_MEDIA === "enabled"
@@ -508,6 +527,9 @@ jobs:
             const web = PREVIEW_WEB === "enabled" && webUrl
               ? `on — ${webUrl} (Connect API base \`https://${APP}.fly.dev:8443\`)`
               : "off (no CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID — backend-only preview)";
+            const flyState = FLY_DEPLOYED === "false"
+              ? "off (Fly.io machine limit reached)"
+              : "live";
             const body = [
               process.argv[1],
               "## Preview environment (full stack)",
@@ -525,7 +547,7 @@ jobs:
               "",
               "| Capability | State |",
               "| --- | --- |",
-              "| gRPC + Connect API + worker + DB branch | live |",
+              `| gRPC + Connect API + worker + DB branch | ${flyState} |`,
               `| Media / R2 | ${media} |`,
               `| Web frontend (Cloudflare Pages) | ${web} |`,
               "| Federation | off (ephemeral origin — see docs/operations/preview-environments.md) |",

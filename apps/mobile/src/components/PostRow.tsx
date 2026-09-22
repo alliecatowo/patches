@@ -1,8 +1,9 @@
-import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { MediaAttachment, Post } from '@patches/proto/es';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { resolveMediaAttachmentUrl, type ResolvedMediaAttachment } from '../media/postMedia.js';
 
 export interface PostRowProps {
   post: Post;
@@ -70,7 +71,12 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
+              {post.media && post.media.length > 0 ? (
+                <PostMediaAttachments attachments={post.media} />
+              ) : null}
+            </>
           )}
         </>
       )}
@@ -102,6 +108,67 @@ export function PostRow({
   );
 }
 
+function PostMediaAttachments({
+  attachments,
+}: {
+  attachments: readonly MediaAttachment[];
+}): JSX.Element {
+  return (
+    <View style={styles.mediaContainer}>
+      {attachments.map((item) => (
+        <PostMediaItem key={item.mediaId} attachment={item} />
+      ))}
+    </View>
+  );
+}
+
+function PostMediaItem({ attachment }: { attachment: MediaAttachment }): JSX.Element {
+  const [resolved, setResolved] = useState<ResolvedMediaAttachment | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void resolveMediaAttachmentUrl(attachment).then((res) => {
+      if (cancelled) return;
+      if (res === null) {
+        setFailed(true);
+      } else {
+        setResolved(res);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment]);
+
+  if (failed) {
+    return (
+      <View style={styles.mediaPlaceholder}>
+        <Text style={styles.muted}>Image unavailable.</Text>
+      </View>
+    );
+  }
+
+  if (resolved === null) {
+    return (
+      <View style={styles.mediaPlaceholder}>
+        <Text style={styles.muted}>Loading image…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.mediaItem}>
+      <Image source={{ uri: resolved.url }} style={styles.mediaImage} resizeMode="cover" />
+      {resolved.altText !== '' ? (
+        <Text style={styles.mediaAlt} numberOfLines={2}>
+          {resolved.altText}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 12,
@@ -116,6 +183,19 @@ const styles = StyleSheet.create({
   time: { color: '#666', marginLeft: 'auto' },
   cw: { color: '#e0b341', marginBottom: 4 },
   body: { color: '#e5e5e5', fontSize: 15, lineHeight: 20 },
+  mediaContainer: { marginTop: 8, gap: 8 },
+  mediaItem: { gap: 4 },
+  mediaImage: { width: '100%', height: 200, borderRadius: 8, backgroundColor: '#161618' },
+  mediaAlt: { color: '#888', fontSize: 12 },
+  mediaPlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 8,
+    backgroundColor: '#161618',
+  },
+  muted: { color: '#888' },
   counts: { flexDirection: 'row', gap: 16, marginTop: 8 },
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
