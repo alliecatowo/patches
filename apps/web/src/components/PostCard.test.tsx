@@ -59,6 +59,19 @@ describe('PostCard', () => {
     expect(screen.getByText('Thread Page')).toBeInTheDocument();
   });
 
+  it('updates aria-expanded attribute when options menu is toggled', () => {
+    renderPostCard(mockPost);
+    const optionsBtn = screen.getByRole('button', { name: 'More options' });
+    expect(optionsBtn).toHaveAttribute('aria-haspopup', 'menu');
+    expect(optionsBtn).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(optionsBtn);
+    expect(optionsBtn).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(optionsBtn);
+    expect(optionsBtn).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('applies the author nameplate colour and glyph to the display name (B-129)', () => {
     const nameplated = {
       ...mockPost,
