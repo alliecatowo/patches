@@ -249,8 +249,19 @@ export function looksLikeHtml(source: string): boolean {
   return false;
 }
 
+// Pre-compiled regex for href attribute extraction to avoid compiling a new RegExp on every HTML tag.
+const HREF_ATTR_PATTERN = /href\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/iu;
+
+/**
+ * Extracts an attribute value from an HTML attribute string.
+ * Optimized: Uses static pre-compiled regex for common attributes ('href') to eliminate
+ * runtime `new RegExp(...)` creation and compilation overhead during HTML parsing.
+ */
 function attributeValue(attributes: string, name: string): string | undefined {
-  const pattern = new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'iu');
+  const pattern =
+    name.toLowerCase() === 'href'
+      ? HREF_ATTR_PATTERN
+      : new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'iu');
   const match = pattern.exec(attributes);
   if (match === null) return undefined;
   return decodeEntities(match[2] ?? match[3] ?? match[4] ?? '');
