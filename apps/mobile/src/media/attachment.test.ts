@@ -117,11 +117,12 @@ describe('resolveMediaAttachments', () => {
       },
     ];
 
-    const getMediaDownload = vi.fn<({ mediaId }: { mediaId: string }) => Promise<GetMediaDownloadResponse>>(
-      ({ mediaId }) =>
-        Promise.resolve({
-          downloadUrl: `https://cdn.example.com/${mediaId}.png`,
-        } as GetMediaDownloadResponse),
+    const getMediaDownload = vi.fn<
+      ({ mediaId }: { mediaId: string }) => Promise<GetMediaDownloadResponse>
+    >(({ mediaId }) =>
+      Promise.resolve({
+        downloadUrl: `https://cdn.example.com/${mediaId}.png`,
+      } as GetMediaDownloadResponse),
     );
 
     const resolved = await resolveMediaAttachments(attachments, getMediaDownload);
