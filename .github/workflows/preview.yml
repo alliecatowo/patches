@@ -174,12 +174,20 @@ jobs:
             # permitted on this account" on plans without scale-to-zero control) — retry
             # once without it rather than failing the deploy over an idle-suspend knob.
             if ! neon branches create "${args[@]}" --suspend-timeout 300 2>"$RUNNER_TEMP/neon-branch-err.txt" >/dev/null; then
-              if grep -q 'suspend interval is not permitted' "$RUNNER_TEMP/neon-branch-err.txt"; then
-                echo 'Plan does not allow --suspend-timeout; creating the branch without it.'
-                neon branches create "${args[@]}" >/dev/null
-              elif grep -q 'branches limit exceeded' "$RUNNER_TEMP/neon-branch-err.txt"; then
-                echo 'Neon branches limit exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+              if grep -Eq 'limit exceeded|quota exceeded' "$RUNNER_TEMP/neon-branch-err.txt"; then
+                echo 'Neon limit/quota exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
                 exit 0
+              elif grep -q 'suspend interval is not permitted' "$RUNNER_TEMP/neon-branch-err.txt"; then
+                echo 'Plan does not allow --suspend-timeout; creating the branch without it.'
+                if ! neon branches create "${args[@]}" 2>"$RUNNER_TEMP/neon-branch-err2.txt" >/dev/null; then
+                  if grep -Eq 'limit exceeded|quota exceeded' "$RUNNER_TEMP/neon-branch-err2.txt"; then
+                    echo 'Neon limit/quota exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+                    exit 0
+                  else
+                    cat "$RUNNER_TEMP/neon-branch-err2.txt" >&2
+                    exit 1
+                  fi
+                fi
               else
                 cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
                 exit 1
