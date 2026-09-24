@@ -41,4 +41,23 @@ describe('MediaLightbox', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('navigates to first and last images on Home and End keys', () => {
+    const threeImages = [
+      { mediaId: 'm1', url: 'https://example.com/1.jpg', altText: 'Photo 1' },
+      { mediaId: 'm2', url: 'https://example.com/2.jpg', altText: 'Photo 2' },
+      { mediaId: 'm3', url: 'https://example.com/3.jpg', altText: 'Photo 3' },
+    ];
+    render(<MediaLightbox images={threeImages} isOpen={true} onClose={vi.fn()} />);
+
+    expect(screen.getByText('1 / 3')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'End' });
+    expect(screen.getByText('3 / 3')).toBeInTheDocument();
+    expect(screen.getByText('Photo 3')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Home' });
+    expect(screen.getByText('1 / 3')).toBeInTheDocument();
+    expect(screen.getByText('Photo 1')).toBeInTheDocument();
+  });
 });
