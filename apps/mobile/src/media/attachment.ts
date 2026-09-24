@@ -4,9 +4,7 @@ import { safePageHref } from '../pages/href.js';
 /**
  * Returns media attachments sorted by display position (ascending).
  */
-export function getSortedMediaAttachments(
-  media?: readonly MediaAttachment[],
-): MediaAttachment[] {
+export function getSortedMediaAttachments(media?: readonly MediaAttachment[]): MediaAttachment[] {
   if (!media || media.length === 0) return [];
   return [...media].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 }
