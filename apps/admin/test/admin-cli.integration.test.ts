@@ -1135,8 +1135,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           metadata: { reason: 'first strike' },
         });
 
+        await new Promise((resolve) => setTimeout(resolve, 50));
         const since = new Date();
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         // No `metadata` at all — exercises the "no reason to give" blank case.
         await appendAdminAuditLog(dataSource.manager, {

@@ -48,6 +48,10 @@ export function MediaLightbox({
           const curr = i ?? initialIndex;
           return curr < images.length - 1 ? curr + 1 : 0;
         });
+      } else if (e.key === 'Home') {
+        setOverrideIndex(0);
+      } else if (e.key === 'End') {
+        setOverrideIndex(images.length - 1);
       }
     };
 
