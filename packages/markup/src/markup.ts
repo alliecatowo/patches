@@ -105,6 +105,9 @@ const TAG_PATTERN = /#([a-zA-Z0-9_]{1,64})\b/gu;
 /** Bare URLs become links so a pasted address is still activatable. */
 const AUTOLINK_PATTERN = /https?:\/\/[^\s<>()]+/gu;
 
+/** Fast-path check: if none of these trigger characters exist, no inline markup can match. */
+const FAST_INLINE_CHECK = /[*`_@#]|\[|\]|https?:/i;
+
 interface Mark {
   start: number;
   end: number;
@@ -122,6 +125,12 @@ function pushMark(marks: Mark[], mark: Mark): void {
  * mentions and tags. Never un-escapes anything — it only decides what each run *is*.
  */
 export function parseInline(text: string): InlineNode[] {
+  if (text.length === 0) return [];
+  // Fast path: skip 7 regex matchAll sweeps for plain text runs containing no inline syntax
+  if (!FAST_INLINE_CHECK.test(text)) {
+    return [{ role: 'text', text }];
+  }
+
   const marks: Mark[] = [];
 
   // Each pattern scans a copy in which already-claimed spans are blanked out with
@@ -194,6 +203,8 @@ export function parseInline(text: string): InlineNode[] {
 
 /** Every distinct `@handle` in a body, lowercased, in first-appearance order. */
 export function extractMentions(text: string): string[] {
+  // Fast path: avoid sanitization and regex scans if there is no `@` character
+  if (!text.includes('@')) return [];
   const handles: string[] = [];
   for (const match of sanitizeForTerminal(text).matchAll(MENTION_PATTERN)) {
     const handle = (match[1] ?? '').toLowerCase();
@@ -213,6 +224,8 @@ const TAG_PATTERN_HTML = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^'">])*
 
 /** True when the source carries at least one tag from the supported subset. */
 export function looksLikeHtml(source: string): boolean {
+  // Fast path: HTML tags must contain `<`
+  if (!source.includes('<')) return false;
   for (const match of source.matchAll(TAG_PATTERN_HTML)) {
     const name = (match[1] ?? '').toLowerCase();
     if (INLINE_TAGS.has(name) || BLOCK_TAGS.has(name)) return true;
