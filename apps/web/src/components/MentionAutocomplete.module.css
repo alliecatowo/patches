@@ -29,15 +29,6 @@
   background: var(--bg-hover, var(--border));
 }
 
-.avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius-full);
-  object-fit: cover;
-  flex-shrink: 0;
-  background: var(--border);
-}
-
 .name {
   overflow: hidden;
   text-overflow: ellipsis;
