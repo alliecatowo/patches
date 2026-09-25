@@ -1,6 +1,7 @@
 import type { Actor } from '@patches/proto/es';
 import type { JSX } from 'react';
 
+import { Avatar } from './ui/Avatar.js';
 import styles from './MentionAutocomplete.module.css';
 
 interface MentionAutocompleteProps {
@@ -39,12 +40,7 @@ export function MentionAutocomplete({
               onSelect(actor);
             }}
           >
-            <img
-              className={styles['avatar']}
-              src={actor.avatar?.url ?? ''}
-              alt=""
-              aria-hidden="true"
-            />
+            <Avatar name={actor.displayName || actor.handle} src={actor.avatar?.url} size="xs" />
             <span className={styles['name']}>{actor.displayName || actor.handle}</span>
             <span className={styles['handle']}>@{actor.handle}</span>
           </button>
