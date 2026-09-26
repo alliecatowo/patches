@@ -27,7 +27,7 @@ let directory: string;
  * bracketed-paste introducer -- a real terminal always delivers them as separate reads,
  * so tests must too.
  */
-async function settle(milliseconds = 30): Promise<void> {
+async function settle(milliseconds = 100): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
