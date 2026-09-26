@@ -36,15 +36,32 @@ export function FollowButton({ actorId }: { actorId: string }): JSX.Element | nu
   });
 
   if (session === null || isSelf) return null;
-  if (relationshipQuery.isPending) return <button disabled>…</button>;
+  if (relationshipQuery.isPending) {
+    return (
+      <button type="button" disabled aria-label="Loading follow status" aria-busy="true">
+        …
+      </button>
+    );
+  }
 
   const state = relationshipQuery.data?.relationship?.state ?? FollowState.NONE;
   const following = state === FollowState.FOLLOWING;
   const pending = state === FollowState.PENDING;
 
   return (
-    <button type="button" onClick={() => mutation.mutate(!following)} disabled={mutation.isPending}>
-      {pending ? 'Requested' : following ? 'Following' : 'Follow'}
+    <button
+      type="button"
+      onClick={() => mutation.mutate(!following)}
+      disabled={mutation.isPending}
+      aria-busy={mutation.isPending}
+    >
+      {mutation.isPending
+        ? 'Updating…'
+        : pending
+          ? 'Requested'
+          : following
+            ? 'Following'
+            : 'Follow'}
     </button>
   );
 }
