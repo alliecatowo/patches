@@ -2,11 +2,7 @@ import { create } from '@bufbuild/protobuf';
 import { MediaAttachmentSchema } from '@patches/proto/es';
 import { describe, expect, it } from 'vitest';
 
-import {
-  formatMediaAltText,
-  getSafeMediaUrl,
-  sortMediaAttachments,
-} from './postMedia.js';
+import { formatMediaAltText, getSafeMediaUrl, sortMediaAttachments } from './postMedia.js';
 
 describe('postMedia helpers (B-084)', () => {
   describe('sortMediaAttachments', () => {

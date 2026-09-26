@@ -3,11 +3,7 @@ import { useEffect, useState, type JSX } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
 import { api } from '../api/client.js';
-import {
-  formatMediaAltText,
-  getSafeMediaUrl,
-  sortMediaAttachments,
-} from '../lib/postMedia.js';
+import { formatMediaAltText, getSafeMediaUrl, sortMediaAttachments } from '../lib/postMedia.js';
 
 export interface PostMediaProps {
   media: readonly MediaAttachment[];
