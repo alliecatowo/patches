@@ -3,6 +3,7 @@ import { useState, type JSX } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { PostMedia } from './PostMedia.js';
 
 export interface PostRowProps {
   post: Post;
@@ -22,7 +23,8 @@ export interface PostRowProps {
  * only the body it's warning about starts hidden, matching `apps/web`'s `PostCard`
  * (`cwOpen` state). Reply/Quote/Edit are shown only when the caller wires a handler —
  * `HomeScreen` passes all three; `Edit` additionally requires `viewerActorId` to match
- * the post's author.
+ * the post's author. Media attachments (B-084) render when the post is active and non-deleted,
+ * and hide behind content warnings until revealed.
  */
 export function PostRow({
   post,
@@ -70,7 +72,10 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              {post.body !== '' ? <Text style={styles.body}>{post.body}</Text> : null}
+              {post.media && post.media.length > 0 ? <PostMedia media={post.media} /> : null}
+            </>
           )}
         </>
       )}
