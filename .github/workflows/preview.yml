@@ -176,9 +176,17 @@ jobs:
             if ! neon branches create "${args[@]}" --suspend-timeout 300 2>"$RUNNER_TEMP/neon-branch-err.txt" >/dev/null; then
               if grep -q 'suspend interval is not permitted' "$RUNNER_TEMP/neon-branch-err.txt"; then
                 echo 'Plan does not allow --suspend-timeout; creating the branch without it.'
-                neon branches create "${args[@]}" >/dev/null
-              elif grep -q 'branches limit exceeded' "$RUNNER_TEMP/neon-branch-err.txt"; then
-                echo 'Neon branches limit exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+                if ! neon branches create "${args[@]}" 2>"$RUNNER_TEMP/neon-branch-err.txt" >/dev/null; then
+                  if grep -qiE 'limit|quota' "$RUNNER_TEMP/neon-branch-err.txt"; then
+                    echo 'Neon quota or limit reached; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+                    exit 0
+                  else
+                    cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
+                    exit 1
+                  fi
+                fi
+              elif grep -qiE 'limit|quota' "$RUNNER_TEMP/neon-branch-err.txt"; then
+                echo 'Neon quota or limit reached; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
                 exit 0
               else
                 cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
@@ -194,8 +202,8 @@ jobs:
             --project-id "$NEON_PROJECT_ID" \
             --database-name neondb --role-name neondb_owner --no-color 2>"$RUNNER_TEMP/neon-conn-err.txt" \
             | sed 's/&channel_binding=require//' > "$RUNNER_TEMP/neon-conn-url.txt"; then
-            if grep -qi "not found" "$RUNNER_TEMP/neon-conn-err.txt" || grep -qi "limit" "$RUNNER_TEMP/neon-conn-err.txt"; then
-              echo 'Neon branch not found (likely limit exceeded during branch creation); skipping connection string fetch.'
+            if grep -qiE "not found|limit|quota" "$RUNNER_TEMP/neon-conn-err.txt"; then
+              echo 'Neon branch not found (likely quota or limit exceeded during branch creation); skipping connection string fetch.'
               echo "DATABASE_URL=" >> "$GITHUB_ENV"
               exit 0
             else
