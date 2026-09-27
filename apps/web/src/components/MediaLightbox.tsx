@@ -54,13 +54,18 @@ export function MediaLightbox({
 
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleKeyDown);
-    closeButtonRef.current?.focus();
 
     return () => {
       document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, images.length, initialIndex, handleClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      closeButtonRef.current?.focus();
+    }
+  }, [isOpen]);
 
   if (!isOpen || images.length === 0) return null;
 
