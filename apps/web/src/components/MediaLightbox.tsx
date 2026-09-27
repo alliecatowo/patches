@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX, type TouchEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX, type TouchEvent } from 'react';
 
 import { ChevronLeftIcon, CloseIcon } from './icons/Icons.js';
 import styles from './MediaLightbox.module.css';
@@ -24,6 +24,7 @@ export function MediaLightbox({
 }: MediaLightboxProps): JSX.Element | null {
   const [overrideIndex, setOverrideIndex] = useState<number | null>(null);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const currentIndex = overrideIndex ?? initialIndex;
 
@@ -53,6 +54,7 @@ export function MediaLightbox({
 
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', handleKeyDown);
+    closeButtonRef.current?.focus();
 
     return () => {
       document.body.style.overflow = '';
@@ -106,6 +108,7 @@ export function MediaLightbox({
           {currentIndex + 1} / {images.length}
         </span>
         <button
+          ref={closeButtonRef}
           type="button"
           className={styles['closeButton']}
           onClick={handleClose}
