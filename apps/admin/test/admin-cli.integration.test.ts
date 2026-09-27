@@ -1135,9 +1135,6 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           metadata: { reason: 'first strike' },
         });
 
-        const since = new Date();
-        await new Promise((resolve) => setTimeout(resolve, 20));
-
         // No `metadata` at all — exercises the "no reason to give" blank case.
         await appendAdminAuditLog(dataSource.manager, {
           adminUserId: adminB.id,
@@ -1145,6 +1142,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           subjectType: 'USER',
           subjectId: subject.id,
         });
+
+        // Ensure distinct created_at timestamp for since filter assertion
+        const secondLog = await dataSource.getRepository(AdminAuditLog).findOneOrFail({
+          where: { adminUserId: adminB.id, action: 'user.unsuspend' },
+        });
+        const since = new Date(secondLog.createdAt.getTime() - 1);
 
         const ctx = await context(undefined);
 
