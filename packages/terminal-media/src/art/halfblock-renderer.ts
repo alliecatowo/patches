@@ -20,7 +20,6 @@ import {
   computeArtGrid,
   MAX_ART_COLS,
   MAX_ART_ROWS,
-  pixelAt,
   sampleImage,
   type SampledImage,
 } from './shared.js';
