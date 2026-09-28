@@ -54,7 +54,9 @@ describe('resolveSafeMediaUrl', () => {
     expect(resolveSafeMediaUrl('https://example.com/image.png')).toBe(
       'https://example.com/image.png',
     );
-    expect(resolveSafeMediaUrl('http://example.com/image.jpg')).toBe('http://example.com/image.jpg');
+    expect(resolveSafeMediaUrl('http://example.com/image.jpg')).toBe(
+      'http://example.com/image.jpg',
+    );
   });
 
   it('rejects empty strings and invalid URLs', () => {
