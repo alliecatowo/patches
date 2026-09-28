@@ -57,9 +57,11 @@ describe('FollowButton', () => {
     const [request, options] = mockFollowActor.mock.calls[0] as [unknown, { signal: AbortSignal }];
     expect(request).toEqual({ actorId: 'actor-2' });
     expect(options.signal).toBeInstanceOf(AbortSignal);
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Following' })).toBeInTheDocument(),
-    );
+    await waitFor(() => {
+      const button = screen.getByRole('button', { name: 'Following' });
+      expect(button).toBeInTheDocument();
+      expect(button).toHaveAttribute('aria-pressed', 'true');
+    });
   });
 
   it('aborts the in-flight follow call on unmount instead of writing a stale cache entry', async () => {
