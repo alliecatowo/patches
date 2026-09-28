@@ -179,6 +179,8 @@ jobs:
                 if ! neon branches create "${args[@]}" >"$RUNNER_TEMP/neon-branch-err2.txt" 2>&1; then
                   if grep -qi 'quota' "$RUNNER_TEMP/neon-branch-err2.txt" || grep -qi 'limit' "$RUNNER_TEMP/neon-branch-err2.txt"; then
                     echo 'Neon quota or branch limit exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+                    echo "NEON_BRANCH_SKIPPED=true" >> "$GITHUB_ENV"
+                    echo "DATABASE_URL=" >> "$GITHUB_ENV"
                     exit 0
                   else
                     cat "$RUNNER_TEMP/neon-branch-err2.txt" >&2
@@ -187,6 +189,8 @@ jobs:
                 fi
               elif grep -qi 'quota' "$RUNNER_TEMP/neon-branch-err.txt" || grep -qi 'limit' "$RUNNER_TEMP/neon-branch-err.txt"; then
                 echo 'Neon quota or branch limit exceeded; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+                echo "NEON_BRANCH_SKIPPED=true" >> "$GITHUB_ENV"
+                echo "DATABASE_URL=" >> "$GITHUB_ENV"
                 exit 0
               else
                 cat "$RUNNER_TEMP/neon-branch-err.txt" >&2
@@ -196,6 +200,7 @@ jobs:
           fi
 
       - name: Fetch branch connection string
+        if: env.NEON_BRANCH_SKIPPED != 'true'
         run: |
           set -euo pipefail
           if ! neon connection-string "pr-${PR_NUMBER}" \
@@ -225,7 +230,7 @@ jobs:
         # …) — not the full 21-workspace `pnpm build`: migrations only need the
         # database package's dist, and this slice is usually restored warm from the
         # setup action's turbo cache (saves ~30-40s per preview deploy).
-        if: env.DATABASE_URL != ''
+        if: env.NEON_BRANCH_SKIPPED != 'true' && env.DATABASE_URL != ''
         run: pnpm --filter @patches/database... build && pnpm db:migrate
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
@@ -418,6 +423,7 @@ jobs:
             --ha=false --strategy immediate --yes 2>"$RUNNER_TEMP/fly-deploy-err.txt"; then
             if grep -qi 'machine limit' "$RUNNER_TEMP/fly-deploy-err.txt" || grep -qi 'quota' "$RUNNER_TEMP/fly-deploy-err.txt"; then
               echo 'Fly machine limit or quota reached; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "FLY_DEPLOY_SKIPPED=true" >> "$GITHUB_ENV"
               exit 0
             else
               cat "$RUNNER_TEMP/fly-deploy-err.txt" >&2
@@ -431,7 +437,7 @@ jobs:
         # blocked until the Pages origin is allow-listed. Set it (as a Fly secret,
         # like the other runtime secrets) to the deterministic branch alias AND the
         # live deployment URL wrangler printed. Setting a secret restarts the machine.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.FLY_DEPLOY_SKIPPED != 'true'
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
@@ -461,7 +467,7 @@ jobs:
         # now fixed in teardown), but this probe proves the LIVE path every deploy:
         # the Pages origin must get CORS approval from the Connect edge and healthz
         # must answer, exactly as the browser client's login fetch does.
-        if: env.PREVIEW_WEB == 'enabled'
+        if: env.PREVIEW_WEB == 'enabled' && env.FLY_DEPLOY_SKIPPED != 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
