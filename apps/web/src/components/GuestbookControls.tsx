@@ -1,7 +1,7 @@
 import { GUESTBOOK_ENTRY_MAX_CHARS } from '@patches/domain';
 import { ReportReason } from '@patches/proto/es';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, type JSX } from 'react';
+import { useId, useState, type JSX } from 'react';
 
 import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
@@ -34,6 +34,7 @@ export function GuestbookSignForm({
   const session = useSession();
   const onError = useErrorToast();
   const queryClient = useQueryClient();
+  const charCountId = useId();
   const [body, setBody] = useState('');
 
   const sign = useMutation({
@@ -61,7 +62,7 @@ export function GuestbookSignForm({
       <div className={styles['inputWrap']}>
         <textarea
           aria-label="Guestbook entry"
-          aria-describedby="guestbook-char-count"
+          aria-describedby={charCountId}
           className={styles['signInput']}
           value={body}
           maxLength={GUESTBOOK_ENTRY_MAX_CHARS}
@@ -69,7 +70,7 @@ export function GuestbookSignForm({
           rows={2}
           onChange={(event) => setBody(event.target.value)}
         />
-        <div id="guestbook-char-count" className={styles['charCounter']} aria-live="polite">
+        <div id={charCountId} className={styles['charCounter']} aria-live="polite">
           {remainingChars}
         </div>
       </div>
