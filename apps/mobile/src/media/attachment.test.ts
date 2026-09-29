@@ -19,7 +19,9 @@ function fakeMedia(overrides: Partial<Pick<MediaClient, 'getMediaDownload'>> = {
 
 describe('resolveMediaDownloadUrl', () => {
   it('resolves valid http/https download URLs successfully', async () => {
-    const getMediaDownload = vi.fn().mockResolvedValue({ downloadUrl: 'https://cdn.example.com/image.png' });
+    const getMediaDownload = vi
+      .fn()
+      .mockResolvedValue({ downloadUrl: 'https://cdn.example.com/image.png' });
     const media = fakeMedia({ getMediaDownload });
 
     const result = await resolveMediaDownloadUrl(media, 'media-123');
