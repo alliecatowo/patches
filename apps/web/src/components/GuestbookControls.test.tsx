@@ -69,7 +69,10 @@ describe('GuestbookSignForm', () => {
     signIn('viewer-1');
     let resolveSign!: (val: object) => void;
     mockSignGuestbook.mockImplementation(
-      () => new Promise((resolve) => { resolveSign = resolve; }),
+      () =>
+        new Promise((resolve) => {
+          resolveSign = resolve;
+        }),
     );
     renderTree(<GuestbookSignForm handle="allie" slug="home" />);
 
@@ -86,15 +89,11 @@ describe('GuestbookSignForm', () => {
     fireEvent.click(button);
 
     // Button label transitions to "Signing…" while mutation is pending
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Signing…' })).toBeDisabled(),
-    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Signing…' })).toBeDisabled());
 
     resolveSign({ entry: {} });
 
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Sign' })).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Sign' })).toBeInTheDocument());
     expect(screen.getByText('500')).toBeInTheDocument();
   });
 
