@@ -50,9 +50,7 @@ describe('MediaLightbox', () => {
 
     expect(document.activeElement).toBe(triggerBtn);
 
-    const { rerender } = render(
-      <MediaLightbox images={images} isOpen={true} onClose={vi.fn()} />,
-    );
+    const { rerender } = render(<MediaLightbox images={images} isOpen={true} onClose={vi.fn()} />);
 
     const closeBtn = screen.getByRole('button', { name: 'Close lightbox' });
     expect(document.activeElement).toBe(closeBtn);
