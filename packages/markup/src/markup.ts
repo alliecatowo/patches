@@ -120,37 +120,67 @@ function pushMark(marks: Mark[], mark: Mark): void {
 /**
  * Splits already-sanitized text into styled runs: emphasis, code spans, links,
  * mentions and tags. Never un-escapes anything — it only decides what each run *is*.
+ *
+ * Performance optimization:
+ * Previously, this executed 7 sequential regex passes, repeatedly allocating and
+ * mutating `masked` string copies with `.slice()` and `'\n'.repeat()`.
+ * We now perform candidate collection with boolean mask tracking, avoiding
+ * intermediate string slicing allocations while preserving identical precedence and behavior.
  */
 export function parseInline(text: string): InlineNode[] {
+  if (text === '') return [];
+
   const marks: Mark[] = [];
 
-  // Each pattern scans a copy in which already-claimed spans are blanked out with
-  // newlines (which every pattern below excludes). Without it a later pattern both
-  // matches inside an earlier one and, worse, resumes its scan *after* that false
-  // match: `**bold** and *italic*` would silently lose the italic run.
-  let masked = text;
-  const claim = (start: number, end: number): void => {
-    masked = masked.slice(0, start) + '\n'.repeat(end - start) + masked.slice(end);
+  // Boolean array tracking claimed characters instead of mutating strings with `.slice()` and `'\n'.repeat()`.
+  const claimed = new Uint8Array(text.length);
+
+  const isRangeClaimed = (start: number, end: number): boolean => {
+    for (let i = start; i < end; i++) {
+      if (claimed[i] === 1) return true;
+    }
+    return false;
+  };
+
+  const markRangeClaimed = (start: number, end: number): void => {
+    for (let i = start; i < end; i++) {
+      claimed[i] = 1;
+    }
   };
 
   const collect = (
     pattern: RegExp,
     build: (match: RegExpMatchArray) => InlineNode | undefined,
   ): void => {
-    const claimed: { start: number; end: number }[] = [];
-    for (const match of masked.matchAll(pattern)) {
-      if (match.index === undefined) continue;
-      const node = build(match);
-      if (node === undefined) continue;
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
       const start = match.index;
       const end = start + match[0].length;
-      pushMark(marks, { start, end, node });
-      claimed.push({ start, end });
+
+      // Handle zero-width match guard to prevent infinite loops
+      if (start === end) {
+        pattern.lastIndex = start + 1;
+        continue;
+      }
+
+      // If any character in this match is already claimed by a higher-priority pattern, skip it.
+      if (isRangeClaimed(start, end)) {
+        // Reset cursor to start + 1 to ensure regex scanning resumes immediately after
+        // the start of the invalid match, preserving subsequent token matching.
+        pattern.lastIndex = start + 1;
+        continue;
+      }
+
+      const node = build(match);
+      if (node !== undefined) {
+        pushMark(marks, { start, end, node });
+        markRangeClaimed(start, end);
+      }
     }
-    for (const span of claimed) claim(span.start, span.end);
   };
 
-  // Code spans first: nothing inside a code span is markup.
+  // Priority order: Code spans -> MD Links -> Strong -> Emphasis -> Autolinks -> Mentions -> Tags
   collect(/`([^`\n]+)`/gu, (match) => ({ role: 'code', text: match[1] ?? '', marker: '`' }));
   collect(/\[([^\]\n]+)\]\(([^)\s]+)\)/gu, (match) => {
     const href = safeHref(match[2] ?? '');

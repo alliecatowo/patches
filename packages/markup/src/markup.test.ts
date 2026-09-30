@@ -78,6 +78,11 @@ describe('parseMarkup — markdown', () => {
     expect(item.filter((node) => node.role === 'tag')).toHaveLength(1);
   });
 
+  it('correctly handles emphasis after a claimed mention', () => {
+    const inlines = parseInline('a * b @alice c * d *');
+    expect(inlines.map((node) => node.role)).toContain('emphasis');
+  });
+
   it('never treats an all-digit hash as a tag', () => {
     expect(parseInline('in #2026 and #patches').filter((node) => node.role === 'tag')).toEqual([
       { role: 'tag', text: '#patches' },
