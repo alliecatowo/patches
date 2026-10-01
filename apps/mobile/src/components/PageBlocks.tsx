@@ -6,7 +6,7 @@ import { Image, Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-
 import { api } from '../api/client.js';
 import { PostRow } from './PostRow.js';
 import { formatRelativeTime } from '../lib/format.js';
-import { safePageHref } from '../pages/href.js';
+import { resolveMediaDownloadUrl } from '../media/attachment.js';
 import {
   guestbookEntryBody,
   toBlockViews,
@@ -107,16 +107,14 @@ function ImageBlockView({ mediaId, alt }: { mediaId: string; alt: string }): JSX
 
   useEffect(() => {
     let cancelled = false;
-    api.media
-      .getMediaDownload({ mediaId })
-      .then((response) => {
+    resolveMediaDownloadUrl(api.media, mediaId)
+      .then((resolved) => {
         if (cancelled) return;
-        const safe = safePageHref(response.downloadUrl);
-        if (safe === null) {
+        if (resolved === null) {
           setFailed(true);
-          return;
+        } else {
+          setUrl(resolved);
         }
-        setUrl(safe);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
