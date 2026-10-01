@@ -13,6 +13,18 @@ const KEEP_CODE_POINTS = new Set([0x0a]);
  * `no-control-regex` entirely and handles surrogate pairs correctly.
  */
 export function sanitizeForTerminal(value: string): string {
+  // Fast path: scan code units first to check if any tab or control characters exist.
+  // Standard user text rarely contains control characters; returning early avoids allocation.
+  let needsSanitizing = false;
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if ((code < 0x20 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f)) {
+      needsSanitizing = true;
+      break;
+    }
+  }
+  if (!needsSanitizing) return value;
+
   let out = '';
   for (const char of value) {
     const codePoint = char.codePointAt(0) ?? 0;

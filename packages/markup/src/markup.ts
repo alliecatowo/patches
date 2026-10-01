@@ -122,6 +122,20 @@ function pushMark(marks: Mark[], mark: Mark): void {
  * mentions and tags. Never un-escapes anything — it only decides what each run *is*.
  */
 export function parseInline(text: string): InlineNode[] {
+  if (text === '') return [];
+  // Fast path: plain text with no markup trigger characters returns a single text node immediately.
+  if (
+    !text.includes('`') &&
+    !text.includes('[') &&
+    !text.includes('*') &&
+    !text.includes('_') &&
+    !text.includes('http') &&
+    !text.includes('@') &&
+    !text.includes('#')
+  ) {
+    return [{ role: 'text', text }];
+  }
+
   const marks: Mark[] = [];
 
   // Each pattern scans a copy in which already-claimed spans are blanked out with
@@ -151,32 +165,44 @@ export function parseInline(text: string): InlineNode[] {
   };
 
   // Code spans first: nothing inside a code span is markup.
-  collect(/`([^`\n]+)`/gu, (match) => ({ role: 'code', text: match[1] ?? '', marker: '`' }));
-  collect(/\[([^\]\n]+)\]\(([^)\s]+)\)/gu, (match) => {
-    const href = safeHref(match[2] ?? '');
-    if (href === undefined) return { role: 'text', text: match[0] };
-    return { role: 'link', text: match[1] ?? '', href };
-  });
-  collect(/\*\*([^*\n]+)\*\*|__([^_\n]+)__/gu, (match) => ({
-    role: 'strong',
-    text: match[1] ?? match[2] ?? '',
-    marker: '**',
-  }));
-  collect(/\*([^*\n]+)\*|_([^_\n]+)_/gu, (match) => ({
-    role: 'emphasis',
-    text: match[1] ?? match[2] ?? '',
-    marker: '*',
-  }));
-  collect(AUTOLINK_PATTERN, (match) => {
-    const href = safeHref(match[0]);
-    if (href === undefined) return undefined;
-    return { role: 'link', text: match[0], href };
-  });
-  collect(MENTION_PATTERN, (match) => ({ role: 'mention', text: match[0] }));
-  collect(TAG_PATTERN, (match) => {
-    if (/^\d+$/u.test(match[1] ?? '')) return undefined;
-    return { role: 'tag', text: match[0] };
-  });
+  if (text.includes('`')) {
+    collect(/`([^`\n]+)`/gu, (match) => ({ role: 'code', text: match[1] ?? '', marker: '`' }));
+  }
+  if (text.includes('[')) {
+    collect(/\[([^\]\n]+)\]\(([^)\s]+)\)/gu, (match) => {
+      const href = safeHref(match[2] ?? '');
+      if (href === undefined) return { role: 'text', text: match[0] };
+      return { role: 'link', text: match[1] ?? '', href };
+    });
+  }
+  if (text.includes('*') || text.includes('_')) {
+    collect(/\*\*([^*\n]+)\*\*|__([^_\n]+)__/gu, (match) => ({
+      role: 'strong',
+      text: match[1] ?? match[2] ?? '',
+      marker: '**',
+    }));
+    collect(/\*([^*\n]+)\*|_([^_\n]+)_/gu, (match) => ({
+      role: 'emphasis',
+      text: match[1] ?? match[2] ?? '',
+      marker: '*',
+    }));
+  }
+  if (text.includes('http')) {
+    collect(AUTOLINK_PATTERN, (match) => {
+      const href = safeHref(match[0]);
+      if (href === undefined) return undefined;
+      return { role: 'link', text: match[0], href };
+    });
+  }
+  if (text.includes('@')) {
+    collect(MENTION_PATTERN, (match) => ({ role: 'mention', text: match[0] }));
+  }
+  if (text.includes('#')) {
+    collect(TAG_PATTERN, (match) => {
+      if (/^\d+$/u.test(match[1] ?? '')) return undefined;
+      return { role: 'tag', text: match[0] };
+    });
+  }
 
   marks.sort((a, b) => a.start - b.start);
 
@@ -194,6 +220,7 @@ export function parseInline(text: string): InlineNode[] {
 
 /** Every distinct `@handle` in a body, lowercased, in first-appearance order. */
 export function extractMentions(text: string): string[] {
+  if (!text.includes('@')) return [];
   const handles: string[] = [];
   for (const match of sanitizeForTerminal(text).matchAll(MENTION_PATTERN)) {
     const handle = (match[1] ?? '').toLowerCase();
@@ -213,6 +240,7 @@ const TAG_PATTERN_HTML = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^'">])*
 
 /** True when the source carries at least one tag from the supported subset. */
 export function looksLikeHtml(source: string): boolean {
+  if (!source.includes('<')) return false;
   for (const match of source.matchAll(TAG_PATTERN_HTML)) {
     const name = (match[1] ?? '').toLowerCase();
     if (INLINE_TAGS.has(name) || BLOCK_TAGS.has(name)) return true;
