@@ -11,8 +11,7 @@ function fakeMediaClient(
 ): MediaClient {
   return {
     getMediaDownload:
-      getMediaDownload ??
-      (() => Promise.reject(new Error('getMediaDownload not stubbed'))),
+      getMediaDownload ?? (() => Promise.reject(new Error('getMediaDownload not stubbed'))),
   };
 }
 
