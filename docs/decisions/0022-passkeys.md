@@ -33,6 +33,16 @@ compatible).
   A node whose web client is served from a different origin than `PUBLIC_ORIGIN` cannot use
   passkeys today — not a v0 scenario (the reference node serves both from the same origin) and
   worth a follow-up if that ever changes.
+- **RP id and origins are now overridable (`PASSKEY_RP_ID` / `PASSKEY_ORIGINS`, issue #435).**
+  The predicted split-origin follow-up was reached live: the reference node's web client runs on
+  `https://patches-web.pages.dev` while `PUBLIC_ORIGIN` is `https://patches-social.fly.dev`, so the
+  browser rejects the ceremony with "RP ID ... is invalid for this domain". `PASSKEY_RP_ID` (a bare
+  hostname) overrides `rpID()`; `PASSKEY_ORIGINS` (comma-separated origins, same validation as
+  `WEB_ORIGINS`) overrides `expectedOrigin`, which both ceremonies now send as the full list
+  (`@simplewebauthn/server` v13 accepts `string | string[]` and matches any member). Unset values
+  are byte-identical to this ADR's original behavior. **Caveat:** the RP id is baked into a
+  credential at enrollment, so any passkey enrolled under the old `patches-social.fly.dev` RP id
+  is now dead and must be re-enrolled under `patches-web.pages.dev`.
 - **No new columns on `credentials`.** The existing `identifier` (already the type-scoped lookup
   key: SSH fingerprint, GitHub numeric id) holds the WebAuthn credential ID (base64url, unique
   per the existing partial unique index on `(type, identifier)`); the existing `publicMaterial`

@@ -1385,7 +1385,7 @@ export class AuthService {
       verification = await this.passkeyVerifier.verifyRegistrationResponse({
         response,
         expectedChallenge: challengeValue,
-        expectedOrigin: this.config.publicOrigin,
+        expectedOrigin: this.expectedOrigins(),
         expectedRPID: this.rpId(),
       });
     } catch (error) {
@@ -1547,7 +1547,7 @@ export class AuthService {
       verification = await this.passkeyVerifier.verifyAuthenticationResponse({
         response,
         expectedChallenge: challengeValue,
-        expectedOrigin: this.config.publicOrigin,
+        expectedOrigin: this.expectedOrigins(),
         expectedRPID: this.rpId(),
         credential: {
           id: response.id,
@@ -1585,10 +1585,22 @@ export class AuthService {
     });
   }
 
-  /** Hostname-only RP id (ADR 0022): `PUBLIC_ORIGIN` minus scheme/port, matching what the
-   * browser's WebAuthn implementation itself derives from the page origin. */
+  /** Hostname-only RP id (ADR 0022, issue #435): `PUBLIC_ORIGIN` minus scheme/port by default,
+   * overridden by `PASSKEY_RP_ID` when set — needed for a split-origin deployment whose web
+   * client (the browser running the ceremony) is served from a different host than
+   * `PUBLIC_ORIGIN` (WebAuthn requires the RP id to be a registrable-suffix match for the
+   * page's origin). */
   private rpId(): string {
+    const override = this.config.passkeyRpId;
+    if (override !== undefined) return override;
     return new URL(this.config.publicOrigin).hostname;
+  }
+
+  /** Origins the WebAuthn ceremonies accept (issue #435): the `PASSKEY_ORIGINS` override when
+   * configured, else `[PUBLIC_ORIGIN]` — byte-identical to the pre-override behavior. */
+  private expectedOrigins(): string[] {
+    const override = this.config.passkeyOrigins;
+    return override === undefined ? [this.config.publicOrigin] : [...override];
   }
 
   // ---------------------------------------------------------------- credentials

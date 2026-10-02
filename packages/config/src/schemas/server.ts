@@ -48,6 +48,34 @@ export const serverEnvShape = {
   // *reason* a boot fails is a clear, listed configuration error rather than a type error.
   JWT_PRIVATE_KEY: z.string().optional(),
   JWT_PUBLIC_KEY: z.string().optional(),
+
+  /**
+   * Issue #435: optional WebAuthn relying-party id override — a bare hostname (no scheme/port),
+   * used verbatim by `AuthService.rpId()` when set. WebAuthn requires the RP id to be a
+   * registrable-suffix match for the *page's* origin, so a split-origin deployment whose web
+   * client is served from a different host than `PUBLIC_ORIGIN` (e.g. `patches-web.pages.dev`
+   * vs. `patches-social.fly.dev`) must set this to the web host. Unset defaults to
+   * `new URL(PUBLIC_ORIGIN).hostname` — byte-identical to the pre-override behavior.
+   */
+  PASSKEY_RP_ID: z.string().trim().min(1).optional(),
+  /**
+   * Issue #435: comma-separated origins the passkey ceremonies will verify against, same shape
+   * and validation as `WEB_ORIGINS` above. Unset defaults to `[PUBLIC_ORIGIN]` (in
+   * `AuthService`, not here, since a static default can't reference `PUBLIC_ORIGIN`). A
+   * split-origin deployment sets this to the web origin so both ceremonies accept it.
+   */
+  PASSKEY_ORIGINS: z
+    .string()
+    .optional()
+    .transform((value) =>
+      value === undefined
+        ? undefined
+        : value
+            .split(',')
+            .map((origin) => origin.trim())
+            .filter((origin) => origin.length > 0),
+    )
+    .pipe(z.array(originSchema).optional()),
   // Needed here (duplicated from baseEnvSchema) so this schema is self-contained and can
   // decide production-only requirements on its own.
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

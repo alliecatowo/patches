@@ -16,6 +16,27 @@ describe('ImageUploadField', () => {
     mockUploadMedia.mockReset();
   });
 
+  it('files the input without `capture` so mobile offers both camera AND file picker (#423)', () => {
+    render(
+      <ImageUploadField
+        aspect={1}
+        shape="avatar"
+        label="Avatar"
+        currentMediaId=""
+        onChange={vi.fn()}
+      />,
+    );
+
+    const input: HTMLInputElement = screen.getByLabelText('Avatar', { selector: 'input' });
+    // Mirror of the IssueReporter screenshot input (B-150): a `capture` attribute forces
+    // the camera on mobile and hides the file picker — drop it so iOS Safari/Android
+    // Chrome natively offer both. Accept stays an explicit image/* list so non-images
+    // never reach the crop/upload path.
+    expect(input.type).toBe('file');
+    expect(input.hasAttribute('capture')).toBe(false);
+    expect(input.getAttribute('accept')).toBe('image/jpeg,image/png,image/webp');
+  });
+
   it('crops, uploads, and reports the resulting media id (#324)', async () => {
     const cropped = new File(['cropped'], 'photo.png', { type: 'image/png' });
     mockCropImageToAspect.mockResolvedValue(cropped);

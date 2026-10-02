@@ -70,7 +70,9 @@ export class PasskeyVerifierService {
   verifyRegistrationResponse(input: {
     response: RegistrationResponseJSON;
     expectedChallenge: string;
-    expectedOrigin: string;
+    /** `@simplewebauthn/server` v13 accepts a single origin or an array (issue #435) — a
+     * split-origin deployment verifies against every configured `PASSKEY_ORIGINS` member. */
+    expectedOrigin: string | string[];
     expectedRPID: string;
   }): Promise<VerifiedRegistrationResponse> {
     return verifyRegistrationResponse(input);
@@ -87,7 +89,9 @@ export class PasskeyVerifierService {
   verifyAuthenticationResponse(input: {
     response: AuthenticationResponseJSON;
     expectedChallenge: string;
-    expectedOrigin: string;
+    /** `@simplewebauthn/server` v13 accepts a single origin or an array (issue #435) — a
+     * split-origin deployment verifies against every configured `PASSKEY_ORIGINS` member. */
+    expectedOrigin: string | string[];
     expectedRPID: string;
     credential: StoredPasskeyCredential;
   }): Promise<VerifiedAuthenticationResponse> {

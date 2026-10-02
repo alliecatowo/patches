@@ -115,9 +115,6 @@ export function ImageUploadField({
         className={styles['hiddenInput']}
         type="file"
         accept="image/jpeg,image/png,image/webp"
-        // The PWA camera capture attribute: only meaningful on avatar/banner-style
-        // single-image pickers on mobile, harmless (ignored) on desktop.
-        capture="environment"
         onChange={(event) => {
           handleFile(event.target.files?.[0]);
           event.target.value = '';

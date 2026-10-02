@@ -28,6 +28,11 @@ kill_timeout = "30s"
   METRICS_PORT = "9090"
   PUBLIC_ORIGIN = "https://patches-social.fly.dev"
   NODE_DOMAIN = "patches-social.fly.dev"
+  # Issue #435: the web client is served from a different host than PUBLIC_ORIGIN, so the
+  # passkey RP id and accepted origins must point at the page's origin (WebAuthn requires
+  # the RP id to match the page's registrable domain).
+  PASSKEY_RP_ID = "patches-web.pages.dev"
+  PASSKEY_ORIGINS = "https://patches-web.pages.dev"
   INVITE_ONLY = "true"
   PUBLIC_READ = "false"
   # ADR 0016 §6: bare `scheme://host[:port]` origins allowed to call the Connect edge

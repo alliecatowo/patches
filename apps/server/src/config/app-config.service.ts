@@ -213,6 +213,20 @@ export class AppConfigService {
     return this.get('WEB_ORIGINS');
   }
 
+  /** Optional WebAuthn RP id override (issue #435): a bare hostname, used verbatim as the
+   * passkey ceremony's relying-party id when set. Undefined means derive it from
+   * `PUBLIC_ORIGIN`'s hostname, which is what a same-origin deployment wants. */
+  get passkeyRpId(): string | undefined {
+    return this.get('PASSKEY_RP_ID');
+  }
+
+  /** Origins the passkey ceremonies accept (issue #435): the `PASSKEY_ORIGINS` list when
+   * configured, else undefined (meaning `AuthService` falls back to `[PUBLIC_ORIGIN]`, the
+   * byte-identical default). */
+  get passkeyOrigins(): readonly string[] | undefined {
+    return this.get('PASSKEY_ORIGINS');
+  }
+
   /** Undefined only when federation is disabled — `envSchema`'s `superRefine` requires this
    * when `FEDERATION_ENABLED=true`, so `KeyService` can assume it's set whenever it runs. */
   get federationKeyEncryptionKey(): string | undefined {
