@@ -4,7 +4,7 @@
  */
 const CONTROL_CHECK = new RegExp(
   `[${String.fromCharCode(0x00)}-${String.fromCharCode(0x09)}${String.fromCharCode(0x0b)}-${String.fromCharCode(0x1f)}${String.fromCharCode(0x7f)}-${String.fromCharCode(0x9f)}]`,
-  'u'
+  'u',
 );
 
 /**
