@@ -139,4 +139,27 @@ describe('EditWallDialog', () => {
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('provides accessible labels and selector pressed states for block creation', () => {
+    renderDialog({
+      isOpen: true,
+      onClose: vi.fn(),
+      handle: 'allie',
+    });
+
+    const textBtn = screen.getByRole('button', { name: 'Text' });
+    const heroBtn = screen.getByRole('button', { name: 'Hero' });
+
+    expect(textBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(heroBtn).toHaveAttribute('aria-pressed', 'false');
+
+    expect(screen.getByLabelText('Text or markdown content')).toBeInTheDocument();
+
+    fireEvent.click(heroBtn);
+
+    expect(heroBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(textBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByLabelText('Hero Headline')).toBeInTheDocument();
+    expect(screen.getByLabelText('Subtitle (optional)')).toBeInTheDocument();
+  });
 });
