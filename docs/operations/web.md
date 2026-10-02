@@ -184,7 +184,7 @@ serving a **development-mode** bundle — `jsxDEV` at every JSX call site (the d
 React transform), the React/react-query development runtimes, `import.meta.env.DEV` folded
 to `true` so `main.tsx`'s `ReactQueryDevtoolsInDev` branch actually rendered the TanStack
 Query devtools floater to every visitor, and the builder's own absolute filesystem path
-(`/home/allie/develop/patches/apps/web/src/main.tsx`) embedded as a literal bundled string.
+(`<repo>/apps/web/src/main.tsx`) embedded as a literal bundled string.
 `vite.config.ts` and the `build` script (`tsc --noEmit && vite build`) were both already
 correct — production is Vite's default mode. The defect was purely that a stale or
 otherwise dev-mode `apps/web/dist` directory got published by `wrangler pages deploy`;

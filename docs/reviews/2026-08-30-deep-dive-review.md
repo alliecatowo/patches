@@ -107,7 +107,7 @@ This is the clever part — ADR 0025 implements **HMAC-based committing AEAD** s
 
 ### Gateway Seam Pattern
 
-Domain services never touch ActivityPub JSON directly. Instead, there's a clean **`FederationGateway` interface** ([federation-gateway.ts](file:///home/allie/develop/patches/apps/server/src/modules/federation/federation-gateway.ts)):
+Domain services never touch ActivityPub JSON directly. Instead, there's a clean **`FederationGateway` interface** ([federation-gateway.ts](https://github.com/alliecatowo/patches/blob/main/apps/server/src/modules/federation/federation-gateway.ts)):
 
 ```
 PostService / SocialGraphService / ReactionService
@@ -208,7 +208,7 @@ Literal-term server-evaluated content filters (no user-supplied regex — avoidi
 > [!CAUTION]
 > This is the **single largest technical blocker** in the entire project.
 
-The crypto-native identity encoder ([`packages/crypto/src/identity.ts`](file:///home/allie/develop/patches/packages/crypto/src/identity.ts)) and the node-canonical transcript encoder ([`apps/server/src/modules/e2ee/e2ee.codec.ts`](file:///home/allie/develop/patches/apps/server/src/modules/e2ee/e2ee.codec.ts)) encode prekeys and certificates differently. Client session bootstrap against a peer **fails closed**. This blocks:
+The crypto-native identity encoder ([`packages/crypto/src/identity.ts`](https://github.com/alliecatowo/patches/blob/main/packages/crypto/src/identity.ts)) and the node-canonical transcript encoder ([`apps/server/src/modules/e2ee/e2ee.codec.ts`](https://github.com/alliecatowo/patches/blob/main/apps/server/src/modules/e2ee/e2ee.codec.ts)) encode prekeys and certificates differently. Client session bootstrap against a peer **fails closed**. This blocks:
 
 - TUI E2EE runtime (B-101)
 - Two-node E2EE interop lab (B-108)
@@ -222,7 +222,7 @@ Everything is polling (5s–60s intervals). No server-streaming for timeline upd
 
 ### 3. ~2,300 Lines of Duplicated E2EE Code (B-186)
 
-[`apps/tui/src/e2ee/`](file:///home/allie/develop/patches/apps/tui/src/e2ee/) and [`apps/web/src/e2ee/`](file:///home/allie/develop/patches/apps/web/src/e2ee/) are near-verbatim copies of security-critical code (runtime sessions, enrollment, vault formatting). ADR 0034 outlines hoisting into `@patches/e2ee-client` but it's not done.
+[`apps/tui/src/e2ee/`](https://github.com/alliecatowo/patches/blob/main/apps/tui/src/e2ee/) and [`apps/web/src/e2ee/`](https://github.com/alliecatowo/patches/blob/main/apps/web/src/e2ee/) are near-verbatim copies of security-critical code (runtime sessions, enrollment, vault formatting). ADR 0034 outlines hoisting into `@patches/e2ee-client` but it's not done.
 
 ### 4. Web Client Page Blocks Are Placeholders
 
@@ -238,8 +238,8 @@ Classical X25519/Ed25519 only. Protocol fields are versioned for future PQXDH (M
 
 ### 7. Mega-Files Need Decomposition
 
-- [`apps/tui/src/app/App.tsx`](file:///home/allie/develop/patches/apps/tui/src/app/App.tsx) — ~123 KB, 2,800+ lines
-- [`apps/server/src/modules/auth/auth.service.ts`](file:///home/allie/develop/patches/apps/server/src/modules/auth/auth.service.ts) — ~90 KB, 2,000+ lines (password + SSH + GitHub + OIDC + passkeys + device linking + recovery codes in one class)
+- [`apps/tui/src/app/App.tsx`](https://github.com/alliecatowo/patches/blob/main/apps/tui/src/app/App.tsx) — ~123 KB, 2,800+ lines
+- [`apps/server/src/modules/auth/auth.service.ts`](https://github.com/alliecatowo/patches/blob/main/apps/server/src/modules/auth/auth.service.ts) — ~90 KB, 2,000+ lines (password + SSH + GitHub + OIDC + passkeys + device linking + recovery codes in one class)
 
 ---
 
