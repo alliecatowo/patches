@@ -263,7 +263,7 @@ INTERNAL = 13, UNAVAILABLE = 14, DATA_LOSS = 15, UNAUTHENTICATED = 16`.
   translation.)
 
 Source: github.com/connectrpc/connect-es/blob/main/packages/connect/src/code.ts (raw source read directly);
-`/home/allie/develop/patches/node_modules/.pnpm/@grpc+grpc-js@1.14.4/node_modules/@grpc/grpc-js/build/src/constants.js` (installed package, read directly)
+`<repo>/node_modules/.pnpm/@grpc+grpc-js@1.14.4/node_modules/@grpc/grpc-js/build/src/constants.js` (installed package, read directly)
 
 ## 8. `createConnectTransport` (connect-node) + `createClient`
 
