@@ -23,7 +23,9 @@ describe('resolveMediaDownloadUrl', () => {
 
   it('resolves valid http/https URLs', async () => {
     const getMediaDownload = vi.fn<() => Promise<GetMediaDownloadResponse>>(() =>
-      Promise.resolve({ downloadUrl: 'https://cdn.example.com/image.jpg' } as GetMediaDownloadResponse),
+      Promise.resolve({
+        downloadUrl: 'https://cdn.example.com/image.jpg',
+      } as GetMediaDownloadResponse),
     );
     const media = fakeMedia({ getMediaDownload });
 
@@ -55,17 +57,21 @@ describe('resolveMediaDownloadUrl', () => {
 
 describe('resolvePostMediaAttachments', () => {
   it('resolves multiple attachments in parallel', async () => {
-    const getMediaDownload = vi.fn<(req: { mediaId: string }) => Promise<GetMediaDownloadResponse>>(
-      ({ mediaId }) => {
-        if (mediaId === 'm1') {
-          return Promise.resolve({ downloadUrl: 'https://example.com/1.png' } as GetMediaDownloadResponse);
-        }
-        if (mediaId === 'm2') {
-          return Promise.resolve({ downloadUrl: 'file:///etc/passwd' } as GetMediaDownloadResponse);
-        }
-        return Promise.reject(new Error('not found'));
-      },
-    );
+    const getMediaDownload = vi.fn<
+      (req: { mediaId?: string }) => Promise<GetMediaDownloadResponse>
+    >(({ mediaId }) => {
+      if (mediaId === 'm1') {
+        return Promise.resolve({
+          downloadUrl: 'https://example.com/1.png',
+        } as GetMediaDownloadResponse);
+      }
+      if (mediaId === 'm2') {
+        return Promise.resolve({
+          downloadUrl: 'file:///etc/passwd',
+        } as GetMediaDownloadResponse);
+      }
+      return Promise.reject(new Error('not found'));
+    });
     const media = fakeMedia({ getMediaDownload });
 
     const att1 = create(MediaAttachmentSchema, { mediaId: 'm1', altText: 'First image' });
