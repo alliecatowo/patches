@@ -402,12 +402,20 @@ jobs:
         # Built on the runner from the restored pnpm/turbo caches (Fly's remote
         # builders share none of those, and their cold path measured ~1m50s per
         # deploy). Process groups, checks, and autostop all come from the generated
-        # fly config as before.
+        # fly config as before. If machine limit is reached on Fly, skip gracefully.
         run: |
           set -euo pipefail
-          flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
+          if ! flyctl deploy --config "infra/preview/fly-pr-${PR_NUMBER}.toml" \
             --image "registry.fly.io/patches-pr-${PR_NUMBER}:pr-${PR_HEAD_SHA:-${{ github.event.pull_request.head.sha }}}" \
-            --ha=false --strategy immediate --yes
+            --ha=false --strategy immediate --yes 2>"$RUNNER_TEMP/fly-deploy-err.txt"; then
+            if grep -qi 'machine limit' "$RUNNER_TEMP/fly-deploy-err.txt"; then
+              echo 'Fly machine limit reached; preview backend deployment skipped gracefully.' | tee -a "$GITHUB_STEP_SUMMARY"
+              exit 0
+            else
+              cat "$RUNNER_TEMP/fly-deploy-err.txt" >&2
+              exit 1
+            fi
+          fi
 
       - name: Allow the web preview origin in Connect CORS
         # An empty/unset WEB_ORIGINS denies every cross-origin browser request (see
