@@ -116,7 +116,7 @@ describe('ComposeRoute', () => {
     expect(cwBtn).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('provides accessible ARIA labels for all toolbar format buttons', () => {
+  it('provides accessible ARIA labels for toolbar format buttons and character counter', () => {
     renderCompose();
     expect(screen.getByRole('button', { name: 'Bold' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Italic' })).toBeInTheDocument();
@@ -124,6 +124,9 @@ describe('ComposeRoute', () => {
     expect(screen.getByRole('button', { name: 'Quote' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Tag' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Mention' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('status', { name: '500 characters remaining' }),
+    ).toBeInTheDocument();
   });
 
   it('shows @-mention suggestions only after an explicit @ prefix and inserts the handle on select (§219)', async () => {

@@ -268,10 +268,14 @@ export function HomeRoute(): JSX.Element {
 
   return (
     <div>
-      <div className={styles['tabs']}>
+      <div className={styles['tabs']} role="tablist" aria-label="Timeline feeds">
         {session ? (
           <button
             type="button"
+            id="home-tab-home"
+            role="tab"
+            aria-selected={tab === 'home' && activeViewId === undefined}
+            aria-controls="home-tabpanel"
             className={`${styles['tab']} ${tab === 'home' ? styles['active'] : ''}`}
             onClick={() => {
               setTab('home');
@@ -284,6 +288,10 @@ export function HomeRoute(): JSX.Element {
         {showLocalTab ? (
           <button
             type="button"
+            id="home-tab-local"
+            role="tab"
+            aria-selected={tab === 'local' && activeViewId === undefined}
+            aria-controls="home-tabpanel"
             className={`${styles['tab']} ${tab === 'local' ? styles['active'] : ''}`}
             onClick={() => {
               setTab('local');
@@ -295,28 +303,34 @@ export function HomeRoute(): JSX.Element {
         ) : null}
       </div>
       <ViewsBar activeId={activeViewId} setActiveId={setActiveViewId} />
-      {activeViewId !== undefined ? null : (
-        <>
-          {tab === 'local' && showLocalTab ? (
-            <p className={styles['tabExplainer']}>
-              Every public post on this server, newest first.
-            </p>
-          ) : null}
-          {tab === 'home' && session ? (
-            <PostTimeline
-              queryKey={['feed', 'home']}
-              fetchPage={(cursor) => api.feeds.listHomeFeed({ cursor, limit: 30 })}
-              emptyMessage="No posts yet. Follow people to fill your home timeline."
-            />
-          ) : showLocalTab ? (
-            <PostTimeline
-              queryKey={['feed', 'local']}
-              fetchPage={(cursor) => api.feeds.listLocalFeed({ cursor, limit: 30 })}
-              emptyMessage="No posts on this server yet."
-            />
-          ) : null}
-        </>
-      )}
+      <div
+        id="home-tabpanel"
+        role="tabpanel"
+        aria-labelledby={tab === 'home' ? 'home-tab-home' : 'home-tab-local'}
+      >
+        {activeViewId !== undefined ? null : (
+          <>
+            {tab === 'local' && showLocalTab ? (
+              <p className={styles['tabExplainer']}>
+                Every public post on this server, newest first.
+              </p>
+            ) : null}
+            {tab === 'home' && session ? (
+              <PostTimeline
+                queryKey={['feed', 'home']}
+                fetchPage={(cursor) => api.feeds.listHomeFeed({ cursor, limit: 30 })}
+                emptyMessage="No posts yet. Follow people to fill your home timeline."
+              />
+            ) : showLocalTab ? (
+              <PostTimeline
+                queryKey={['feed', 'local']}
+                fetchPage={(cursor) => api.feeds.listLocalFeed({ cursor, limit: 30 })}
+                emptyMessage="No posts on this server yet."
+              />
+            ) : null}
+          </>
+        )}
+      </div>
     </div>
   );
 }
