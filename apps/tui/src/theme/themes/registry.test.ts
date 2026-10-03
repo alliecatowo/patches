@@ -54,7 +54,7 @@ describe('built-in theme registry', () => {
     });
 
     expect(scoped.shell).toBe(shell);
-    expect(scoped.shell.background).toBe('#160f24');
+    expect(scoped.shell.background).toBe('#282a36');
     expect(scoped.decoration.wall.background).toBe('#ffffff');
     expect(Object.isFrozen(scoped.shell)).toBe(true);
     expect(Object.isFrozen(scoped.decoration.wall)).toBe(true);

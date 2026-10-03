@@ -36,5 +36,5 @@
 
 
  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ✓ Signed in as @alice.
+
  [ / ] sub-page · j / k select link · Enter open link · e edit · / search · Ctrl+R refresh · c compose · : / Ctrl+P commands · Esc back

@@ -36,5 +36,5 @@
 
 
  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
- ✓ Signed in as @alice.
+
  j / ↓ next · Enter thread · p author · r reply · l like · b bookmark · f follow · R repost · Q quote · / search · Ctrl+R refresh · q quit
