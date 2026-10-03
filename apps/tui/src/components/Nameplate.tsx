@@ -4,6 +4,7 @@ import { Text } from 'ink';
 import type { ReactElement } from 'react';
 
 import { sanitizeForTerminal } from '../format/sanitize.js';
+import { safeInkColor } from '../format/safe-color.js';
 import { usePlainMode } from '../theme/plain-mode.js';
 
 export interface NameplateProps {
@@ -59,5 +60,5 @@ function gradientFirstStop(nameColor: string): string | undefined {
   if (nameColor === '') return undefined;
   const [first] = nameColor.split(',');
   const trimmed = first?.trim() ?? '';
-  return trimmed === '' ? undefined : trimmed;
+  return safeInkColor(trimmed);
 }
