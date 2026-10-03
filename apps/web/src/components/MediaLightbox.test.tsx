@@ -41,4 +41,23 @@ describe('MediaLightbox', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it('manages focus when opened and closed', () => {
+    const triggerBtn = document.createElement('button');
+    triggerBtn.textContent = 'Open Lightbox';
+    document.body.appendChild(triggerBtn);
+    triggerBtn.focus();
+
+    expect(document.activeElement).toBe(triggerBtn);
+
+    const { rerender } = render(<MediaLightbox images={images} isOpen={true} onClose={vi.fn()} />);
+
+    const closeBtn = screen.getByRole('button', { name: 'Close lightbox' });
+    expect(document.activeElement).toBe(closeBtn);
+
+    rerender(<MediaLightbox images={images} isOpen={false} onClose={vi.fn()} />);
+    expect(document.activeElement).toBe(triggerBtn);
+
+    document.body.removeChild(triggerBtn);
+  });
 });

@@ -1,24 +1,49 @@
+import type { MediaAttachment } from '@patches/proto/es';
 import type { PatchesApi } from '@patches/client';
-
 import { safePageHref } from '../pages/href.js';
 
-type MediaClient = Pick<PatchesApi['media'], 'getMediaDownload'>;
+type MediaClient = PatchesApi['media'];
+
+export interface ResolvedMediaAttachment {
+  mediaId: string;
+  altText: string;
+  url: string | null;
+  failed: boolean;
+}
 
 /**
- * Resolves a media ID to a safe, direct-to-R2 download URL via `MediaService.GetMediaDownload`.
- * Re-validates the returned URL via `safePageHref` (spec §104/§172 — http(s) scheme only,
- * control/escape bytes rejected) before handing it to the caller.
+ * Resolves a single media attachment's download URL via `GetMediaDownload`,
+ * re-validating the URL using `safePageHref`.
  */
 export async function resolveMediaDownloadUrl(
-  mediaClient: MediaClient,
+  media: MediaClient,
   mediaId: string,
 ): Promise<string | null> {
-  if (mediaId.trim() === '') return null;
   try {
-    const response = await mediaClient.getMediaDownload({ mediaId });
+    const response = await media.getMediaDownload({ mediaId });
     if (!response.downloadUrl) return null;
     return safePageHref(response.downloadUrl);
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolves an array of `MediaAttachment` items to their download URLs in parallel.
+ */
+export async function resolvePostMediaAttachments(
+  media: MediaClient,
+  attachments: readonly MediaAttachment[],
+): Promise<ResolvedMediaAttachment[]> {
+  return Promise.all(
+    attachments.map(async (att) => {
+      const url = await resolveMediaDownloadUrl(media, att.mediaId);
+      return {
+        mediaId: att.mediaId,
+        altText: att.altText,
+        url,
+        failed: url === null,
+      };
+    }),
+  );
 }

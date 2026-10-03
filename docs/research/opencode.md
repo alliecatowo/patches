@@ -165,7 +165,7 @@ not have.
 
 ## Local verification
 
-These are observed facts for `/home/allie/develop/patches`, not upstream API
+These are observed facts for `<repo>`, not upstream API
 claims:
 
 - `opencode --version` reports `1.18.23`.

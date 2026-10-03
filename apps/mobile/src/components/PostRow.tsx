@@ -4,7 +4,7 @@ import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
-import { resolveMediaDownloadUrl } from '../media/attachment.js';
+import { resolvePostMediaAttachments, type ResolvedMediaAttachment } from '../media/attachment.js';
 
 export interface PostRowProps {
   post: Post;
@@ -16,6 +16,64 @@ export interface PostRowProps {
   /** Open the author's Patches Page/wall — the mobile Pages viewer's entry point from a
    * timeline (B-082). Optional so contexts without a page stack render inert handles. */
   onOpenPage?: (handle: string) => void;
+}
+
+function PostMedia({ media }: { media: readonly MediaAttachment[] }): JSX.Element | null {
+  const [resolved, setResolved] = useState<ResolvedMediaAttachment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (media.length === 0) {
+      setResolved([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    resolvePostMediaAttachments(api.media, media)
+      .then((res) => {
+        if (!cancelled) {
+          setResolved(res);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [media]);
+
+  if (media.length === 0) return null;
+
+  return (
+    <View style={styles.mediaGrid}>
+      {loading ? (
+        <Text style={styles.muted}>Loading media…</Text>
+      ) : (
+        resolved.map((item, idx) => {
+          if (item.failed || !item.url) {
+            return (
+              <View key={item.mediaId || idx} style={styles.mediaPlaceholder}>
+                <Text style={styles.muted}>Media unavailable</Text>
+              </View>
+            );
+          }
+          return (
+            <View key={item.mediaId || idx} style={styles.mediaContainer}>
+              <Image source={{ uri: item.url }} style={styles.mediaImage} resizeMode="cover" />
+              {item.altText ? (
+                <Text style={styles.mediaAlt} numberOfLines={2}>
+                  {item.altText}
+                </Text>
+              ) : null}
+            </View>
+          );
+        })
+      )}
+    </View>
+  );
 }
 
 /**
@@ -73,14 +131,8 @@ export function PostRow({
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
             <>
-              {post.body !== '' ? <Text style={styles.body}>{post.body}</Text> : null}
-              {post.media.length > 0 ? (
-                <View style={styles.mediaList}>
-                  {post.media.map((mediaItem) => (
-                    <PostMediaAttachment key={mediaItem.mediaId} media={mediaItem} />
-                  ))}
-                </View>
-              ) : null}
+              {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
+              {post.media && post.media.length > 0 ? <PostMedia media={post.media} /> : null}
             </>
           )}
         </>
@@ -113,49 +165,6 @@ export function PostRow({
   );
 }
 
-function PostMediaAttachment({ media }: { media: MediaAttachment }): JSX.Element {
-  const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    resolveMediaDownloadUrl(api.media, media.mediaId)
-      .then((resolved) => {
-        if (cancelled) return;
-        if (resolved === null) {
-          setFailed(true);
-        } else {
-          setUrl(resolved);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [media.mediaId]);
-
-  if (failed || url === null) {
-    return (
-      <View style={styles.imagePlaceholder}>
-        <Text style={styles.muted}>{failed ? 'Image unavailable.' : 'Loading image…'}</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.imageContainer}>
-      <Image source={{ uri: url }} style={styles.image} resizeMode="cover" />
-      {media.altText !== '' ? (
-        <Text style={styles.imageAlt} numberOfLines={2}>
-          {media.altText}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 12,
@@ -174,17 +183,16 @@ const styles = StyleSheet.create({
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
   action: { color: '#7c9cff', fontSize: 13 },
-  mediaList: { gap: 8, marginTop: 8 },
-  imageContainer: { borderRadius: 6, overflow: 'hidden' },
-  image: { width: '100%', height: 200, borderRadius: 6, backgroundColor: '#161618' },
-  imageAlt: { color: '#888', fontSize: 12, marginTop: 4 },
-  imagePlaceholder: {
+  mediaGrid: { marginTop: 8, gap: 8 },
+  mediaContainer: { borderRadius: 6, overflow: 'hidden', backgroundColor: '#161618' },
+  mediaImage: { width: '100%', height: 200, borderRadius: 6 },
+  mediaAlt: { color: '#888', fontSize: 12, marginTop: 2 },
+  mediaPlaceholder: {
     padding: 16,
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: '#2a2a2c',
     borderRadius: 6,
-    backgroundColor: '#161618',
   },
-  muted: { color: '#888' },
+  muted: { color: '#888', fontSize: 13 },
 });
