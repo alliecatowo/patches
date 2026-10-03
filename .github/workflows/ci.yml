@@ -340,8 +340,10 @@ jobs:
           file: infra/docker/Dockerfile
           push: false
           build-args: PATCHES_BUILD_SHA=${{ github.sha }}
-          cache-from: type=gha,scope=ci-image
-          cache-to: type=gha,scope=ci-image,mode=max
+          # No gha layer cache on purpose: the Dockerfile's `pnpm install --offline` relies on
+          # BuildKit cache *mounts* (pnpm metadata), which are not part of cached layers. A layer
+          # cache hit on the fetch step leaves the mounts empty on a fresh runner and the offline
+          # install fails with ERR_PNPM_NO_OFFLINE_META. Always build cold.
 
   actionlint:
     name: actionlint
