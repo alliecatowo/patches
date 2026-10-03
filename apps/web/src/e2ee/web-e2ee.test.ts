@@ -8,7 +8,7 @@ import 'fake-indexeddb/auto';
 
 import { E2EE_PROTOCOL } from '@patches/crypto';
 import type { VerifiedCertifiedDevice, VerifiedRosterSnapshot } from '@patches/crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { LocalDeviceIdentity } from './local-identity.js';
 import { E2eeNotEnrolledError } from './runtime.js';
@@ -366,5 +366,75 @@ describe('WebE2eeManager.wipe', () => {
 
     await manager.setActor(actor);
     expect(manager.getStatus()).toEqual({ kind: 'not-enrolled' });
+  });
+});
+
+/** Minimal in-memory `navigator.locks` shared by every manager in the test (= one browser). */
+function installFakeLocks(): void {
+  const held = new Set<string>();
+  vi.stubGlobal('navigator', {
+    locks: {
+      request: async (
+        name: string,
+        options: { ifAvailable?: boolean },
+        callback: (lock: object | null) => Promise<void> | undefined,
+      ) => {
+        if (held.has(name)) {
+          if (options.ifAvailable === true) return callback(null);
+          throw new Error('test fake only supports ifAvailable');
+        }
+        held.add(name);
+        try {
+          return await callback({ name });
+        } finally {
+          held.delete(name);
+        }
+      },
+    },
+  });
+}
+
+describe('WebE2eeManager — cross-tab vault ownership (F-H7)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('a second tab for the same account reports locked and never opens the vault', async () => {
+    installFakeLocks();
+    const actor = { id: freshActorId() };
+    const tabA = createWebE2eeManager({ api: fakeApi });
+    const tabB = createWebE2eeManager({ api: fakeApi });
+
+    await tabA.setActor(actor);
+    await tabB.setActor(actor);
+
+    expect(tabA.getStatus().kind).toBe('not-enrolled');
+    expect(tabB.getStatus()).toEqual({
+      kind: 'locked',
+      copy: WEB_E2EE_COPY.lockedElsewhere,
+    });
+    await expect(tabB.enroll()).rejects.toBeInstanceOf(WebE2eeUnavailableError);
+  });
+
+  it('StrictMode-style repeat binds in the owning tab keep the grant', async () => {
+    installFakeLocks();
+    const actor = { id: freshActorId() };
+    const tab = createWebE2eeManager({ api: fakeApi });
+
+    await Promise.all([tab.setActor(actor), tab.setActor(actor)]);
+
+    expect(tab.getStatus().kind).toBe('not-enrolled');
+  });
+
+  it('releases on sign-out so another tab can take over', async () => {
+    installFakeLocks();
+    const actor = { id: freshActorId() };
+    const tabA = createWebE2eeManager({ api: fakeApi });
+    const tabB = createWebE2eeManager({ api: fakeApi });
+
+    await tabA.setActor(actor);
+    await tabA.setActor(null);
+    await new Promise((resolve) => setTimeout(resolve, 0)); // let the lock callback settle
+    await tabB.setActor(actor);
+
+    expect(tabB.getStatus().kind).toBe('not-enrolled');
   });
 });

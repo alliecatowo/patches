@@ -77,6 +77,10 @@ export const WEB_E2EE_COPY = {
     'The encrypted message history stored in this browser cannot be opened. It may have ' +
     'been restored from an older backup. Resetting deletes this browser’s E2EE history ' +
     'and enrolls a fresh device; conversations stay on the node.',
+  /** Another tab/PWA window already owns this account's ratchet vault (see `acquireVaultLock`). */
+  lockedElsewhere:
+    'Messages are open in another tab or window of this browser. Close it (or switch to it) ' +
+    'and reload this page — two windows sharing one set of encryption keys would corrupt them.',
   notEnrolled: 'This browser has no enrolled messaging device yet.',
   enrollFailed: 'Enrolling this browser did not complete. Nothing was half-registered.',
   sendFailed: 'The message could not be delivered.',
@@ -92,6 +96,8 @@ export type WebE2eeStatus =
   | { readonly kind: 'enrolling' }
   | { readonly kind: 'enrolled' }
   | { readonly kind: 'refused'; readonly copy: string }
+  /** Another tab holds the vault lock; this tab stays read-only and never opens the vault. */
+  | { readonly kind: 'locked'; readonly copy: string }
   | { readonly kind: 'fault'; readonly copy: string };
 
 /** Error with fixed user copy for create/send/enroll failures (content-free by rule). */
@@ -130,6 +136,18 @@ class WebE2eeManager {
    * opened instead of leaking the IndexedDB connection, and never touches shared state
    * (single-owner rule, `vault.ts:36-38`). The last call issued always wins. */
   private setActorSeq = 0;
+  /**
+   * Cross-tab ownership (audit F-H7): the vault is last-writer-wins per record
+   * (`vault.ts:34-38`), so two tabs advancing the same Double Ratchet chains would fork
+   * state, reuse message numbers and lose sessions. The first tab to bind an account takes
+   * an exclusive Web Lock for it and holds it until it signs out / switches account / closes
+   * (the browser frees it on tab close or crash). Any other tab reports `locked` instead of
+   * opening the vault. Held per account, not per `setActor` call, so StrictMode's double
+   * effect and `reloadEnrollment` re-binds reuse the same grant.
+   */
+  private vaultLock:
+    | { readonly actorId: string; readonly granted: Promise<boolean>; release: () => void }
+    | undefined;
   private readonly api: E2eeApiSurface;
   private readonly nowMs: (() => number) | undefined;
   /**
@@ -190,6 +208,45 @@ class WebE2eeManager {
     this.drained.clear();
   }
 
+  private dropVaultLock(): void {
+    this.vaultLock?.release();
+    this.vaultLock = undefined;
+  }
+
+  /** `true` (no Web Locks), or resolves true when this tab owns the account vault lock. */
+  private acquireVaultLock(actorId: string): Promise<boolean> | true {
+    if (this.vaultLock?.actorId === actorId) return this.vaultLock.granted;
+    this.dropVaultLock();
+    const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+    if (locks === undefined) return true; // no Web Locks: best effort, as before
+    let release: () => void = () => undefined;
+    const granted = new Promise<boolean>((resolve) => {
+      void locks
+        .request(
+          `patches-e2ee-vault:${location.origin}:${actorId}`,
+          { mode: 'exclusive', ifAvailable: true },
+          (lock) => {
+            if (lock === null) {
+              resolve(false);
+              return undefined;
+            }
+            resolve(true);
+            return new Promise<void>((done) => {
+              release = done;
+            });
+          },
+        )
+        .catch(() => resolve(true)); // a locks failure must not brick messaging
+    });
+    const entry = { actorId, granted, release: () => release() };
+    this.vaultLock = entry;
+    void granted.then((ok) => {
+      // A denied request holds nothing; forget it so a later attempt can retry.
+      if (!ok && this.vaultLock === entry) this.vaultLock = undefined;
+    });
+    return granted;
+  }
+
   /** Called by the session layer on sign-in/sign-out/actor switch. */
   async setActor(actor: { readonly id: string } | null): Promise<void> {
     if (actor !== null && actor.id === this.lastActorId && this.vault !== undefined) {
@@ -204,6 +261,7 @@ class WebE2eeManager {
     const seq = (this.setActorSeq += 1);
     if (actor === null) {
       this.release();
+      this.dropVaultLock();
       this.lastActorId = undefined;
       this.setStatus({ kind: 'signed-out' });
       return;
@@ -213,6 +271,15 @@ class WebE2eeManager {
     this.setStatus({ kind: 'loading' });
     let vault: RatchetSessionVault | undefined;
     try {
+      const pending = this.acquireVaultLock(actor.id);
+      // Synchronous `true` (no Web Locks) must not add an await: keeps the vault-open
+      // timing the overlapping-`setActor` invariants were written against.
+      const owns = pending === true ? true : await pending;
+      if (seq !== this.setActorSeq) return;
+      if (!owns) {
+        this.setStatus({ kind: 'locked', copy: WEB_E2EE_COPY.lockedElsewhere });
+        return;
+      }
       const account: WebVaultAccount = { origin: location.origin, actorId: actor.id };
       vault = await createRatchetSessionVault({ account });
       if (seq !== this.setActorSeq) {
