@@ -183,5 +183,11 @@ export default defineConfig([
     extends: [js.configs.recommended],
     languageOptions: { globals: { ...globals.node } },
   },
+  {
+    // Static scripts served as-is from the web app (e.g. `theme-init.js`, the pre-paint
+    // theme bootstrap that replaced an inline <script> for the CSP): plain browser scripts.
+    files: ['apps/web/public/**/*.js'],
+    languageOptions: { sourceType: 'script', globals: { ...globals.browser } },
+  },
   eslintConfigPrettier,
 ]);
