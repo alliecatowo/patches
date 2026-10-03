@@ -138,7 +138,7 @@ config — see the git history of this file for the pre-B-012 version of this se
 `.github/actions/setup/action.yml` (checkout happens in the calling job, not here —
 see "Workflows" above):
 
-1. `pnpm/setup@v2` installs Node 24.19.0 + pnpm (version read from this repo's
+1. `pnpm/setup@v3` installs Node 24.19.0 + pnpm (version read from this repo's
    `packageManager` field, `pnpm@11.22.0`, matching `mise.toml`).
 2. `jdx/mise-action@v4` installs `buf` and `actionlint` from `mise.toml`'s pins, with
    `MISE_DISABLE_TOOLS: node,pnpm,docker-compose` so mise doesn't also try to install
@@ -149,8 +149,8 @@ see "Workflows" above):
 
 **Why not install everything through `mise-action` alone?** `jdx/mise-action` can install
 Node and pnpm from `mise.toml` directly, which would be one fewer action in the setup
-path. This workflow uses `pnpm/setup@v2` for Node + pnpm instead, per
-`docs/research/monorepo-toolchain.md` §7's guidance that `pnpm/setup@v2` is the simpler,
+path. This workflow uses `pnpm/setup@v3` for Node + pnpm instead, per
+`docs/research/monorepo-toolchain.md` §7's guidance that `pnpm/setup@v3` is the simpler,
 more current path for pnpm 11+, and because installing pnpm through mise in CI has a
 reputation for flakiness in some setups. Nobody has yet observed a concrete mise-action
 pnpm failure _in this repo's own CI_ (no run has happened yet) — if a future run shows
@@ -159,7 +159,7 @@ mise-action's pnpm install working fine, this split can be collapsed back to a s
 
 ## Caching
 
-- **pnpm store** — via `pnpm/setup@v2`'s `cache: true`, keyed on the lockfile
+- **pnpm store** — via `pnpm/setup@v3`'s `cache: true`, keyed on the lockfile
   automatically.
 - **mise tool cache** — via `jdx/mise-action`'s `cache: true`.
 - **Turbo local cache** — `actions/cache@v4` on `.turbo`, key

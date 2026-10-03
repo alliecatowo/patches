@@ -14,7 +14,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: web-${{ github.event.workflow_run.head_sha || github.sha }}
+  # One fixed group: two merges landing close together must not deploy in parallel, or the
+  # older run's verify:deploy would poll a site already serving the newer sha and fail.
+  # Queued runs wait their turn (GitHub keeps only the newest pending one); in-flight
+  # deploys are never cancelled.
+  group: web-deploy
   cancel-in-progress: false
 
 jobs:
