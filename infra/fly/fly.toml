@@ -98,7 +98,7 @@ kill_timeout = "30s"
   # the real application-level check below (`[checks.healthz]`) rather than replaced by it,
   # since a TCP check needs no application code at all to pass.
   [[services.tcp_checks]]
-    grace_period = "10s"
+    grace_period = "30s"
     interval = "15s"
     timeout = "2s"
 
@@ -149,7 +149,7 @@ kill_timeout = "30s"
     path = "/healthz"
     interval = "15s"
     timeout = "3s"
-    grace_period = "10s"
+    grace_period = "30s"
     processes = ["server"]
 
 # Scale to zero: autostop/autostart + min 0 on the public http and grpc services. Fly stops

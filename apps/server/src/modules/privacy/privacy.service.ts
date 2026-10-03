@@ -177,6 +177,10 @@ export class PrivacyService {
       .findOne({ where: { actorId }, order: { requestedAt: 'DESC' } });
     if (row === null) return null;
     if (row.status !== 'READY' || row.objectKey === null) return toAccountExportView(row, null);
+    // Audit S-M7: an archive holds the account's full data; never hand out a URL past expiry.
+    if (row.expiresAt !== null && row.expiresAt.getTime() <= Date.now()) {
+      return toAccountExportView({ ...row, status: 'EXPIRED' }, null);
+    }
 
     const { url } = await this.storage.presignGet(row.objectKey, {
       expiresInSeconds: this.config.mediaPresignGetTtlSeconds,

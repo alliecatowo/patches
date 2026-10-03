@@ -65,7 +65,16 @@ export function createDataSourceOptions(input: CreateDataSourceOptionsInput) {
     namingStrategy: new SnakeNamingStrategy(),
     entities: [...ALL_ENTITIES],
     migrations: [...ALL_MIGRATIONS],
-    extra: { max: poolMax, statement_timeout: statementTimeoutMs },
+    extra: {
+      max: poolMax,
+      statement_timeout: statementTimeoutMs,
+      // Audit S-M3: node-postgres defaults to waiting forever for a pooled connection, so a
+      // saturated pool or a slow Neon wake hung every RPC until the 30 s HTTP timeout. Fail
+      // fast (and keep idle sockets from being silently dropped by the scale-to-zero proxy).
+      connectionTimeoutMillis: 10_000,
+      idleTimeoutMillis: 30_000,
+      keepAlive: true,
+    },
   } satisfies DataSourceOptions;
 }
 

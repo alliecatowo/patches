@@ -33,6 +33,9 @@ const dataSource = createDataSource({
   ssl: process.env.DATABASE_SSL === 'true' || process.env.DATABASE_SSL === '1',
   sslCa: process.env.DATABASE_SSL_CA,
   logging: process.env.DATABASE_LOGGING === 'true',
+  // Audit S-M14: the 10 s runtime default would fail a grown-table CREATE INDEX / backfill and
+  // block every deploy. Migrations run once, in the release command, so give them 10 minutes.
+  statementTimeout: process.env.MIGRATION_STATEMENT_TIMEOUT ?? '600s',
 });
 
 try {

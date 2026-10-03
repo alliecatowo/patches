@@ -45,6 +45,11 @@ const ALLOWED_WHEN_CLOSED: readonly RegExp[] = [
   /^patches\.v1\.AuthService\//,
   /^patches\.v1\.NodeService\/GetNodeInfo$/,
   /^patches\.v1\.NodeService\/GetNodePolicy$/,
+  // Audit S-M2: a suspended account must still reach its notices and the appeal flow (spec
+  // §201.3). These RPCs authenticate with `SuspensionTolerantAuthGuard` themselves, so skipping
+  // this guard (which rethrows ACCOUNT_SUSPENDED) does not make them anonymous.
+  /^patches\.v1\.AppealService\//,
+  /^patches\.v1\.ModerationService\/ListMyModerationNotices$/,
   // Fallback controller/handler names for anything that reaches this guard without a real
   // grpc-js call object exposing `getPath()` (e.g. a differently-wired test double) — same
   // fallback pairing `RequestContextInterceptor`'s own `rpcPath` uses.
@@ -52,6 +57,8 @@ const ALLOWED_WHEN_CLOSED: readonly RegExp[] = [
   /^AuthController\//,
   /^NodeController\/getNodeInfo$/,
   /^NodeController\/getNodePolicy$/,
+  /^AppealController\//,
+  /^ModerationController\/listMyModerationNotices$/,
 ];
 
 /** Codes `AuthGuard` throws for a missing/invalid/expired credential — the only failures that
