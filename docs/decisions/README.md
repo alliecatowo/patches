@@ -62,6 +62,7 @@ deliberately does **not** authorize without owner sign-off.
 | [0039](./0039-e2ee-only-direct-messages-and-honest-copy.md)           | E2EE-only direct messages and honest client disclosures                                               | Accepted           |
 | [0040](./0040-mcp-01-product-security-scope.md)                       | MCP-01 product and security scope                                                                     | Accepted           |
 | [0041](./0041-e2ee-device-certificate-renewal.md)                     | E2EE device certificate renewal is device replacement                                                 | Accepted           |
+| [0042](./0042-e2ee-session-recovery.md)                               | E2EE session recovery: per-handshake sessions, deterministic glare, explicit reset                    | Accepted           |
 
 ## Template
 

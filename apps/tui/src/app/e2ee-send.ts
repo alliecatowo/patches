@@ -196,6 +196,12 @@ export interface VaultE2eeSender {
     opts?: { readonly reading?: boolean },
   ): Promise<E2eeSessionRuntimePollResult>;
   /**
+   * "Reset secure session" (audit P2-H1): drops this device's sessions for the conversation
+   * so the next send runs a fresh handshake that the peer adopts. History is untouched.
+   * Requires an enrolled identity; the screen binding for it is tracked separately.
+   */
+  resetSession(conversationId: string): Promise<number>;
+  /**
    * Re-pins a peer whose messaging identity was reset without a countersignature (audit
    * P2-H2). Only ever called from an explicit user confirmation after comparing the new safety
    * number; `root` is exactly the root that number was computed from.
@@ -480,6 +486,10 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
         root,
         nowMs: (options.nowMs ?? Date.now)(),
       });
+    },
+    async resetSession(conversationId: string): Promise<number> {
+      const active = await ensureRuntime();
+      return active.resetSessions(conversationId);
     },
     async pollMailbox(
       conversationId?: string,

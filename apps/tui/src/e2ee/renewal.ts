@@ -31,6 +31,7 @@ import {
   type StoredEnrollment,
 } from './enrollment.js';
 import { revokeLinkedDevice } from './device-link.js';
+import { SESSION_INDEX_KEY } from './session-index.js';
 import type { RatchetSessionVault } from './ratchet-vault.js';
 
 /** Start renewing this long before expiry, so a failed attempt has time to be retried. */
@@ -77,6 +78,8 @@ function isOpaqueKey(key: string): boolean {
 export async function dropRatchetSessions(vault: RatchetSessionVault): Promise<number> {
   const keys = (await vault.listSessions()).filter((key) => !isOpaqueKey(key));
   for (const key of keys) await vault.deleteSession(key);
+  // Every handshake id and session key the index holds is bound to the old device id.
+  await vault.deleteSession(SESSION_INDEX_KEY);
   return keys.length;
 }
 

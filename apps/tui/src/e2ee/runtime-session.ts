@@ -47,6 +47,19 @@ import type { RatchetSessionVault } from './ratchet-vault.js';
 import type { DoubleRatchetState, RatchetTransition } from '@patches/crypto';
 import type { OpenedDeviceEnvelope } from '@patches/crypto';
 import {
+  addEntry,
+  confirmEntry,
+  findEntry,
+  handshakeIdOf,
+  hasSeen,
+  incomingWins,
+  receiveOrder,
+  SessionBook,
+  sessionKeyFor,
+  type PeerSessions,
+  type SessionEntry,
+} from './session-index.js';
+import {
   establishInitiatorSession,
   establishResponderSession,
   isInitialEnvelopeHeader,
@@ -116,10 +129,10 @@ const DEFAULT_PREKEY_MAINTENANCE_INTERVAL_MS = 10 * 60_000;
 
 interface PreparedSession {
   readonly state: DoubleRatchetState;
-  /** Present only when the next envelope is the session's initial (X3DH) message. */
+  /** The vault session id this state lives under (one per handshake, see `session-index.ts`). */
+  readonly key: string;
+  /** Present while the peer has not answered in this session: every envelope carries it. */
   readonly setupPrefix?: Uint8Array | undefined;
-  /** True when this call created the session (its first envelope must reach the peer). */
-  readonly createdHere?: boolean | undefined;
 }
 
 export class E2eeSessionRuntime {
@@ -142,9 +155,15 @@ export class E2eeSessionRuntime {
    * for the life of this runtime instance until a later refresh observes it active again
    * (e.g. re-linked under a fresh roster) — never cleared by anything except a refresh. */
   private deviceRevoked = false;
+  /** Which handshake sessions exist per peer device, and which one sends. */
+  private readonly sessions: SessionBook;
+  /** Tail of the operation queue: send, drain and reset never interleave their ratchet and
+   * index read-modify-write cycles. */
+  private operationTail: Promise<unknown> = Promise.resolve();
 
   constructor(options: E2eeRuntimeOptions) {
     this.vault = options.vault;
+    this.sessions = new SessionBook(options.vault);
     this.identity = options.identity;
     this.sendTransport = options.sendTransport;
     this.mailboxTransport = options.mailboxTransport;
@@ -214,10 +233,31 @@ export class E2eeSessionRuntime {
     }
   }
 
+  private exclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.operationTail.then(operation, operation);
+    this.operationTail = result.catch(() => undefined);
+    return result;
+  }
+
+  /**
+   * User-visible "reset secure session" (audit P2-H1): drops this device's sessions for the
+   * conversation so the next send runs a fresh X3DH. The peer adopts the new handshake on its
+   * first message; nothing sent before the reset that the peer has not yet received can be
+   * opened afterwards. Returns how many sessions were removed.
+   */
+  resetSessions(conversationId: string): Promise<number> {
+    return this.exclusive(async () => {
+      await this.sessions.load();
+      return this.sessions.resetConversation(conversationId);
+    });
+  }
+
   // ------------------------------- send -----------------------------------
 
-  async send(conversationId: string, body: string, clientRequestId: string): Promise<void> {
-    await this.fanoutPlaintext(conversationId, encodeChatPlaintext(body), clientRequestId);
+  send(conversationId: string, body: string, clientRequestId: string): Promise<void> {
+    return this.exclusive(() =>
+      this.fanoutPlaintext(conversationId, encodeChatPlaintext(body), clientRequestId),
+    );
   }
 
   /**
@@ -236,10 +276,12 @@ export class E2eeSessionRuntime {
     logicalMessageId: string,
   ): Promise<void> {
     const built = encodeControlEnvelope(control, { digest: sha256Hash });
-    await this.fanoutPlaintext(
-      conversationId,
-      encodeControlPlaintext(built.envelopeBytes),
-      logicalMessageId,
+    await this.exclusive(() =>
+      this.fanoutPlaintext(
+        conversationId,
+        encodeControlPlaintext(built.envelopeBytes),
+        logicalMessageId,
+      ),
     );
   }
 
@@ -255,6 +297,7 @@ export class E2eeSessionRuntime {
     clientRequestId: string,
   ): Promise<void> {
     await this.ensureFreshOwnRoster();
+    await this.sessions.load();
     await this.ensurePrekeysMaintained();
     if (this.deviceRevoked) {
       throw new Error(E2EE_DEVICE_REVOKED_COPY);
@@ -281,12 +324,11 @@ export class E2eeSessionRuntime {
     // ship an envelope that would disagree with them (ADR 0025 §2).
     const commitment = commitFranking(openingKey, context, plaintext);
 
+    // Vault keys staged by THIS send. A failed transport confirms (adopts) every one of them:
+    // an initiator session is kept, unconfirmed, and its setup block rides on the next
+    // envelope too, so an ambiguous failure (the node got the message, the response was lost)
+    // never leaves the peer unable to open anything.
     const stagedSessions: string[] = [];
-    // Sessions created by THIS send. If the transport fails, they are deleted rather
-    // than confirmed: their very first (X3DH-carrying) envelope never reached the peer,
-    // so no later normal message could ever authenticate against them — recovery means
-    // re-running session establishment, not adopting an unreadable chain.
-    const createdSessions = new Set<string>();
     const envelopes: {
       recipientActorId: string;
       recipientDeviceId: string;
@@ -298,9 +340,6 @@ export class E2eeSessionRuntime {
     try {
       for (const target of targets) {
         const session = await this.ensureSendSession(conversationId, target);
-        if (session.createdHere) {
-          createdSessions.add(sessionIdFor(conversationId, target.actorId, target.deviceId));
-        }
         const transition = sealDeviceEnvelope(session.state, {
           context,
           recipient: { recipientActorId: target.actorId, recipientDeviceId: target.deviceId },
@@ -324,11 +363,8 @@ export class E2eeSessionRuntime {
         // Durable BEFORE these bytes may leave (P13-006). If anything below throws, the
         // catch confirms every staged state so adoption — not a pending wedge — is the
         // recovery path (audit P1-1).
-        await this.vault.stageSend(
-          sessionIdFor(conversationId, target.actorId, target.deviceId),
-          transition.state,
-        );
-        stagedSessions.push(sessionIdFor(conversationId, target.actorId, target.deviceId));
+        await this.vault.stageSend(session.key, transition.state);
+        stagedSessions.push(session.key);
       }
       await this.sendTransport.sendEnvelopes({
         conversationId,
@@ -352,21 +388,10 @@ export class E2eeSessionRuntime {
         },
       });
     } catch (error) {
-      // A session created by this send is dropped whether or not it reached `stageSend`: its
-      // X3DH-carrying first envelope never left, so keeping it would make the next send omit
-      // the initial framing and leave the peer unable to open anything (audit H8).
-      for (const sessionId of createdSessions) {
-        try {
-          await this.vault.deleteSession(sessionId);
-        } catch {
-          // Best-effort: a leftover session is re-established by the next claim.
-        }
-      }
       for (const sessionId of stagedSessions) {
-        if (createdSessions.has(sessionId)) continue;
         try {
-          // Pre-existing session: adopt the staged state (audit P1-1) so the ratchet
-          // stays ahead of anything sent and the next send flows normally.
+          // Adopt the staged state (audit P1-1) so the ratchet stays ahead of anything that
+          // may have left, and the next send flows normally.
           await this.vault.confirmSend(sessionId);
         } catch {
           // Best-effort: the staged state also recovers via the next open's adoption.
@@ -399,34 +424,64 @@ export class E2eeSessionRuntime {
     conversationId: string,
     target: FanoutTarget,
   ): Promise<PreparedSession> {
-    const sessionId = sessionIdFor(conversationId, target.actorId, target.deviceId);
-    const existing = await this.vault.getSession(sessionId);
-    if (existing !== undefined) return { state: existing, createdHere: false };
+    const baseId = sessionIdFor(conversationId, target.actorId, target.deviceId);
+    const peer = this.sessions.peer(baseId);
+    const primary = peer.entries.find((entry) => entry.key === peer.primaryKey);
+    if (primary !== undefined) {
+      const state = await this.vault.getSession(primary.key);
+      if (state !== undefined) {
+        return {
+          state,
+          key: primary.key,
+          ...(primary.role === 'initiator' && !primary.confirmed
+            ? { setupPrefix: primary.setupPrefix }
+            : {}),
+        };
+      }
+    } else {
+      // A session from before the index existed lives at the bare base id.
+      const legacy = await this.vault.getSession(baseId);
+      if (legacy !== undefined) return { state: legacy, key: baseId };
+    }
     const claimed = await this.sendTransport.claimPrekeyBundles({
       conversationId,
       actorIds: [target.actorId],
     });
-    const peer = claimed.find(
+    const peerBundle = claimed.find(
       (candidate) => candidate.actorId === target.actorId && candidate.deviceId === target.deviceId,
     );
-    if (peer === undefined) {
+    if (peerBundle === undefined) {
       throw new E2eeContractError('The node did not return a prekey bundle for a fanout target.');
     }
     const established = establishInitiatorSession({
       identity: this.identity,
-      peerBundle: peer.bundle,
-      peerRoster: peer.roster,
+      peerBundle: peerBundle.bundle,
+      peerRoster: peerBundle.roster,
       nowMs: this.nowMs(),
     });
-    await this.vault.applyUpdate(sessionId, established.state);
-    const stored = await this.vault.getSession(sessionId);
+    const handshakeId = handshakeIdOf(established.setupPrefix);
+    const key = sessionKeyFor(baseId, handshakeId);
+    // The session commits before it is indexed: a crash in between leaves an unreferenced
+    // session (harmless), never an index entry pointing at nothing. `applyUpdate` consumes
+    // (zeroizes) the state it is given, so the session is read back to seal against exactly the
+    // bytes that were durably committed.
+    await this.vault.applyUpdate(key, established.state);
+    const stored = await this.vault.getSession(key);
     if (stored === undefined)
       throw new Error('Session vault did not persist a just-committed session.');
-    return {
-      state: stored,
-      setupPrefix: established.setupPrefix,
-      createdHere: true,
-    };
+    const added = addEntry(
+      peer,
+      {
+        handshakeId,
+        role: 'initiator',
+        confirmed: false,
+        setupPrefix: established.setupPrefix,
+        key,
+      },
+      true,
+    );
+    await this.sessions.put(added.peer, added.evictedKeys);
+    return { state: stored, key, setupPrefix: established.setupPrefix };
   }
 
   // ------------------------------ receive ---------------------------------
@@ -444,7 +499,11 @@ export class E2eeSessionRuntime {
    * content-free, surfaced as a `quarantined` row, acknowledged, and drained past — bounded
    * at `MAX_QUARANTINED_PER_DRAIN` per pass.
    */
-  async pollMailbox(filter?: {
+  pollMailbox(filter?: { readonly conversationId?: string | undefined }): Promise<PollResult> {
+    return this.exclusive(() => this.pollMailboxLocked(filter));
+  }
+
+  private async pollMailboxLocked(filter?: {
     readonly conversationId?: string | undefined;
   }): Promise<PollResult> {
     // Issue #277: keeps this device's own roster converging on the mailbox poll cadence
@@ -452,6 +511,12 @@ export class E2eeSessionRuntime {
     // binds `identity.ownRoster` into the handshake it verifies exactly like the
     // initiator half does.
     await this.ensureFreshOwnRoster();
+    try {
+      await this.sessions.load();
+    } catch {
+      // The session index is local state: fail-stop without acknowledging anything.
+      return { rows: [], error: E2EE_RECEIVE_UNAVAILABLE_COPY };
+    }
     const conversationFilter = filter?.conversationId;
     const rows: InboxRow[] = [];
     const controls: E2eeControlEvent[] = [];
@@ -580,73 +645,133 @@ export class E2eeSessionRuntime {
       senderActorId: envelope.senderActorId,
       senderDeviceId: envelope.senderDeviceId,
     } as const;
-    const sessionId = sessionIdFor(
+    const baseId = sessionIdFor(
       envelope.conversationId,
       envelope.senderActorId,
       envelope.senderDeviceId,
     );
-    const storedState = await this.localReceiveStep(() => this.vault.getSession(sessionId));
+    let peer = await this.localReceiveStep(() => this.sessions.withLegacy(baseId));
 
-    let state: DoubleRatchetState;
-    let message: { encryptedHeader: Uint8Array; ciphertext: Uint8Array };
-    // Set only on the branch below that actually spends a one-time prekey; consumed after the
-    // resulting state is durably committed (see the commit past `openDeviceEnvelope`).
-    let consumedOneTimePreKeyId: number | undefined;
-    if (isInitialEnvelopeHeader(envelope.encryptedHeader)) {
-      const { setup, ratchetHeader } = splitInitialHeader(envelope.encryptedHeader);
-      message = { encryptedHeader: ratchetHeader, ciphertext: envelope.ciphertext };
-      if (storedState !== undefined) {
-        // Redelivery of an initial message after its session was already committed.
-        state = storedState;
-      } else {
-        const initiatorRoster = await this.localReceiveStep(() =>
-          this.mailboxTransport.loadPeerRoster(setup.senderActorId),
-        );
-        // Issue #278: a rotated signed prekey may still be named by an initial message an
-        // initiator sealed just before rotation reached them — `loadStoredEnrollment` (not the
-        // in-memory `this.identity`, which never carries retained material) is the source of
-        // truth for what is still retained.
-        const storedForRetainedKeys = await this.localReceiveStep(() =>
-          loadStoredEnrollment(this.vault, this.nowMs()),
-        );
-        const established = establishResponderSession({
-          identity: this.identity,
-          setup,
-          initiatorRoster,
-          nowMs: this.nowMs(),
-          previousSignedPreKeys: storedForRetainedKeys?.previousSignedPreKeys,
+    const open = (
+      state: DoubleRatchetState,
+      message: { encryptedHeader: Uint8Array; ciphertext: Uint8Array },
+    ): RatchetTransition<OpenedDeviceEnvelope> | undefined => {
+      try {
+        return openDeviceEnvelope(state, {
+          context,
+          recipient: {
+            recipientActorId: this.identity.actorId,
+            recipientDeviceId: this.identity.deviceId,
+          },
+          logicalMessageId: envelope.logicalMessageId,
+          message,
+          commitment: envelope.frankingCommitment,
         });
-        state = established.state;
-        consumedOneTimePreKeyId = established.consumedOneTimePreKeyId;
+      } catch (error) {
+        if (error instanceof ReplayedMessageError) throw error;
+        // AEAD or franking failure: the plaintext was discarded inside `openDeviceEnvelope`
+        // and the state it was handed is untouched, so the next candidate can still try.
+        return undefined;
+      }
+    };
+
+    // Existing sessions that could own this envelope, tried in order, plus (for an initial
+    // envelope that names a handshake nobody here holds) one freshly derived responder session.
+    let candidates: readonly SessionEntry[];
+    let message: { encryptedHeader: Uint8Array; ciphertext: Uint8Array };
+    let initialSetup: ReturnType<typeof splitInitialHeader>['setup'] | undefined;
+    let handshakeId: Uint8Array | undefined;
+    let knownHandshake = false;
+    if (isInitialEnvelopeHeader(envelope.encryptedHeader)) {
+      const split = splitInitialHeader(envelope.encryptedHeader);
+      initialSetup = split.setup;
+      message = { encryptedHeader: split.ratchetHeader, ciphertext: envelope.ciphertext };
+      // The id covers the exact setup bytes, so both sides name the same handshake without
+      // trusting anything the node adds.
+      handshakeId = handshakeIdOf(
+        envelope.encryptedHeader.subarray(
+          0,
+          envelope.encryptedHeader.length - split.ratchetHeader.length,
+        ),
+      );
+      const known = findEntry(peer, handshakeId);
+      if (known !== undefined) {
+        // Redelivery, or a later message of a still-unconfirmed initiator: its own session.
+        candidates = [known];
+        knownHandshake = true;
+      } else if (hasSeen(peer, handshakeId)) {
+        // A handshake this device already processed and has since retired: a replay. It must
+        // never rebuild a live session (a signed-prekey-only handshake can be re-derived
+        // forever), so it is dropped as one.
+        throw new ReplayedMessageError('Initial message repeats a retired handshake.');
+      } else {
+        // Sessions from before the index (or any other held session) get the first look: an
+        // initial envelope that predates the handshake id is most likely their redelivery.
+        candidates = receiveOrder(peer).filter((entry) => entry.role === 'legacy');
       }
     } else {
-      if (storedState === undefined) {
-        // No session yet and nothing to bootstrap from: never guess.
-        return { row: { kind: 'undisplayable', id: envelope.envelopeId }, control: undefined };
-      }
-      state = storedState;
+      candidates = receiveOrder(peer);
       message = { encryptedHeader: envelope.encryptedHeader, ciphertext: envelope.ciphertext };
     }
 
-    let opened: RatchetTransition<OpenedDeviceEnvelope>;
-    try {
-      opened = openDeviceEnvelope(state, {
-        context,
-        recipient: {
-          recipientActorId: this.identity.actorId,
-          recipientDeviceId: this.identity.deviceId,
-        },
-        logicalMessageId: envelope.logicalMessageId,
-        message,
-        commitment: envelope.frankingCommitment,
+    let opened: RatchetTransition<OpenedDeviceEnvelope> | undefined;
+    let openedKey: string | undefined;
+    let sawSession = false;
+    for (const entry of candidates) {
+      const state = await this.localReceiveStep(() => this.vault.getSession(entry.key));
+      if (state === undefined) continue;
+      sawSession = true;
+      opened = open(state, message);
+      if (opened !== undefined) {
+        openedKey = entry.key;
+        break;
+      }
+    }
+
+    // Consumed only on the branch that actually spends a one-time prekey; removed after the
+    // resulting state is durably committed (see below).
+    let consumedOneTimePreKeyId: number | undefined;
+    let freshHandshake: { readonly id: Uint8Array; readonly key: string } | undefined;
+    if (
+      opened === undefined &&
+      !knownHandshake &&
+      initialSetup !== undefined &&
+      handshakeId !== undefined
+    ) {
+      const setup = initialSetup;
+      const initiatorRoster = await this.localReceiveStep(() =>
+        this.mailboxTransport.loadPeerRoster(setup.senderActorId),
+      );
+      // Issue #278: a rotated signed prekey may still be named by an initial message an
+      // initiator sealed just before rotation reached them — `loadStoredEnrollment` (not the
+      // in-memory `this.identity`, which never carries retained material) is the source of
+      // truth for what is still retained.
+      const storedForRetainedKeys = await this.localReceiveStep(() =>
+        loadStoredEnrollment(this.vault, this.nowMs()),
+      );
+      const established = establishResponderSession({
+        identity: this.identity,
+        setup,
+        initiatorRoster,
+        nowMs: this.nowMs(),
+        previousSignedPreKeys: storedForRetainedKeys?.previousSignedPreKeys,
       });
-    } catch (error) {
-      if (error instanceof ReplayedMessageError) throw error;
-      // AEAD or franking failure: the plaintext was discarded inside
-      // `openDeviceEnvelope`. ADR 0025 §4 — neutral placeholder, still acknowledged,
-      // never rendered, never silent. Not committing the advanced state is safe: the
-      // ratchet's skipped-key handling absorbs the consumed position on the next
-      // delivery from this session.
+      // Speculative: nothing is persisted unless the first message authenticates, so a forged
+      // or mismatched initial envelope can never disturb a live session.
+      opened = open(established.state, message);
+      if (opened !== undefined) {
+        consumedOneTimePreKeyId = established.consumedOneTimePreKeyId;
+        freshHandshake = { id: handshakeId, key: sessionKeyFor(baseId, handshakeId) };
+        openedKey = freshHandshake.key;
+      }
+    }
+    if (!initialSetup && !sawSession) {
+      // No session yet and nothing to bootstrap from: never guess.
+      return { row: { kind: 'undisplayable', id: envelope.envelopeId }, control: undefined };
+    }
+    if (opened === undefined || openedKey === undefined) {
+      // ADR 0025 §4 — neutral placeholder, still acknowledged, never rendered, never silent.
+      // No existing session was advanced, so a later delivery from any of them still opens.
       return {
         row: { kind: 'unverifiable', id: envelope.envelopeId, senderLabel },
         control: undefined,
@@ -654,7 +779,42 @@ export class E2eeSessionRuntime {
     }
 
     // Commit the receive-side advance BEFORE acknowledging (ADR 0020 §4).
-    await this.localReceiveStep(() => this.vault.applyUpdate(sessionId, opened.state));
+    const advanced = opened.state;
+    await this.localReceiveStep(() => this.vault.applyUpdate(openedKey, advanced));
+    if (freshHandshake !== undefined) {
+      const fresh = freshHandshake;
+      peer = await this.localReceiveStep(async () => {
+        const wins = incomingWins({
+          primary: peer.entries.find((entry) => entry.key === peer.primaryKey),
+          self: { actorId: this.identity.actorId, deviceId: this.identity.deviceId },
+          peer: { actorId: envelope.senderActorId, deviceId: envelope.senderDeviceId },
+        });
+        const added = addEntry(
+          peer,
+          {
+            handshakeId: fresh.id,
+            role: 'responder',
+            confirmed: true,
+            setupPrefix: new Uint8Array(0),
+            key: fresh.key,
+          },
+          wins,
+        );
+        await this.sessions.put(added.peer, added.evictedKeys);
+        return added.peer;
+      });
+    } else {
+      // The peer answered in an initiator session: it holds the handshake, so the setup block
+      // stops riding on our envelopes.
+      const answered = peer.entries.find((entry) => entry.key === openedKey);
+      if (answered?.role === 'initiator' && !answered.confirmed) {
+        peer = await this.localReceiveStep(async () => {
+          const confirmed: PeerSessions = confirmEntry(peer, openedKey);
+          await this.sessions.put(confirmed);
+          return confirmed;
+        });
+      }
+    }
 
     // ADR 0020 §5: the one-time private key answers exactly one handshake. Removed only now,
     // strictly after the session commit above — a crash before that commit leaves the prekey in

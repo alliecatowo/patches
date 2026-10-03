@@ -55,7 +55,12 @@ import {
   type FanoutPlan,
   type SendEnvelopesRequestLike,
 } from './runtime.js';
-import { establishInitiatorSession, withInitialFraming } from './session-setup.js';
+import { loadSessionIndex } from './session-index.js';
+import {
+  establishInitiatorSession,
+  isInitialEnvelopeHeader,
+  withInitialFraming,
+} from './session-setup.js';
 import {
   createFakeE2eeNode,
   fakeMessagingMailboxTransport,
@@ -332,6 +337,13 @@ function sealInitialEnvelope(params: {
   };
 }
 
+/** The vault key of the session that currently sends for one device pair (session-index.ts). */
+async function primaryKeyFor(vault: RatchetSessionVault, baseId: string): Promise<string> {
+  const key = (await loadSessionIndex(vault)).get(baseId)?.primaryKey;
+  if (key === undefined || key === '') throw new Error('test setup: no primary session indexed');
+  return key;
+}
+
 function flipByte(bytes: Uint8Array): Uint8Array {
   const out = bytes.slice();
   out[0] = (out[0] ?? 0) ^ 0x01;
@@ -343,7 +355,7 @@ function flipByte(bytes: Uint8Array): Uint8Array {
 // ---------------------------------------------------------------------------
 
 describe('E2eeSessionRuntime.send — staged-commit recovery on transport failure', () => {
-  it('deletes a freshly created session when the send fails, so a retry re-establishes instead of wedging', async () => {
+  it('keeps a freshly created session when the send fails and resends its setup block under the same handshake', async () => {
     const self = buildIdentity('alice', 'dev-a');
     const peer = buildIdentity('bob', 'dev-b');
     const vault = await openVault();
@@ -361,21 +373,28 @@ describe('E2eeSessionRuntime.send — staged-commit recovery on transport failur
       mailboxTransport: deadMailboxTransport(),
       nowMs: () => NOW,
     });
-    const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
+    const baseId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
 
     await expect(runtime.send(CONVERSATION_ID, 'hello', 'req-1')).rejects.toThrow('network down');
 
-    // No half-established session survives: the X3DH envelope never reached the peer,
-    // so nothing could ever authenticate against this chain.
-    expect(await vault.getSession(sessionId)).toBeUndefined();
+    // An ambiguous failure (the node may have stored the message and lost the response) must
+    // not delete the session: a fresh X3DH next time would be a second, conflicting handshake.
+    const key = await primaryKeyFor(vault, baseId);
+    expect(await vault.getSession(key)).toBeDefined();
+    const entry = (await loadSessionIndex(vault)).get(baseId)?.entries[0];
+    expect(entry?.role).toBe('initiator');
+    expect(entry?.confirmed).toBe(false);
     expect(state.claims).toBe(1);
 
     opts.sendThrows = undefined;
     await runtime.send(CONVERSATION_ID, 'hello again', 'req-2');
 
-    // Recovery re-claims prekeys and establishes fresh — never resumes the deleted one.
-    expect(state.claims).toBe(2);
-    expect(await vault.getSession(sessionId)).toBeDefined();
+    // Same handshake, no new claim; the setup block is still attached because the peer has
+    // not answered yet.
+    expect(state.claims).toBe(1);
+    expect(await primaryKeyFor(vault, baseId)).toBe(key);
+    const header = state.sent[0]?.message.deviceEnvelopes[0]?.encryptedHeader;
+    expect(header !== undefined && isInitialEnvelopeHeader(header)).toBe(true);
     vault.close();
   });
 
@@ -397,9 +416,10 @@ describe('E2eeSessionRuntime.send — staged-commit recovery on transport failur
       mailboxTransport: deadMailboxTransport(),
       nowMs: () => NOW,
     });
-    const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
+    const baseId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
 
     await runtime.send(CONVERSATION_ID, 'first', 'req-1');
+    const sessionId = await primaryKeyFor(vault, baseId);
     const established = await vault.getSession(sessionId);
     if (established === undefined) throw new Error('test setup: session was not established');
 
@@ -533,8 +553,8 @@ describe('E2eeSessionRuntime.pollMailbox', () => {
     ]);
     expect(mailbox.state.acked).toEqual(['env-1']);
     // The responder session is durably committed, ready for the next inbound message.
-    const sessionId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
-    expect(await vault.getSession(sessionId)).toBeDefined();
+    const baseId = sessionIdFor(CONVERSATION_ID, peer.actorId, peer.deviceId);
+    expect(await vault.getSession(await primaryKeyFor(vault, baseId))).toBeDefined();
     vault.close();
   });
 
@@ -1044,7 +1064,8 @@ describe('E2eeSessionRuntime — one-time prekey consumption on responder establ
     const polled = await runtimeB.pollMailbox({ conversationId: conv });
     expect(polled.error).toBeUndefined();
 
-    const sessionId = sessionIdFor(conv, alice, storedA.identity.deviceId);
+    const baseId = sessionIdFor(conv, alice, storedA.identity.deviceId);
+    const sessionId = await primaryKeyFor(spiedVaultB, baseId);
     const applyIndex = order.indexOf(`applyUpdate:${sessionId}`);
     const enrollmentIndex = order.indexOf(`putOpaqueRecord:${ENROLLMENT_RECORD_KEY}`);
     expect(applyIndex).toBeGreaterThanOrEqual(0);

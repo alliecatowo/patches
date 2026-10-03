@@ -19,6 +19,7 @@ import {
   discardExpiredIdentityKeepingHistory,
   renewDeviceIdentity,
 } from './renewal.js';
+import { SESSION_INDEX_KEY } from './session-index.js';
 import { createFakeE2eeNode, fakeTransport, memoryVault } from './test-support.js';
 
 const T0 = Date.UTC(2026, 0, 1);
@@ -78,6 +79,7 @@ describe('device certificate expiry and renewal (P2-C1)', () => {
     // History survives; the ratchet bound to the old device id does not; no pending record.
     expect(vault.records.get(HISTORY_KEY)).toEqual(new Uint8Array([1, 2, 3]));
     expect(vault.records.has(SESSION_KEY)).toBe(false);
+    expect(vault.records.has(SESSION_INDEX_KEY)).toBe(false);
     expect(vault.records.has(RENEWAL_RECORD_KEY)).toBe(false);
 
     // The node's roster: old device inactive, new device active, sequence advanced by two.

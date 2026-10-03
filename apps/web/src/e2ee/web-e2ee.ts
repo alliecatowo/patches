@@ -97,6 +97,7 @@ export const WEB_E2EE_COPY = {
   renewFailed: 'Renewing this device did not complete. Nothing was changed.',
   enrollFailed: 'Enrolling this browser did not complete. Nothing was half-registered.',
   sendFailed: 'The message could not be delivered.',
+  resetFailed: 'The secure session could not be reset.',
   pollFailed: 'Could not fetch new encrypted messages.',
   createFailed: 'The conversation could not be started.',
   peerWarning: ENROLLMENT_PEER_WARNING_COPY,
@@ -533,6 +534,19 @@ class WebE2eeManager {
     const record = { clientMessageId, body, sentAtMs, deliveryState: 'sent' } as const;
     await recordOwnMessage(vault, conversationId, record);
     return ownMessageRow(record);
+  }
+
+  /**
+   * "Reset secure session" (audit P2-H1): drops this device's sessions for the conversation
+   * so the next send runs a fresh handshake that the peer adopts. History is untouched.
+   */
+  async resetSecureSession(conversationId: string): Promise<number> {
+    const runtime = this.requireRuntime();
+    try {
+      return await runtime.resetSessions(conversationId);
+    } catch {
+      throw new WebE2eeUnavailableError(WEB_E2EE_COPY.resetFailed);
+    }
   }
 
   /**
