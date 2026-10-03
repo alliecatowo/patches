@@ -66,6 +66,15 @@ export interface InstallOptions {
   spawnFn?: typeof spawn;
 }
 
+const TRUSTED_ASSET_URL =
+  /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/releases\/download\/[^\s]+\.tgz$/u;
+
+/** Release assets only ever come from GitHub over https; anything else (a git/remote spec, a
+ * leading `-` that npm would parse as an option, a poisoned cache entry) is refused. */
+export function isTrustedAssetUrl(url: string): boolean {
+  return TRUSTED_ASSET_URL.test(url);
+}
+
 /** Upgrades the running install in place. Never shells out through a string — always an
  * argv array — so `upgrade.assetUrl` (attacker-controlled in principle, since it comes from a
  * GitHub API response) can't be interpreted as shell syntax. */
@@ -77,6 +86,14 @@ export async function installUpgrade(
   const env = options.env ?? process.env;
   const spawnFn = options.spawnFn ?? spawn;
   const onOutput = options.onOutput ?? ((): void => {});
+
+  if (!isTrustedAssetUrl(upgrade.assetUrl)) {
+    return {
+      ok: false,
+      message: 'Refusing to install: the release asset URL is not a github.com release download.',
+      manualCommand: 'See docs/operations/try-it.md for manual install instructions.',
+    };
+  }
 
   const method = detectInstallMethod(argv1, env, options.exists);
 
