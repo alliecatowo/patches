@@ -1,7 +1,7 @@
 ---
 layout: page
 title: Patches
-pageClass: pt-home-page
+pageClass: pt-page
 ---
 
 <h1><span class="pt-prompt">$</span> patches</h1>
