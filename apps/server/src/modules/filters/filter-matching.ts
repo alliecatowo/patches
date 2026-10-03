@@ -94,6 +94,7 @@ const ACTION_RANK: Readonly<Record<DbFilterAction, number>> = Object.freeze({
   COLLAPSE: 2,
   HIDE: 3,
 });
+const MAX_ACTION_RANK = 3;
 
 /**
  * Loads the viewer's effective, scope-filtered rule set: their own active (non-expired)
@@ -338,6 +339,8 @@ export function evaluateCandidate(
 ): FilterMatch | null {
   let best: FilterMatch | null = null;
   for (const rule of rules) {
+    // Cannot be outranked: stop scanning once the strongest action has matched.
+    if (best !== null && ACTION_RANK[best.action] >= MAX_ACTION_RANK) break;
     if (!matchesRule(rule, candidate)) continue;
     if (best === null || ACTION_RANK[rule.action] > ACTION_RANK[best.action]) {
       best = {
@@ -382,6 +385,42 @@ export function hideTagNames(rules: readonly EffectiveFilterRule[]): string[] {
   ];
 }
 
+/** Per-candidate derived values, computed at most once per candidate no matter how many rules
+ * are evaluated against it (audit S-H4: the folded text used to be recomputed per rule per
+ * post, O(rules x posts x text) NFKC work on the event loop). */
+interface CandidateDerived {
+  foldedText?: string;
+  domains?: ReadonlySet<string>;
+  tags?: ReadonlySet<string>;
+}
+const derivedByCandidate = new WeakMap<FilterMatchCandidate, CandidateDerived>();
+/** Per-rule folded needle / normalized value, computed once per rule object. */
+const normalizedByRule = new WeakMap<EffectiveFilterRule, string>();
+
+function derivedOf(candidate: FilterMatchCandidate): CandidateDerived {
+  let derived = derivedByCandidate.get(candidate);
+  if (derived === undefined) {
+    derived = {};
+    derivedByCandidate.set(candidate, derived);
+  }
+  return derived;
+}
+
+function foldedTextOf(candidate: FilterMatchCandidate): string {
+  const derived = derivedOf(candidate);
+  derived.foldedText ??= foldMatchText(candidateText(candidate));
+  return derived.foldedText;
+}
+
+function ruleValue(rule: EffectiveFilterRule, normalize: (value: string) => string): string {
+  let value = normalizedByRule.get(rule);
+  if (value === undefined) {
+    value = normalize(rule.value);
+    normalizedByRule.set(rule, value);
+  }
+  return value;
+}
+
 function matchesRule(rule: EffectiveFilterRule, candidate: FilterMatchCandidate): boolean {
   switch (rule.kind) {
     case 'ACTOR':
@@ -390,14 +429,22 @@ function matchesRule(rule: EffectiveFilterRule, candidate: FilterMatchCandidate)
         candidate.quotedAuthorActorId === rule.value ||
         candidate.reposterActorIds.includes(rule.value)
       );
-    case 'TAG':
-      return candidate.tagNames.includes(normalizeTagValue(rule.value));
-    case 'DOMAIN':
-      return candidateDomains(candidate).includes(normalizeDomainValue(rule.value));
-    case 'SUBSTRING':
-      return matchesSubstring(candidateText(candidate), rule.value);
+    case 'TAG': {
+      const derived = derivedOf(candidate);
+      derived.tags ??= new Set(candidate.tagNames);
+      return derived.tags.has(ruleValue(rule, normalizeTagValue));
+    }
+    case 'DOMAIN': {
+      const derived = derivedOf(candidate);
+      derived.domains ??= new Set(candidateDomains(candidate));
+      return derived.domains.has(ruleValue(rule, normalizeDomainValue));
+    }
+    case 'SUBSTRING': {
+      const needle = ruleValue(rule, foldMatchText);
+      return needle.length > 0 && foldedTextOf(candidate).includes(needle);
+    }
     case 'WORD':
-      return matchesWord(candidateText(candidate), rule.value);
+      return matchesFoldedWord(foldedTextOf(candidate), ruleValue(rule, foldMatchText));
   }
 }
 
@@ -416,19 +463,11 @@ function foldMatchText(value: string): string {
   return value.normalize('NFKC').toLowerCase();
 }
 
-function matchesSubstring(haystackRaw: string, needleRaw: string): boolean {
-  const needle = foldMatchText(needleRaw);
-  if (needle.length === 0) return false;
-  return foldMatchText(haystackRaw).includes(needle);
-}
-
 /** `word` bounds a term only at edges that are themselves word characters (spec §198.2): a
  * term beginning or ending in punctuation still matches (`:(`, `#1`) rather than being
- * unmatchable, which naive `\b` wrapping would produce. */
-function matchesWord(haystackRaw: string, needleRaw: string): boolean {
-  const needle = foldMatchText(needleRaw);
+ * unmatchable, which naive `\b` wrapping would produce. Both arguments are already folded. */
+function matchesFoldedWord(haystack: string, needle: string): boolean {
   if (needle.length === 0) return false;
-  const haystack = foldMatchText(haystackRaw);
   const needsLeftBoundary = isWordChar(needle[0]);
   const needsRightBoundary = isWordChar(needle[needle.length - 1]);
 
