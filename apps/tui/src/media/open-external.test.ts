@@ -9,7 +9,7 @@ import type { GetMediaDownloadResponse, MediaAttachment } from '../api/wire/type
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PatchesApi } from '../api/client.js';
-import { hasUnsafeLeadingDash, openMediaExternally } from './open-external.js';
+import { hasUnsafeLeadingDash, openMediaExternally, openerCommand } from './open-external.js';
 import { MediaCache } from './cache.js';
 import { makeMediaAttachment } from '../test/wire-fixtures.js';
 
@@ -130,5 +130,19 @@ describe('hasUnsafeLeadingDash', () => {
   it('accepts an ordinary absolute path or URL', () => {
     expect(hasUnsafeLeadingDash('/home/user/.cache/patches/media/media-1.display.png')).toBe(false);
     expect(hasUnsafeLeadingDash('https://example.test/page')).toBe(false);
+  });
+});
+
+describe('openerCommand', () => {
+  it('never routes Windows targets through cmd (shell metacharacters in URLs)', () => {
+    const url = 'https://example.com/?a=1&calc.exe';
+    const [command, args] = openerCommand('win32', url);
+    expect(command).toBe('rundll32');
+    expect(args).toEqual(['url.dll,FileProtocolHandler', url]);
+  });
+
+  it('keeps the POSIX openers', () => {
+    expect(openerCommand('darwin', 'x')).toEqual(['open', ['x']]);
+    expect(openerCommand('linux', 'x')).toEqual(['xdg-open', ['x']]);
   });
 });
