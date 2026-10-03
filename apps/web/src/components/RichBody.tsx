@@ -1,5 +1,5 @@
 import { parseMarkup, type BlockNode, type InlineNode } from '@patches/markup';
-import type { JSX } from 'react';
+import { memo, useMemo, type JSX } from 'react';
 import { Link } from 'react-router-dom';
 
 export interface RichBodyProps {
@@ -13,11 +13,16 @@ export interface RichBodyProps {
  * body can never render one way in the TUI and another way here. Sanitisation happens
  * once inside `parseMarkup`; this component only ever maps trusted AST nodes to React
  * elements — never `dangerouslySetInnerHTML`, so there is no HTML-injection surface.
+ *
+ * Wrapped in `memo` and `useMemo` so AST parsing (`parseMarkup`) and React element creation
+ * are skipped when `source` is unchanged across parent re-renders (e.g., timeline interactions,
+ * like/repost toggles, or focus changes). Expected performance impact: eliminates 100% of redundant
+ * markdown parsing on unchanged posts during timeline interactions.
  */
-export function RichBody({ source }: RichBodyProps): JSX.Element {
-  const blocks = parseMarkup(source);
+export const RichBody = memo(function RichBody({ source }: RichBodyProps): JSX.Element {
+  const blocks = useMemo(() => parseMarkup(source), [source]);
   return <>{blocks.map((block, index) => renderBlock(block, index))}</>;
-}
+});
 
 function renderBlock(block: BlockNode, key: number): JSX.Element {
   switch (block.kind) {
