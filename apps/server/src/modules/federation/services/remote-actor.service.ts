@@ -4,6 +4,7 @@ import type { EntityManager } from 'typeorm';
 
 import { AppConfigService } from '../../../config/app-config.service.js';
 import { parseBoundedJson } from '../security/bounded-json.js';
+import { isIdBoundToFetch } from '../security/origin-binding.js';
 import { defaultSafeFetchPolicy, safeFetch } from '../security/safe-fetch.js';
 import { ACTIVITY_JSON_CONTENT_TYPE, JRD_JSON_CONTENT_TYPE } from '../federation.constants.js';
 
@@ -89,6 +90,12 @@ export class RemoteActorService {
     const parsed = parseBoundedJson(response.body.toString('utf8')) as Partial<RemoteActorDocument>;
     if (parsed.id === undefined || parsed.inbox === undefined) {
       throw new RemoteFetchError(`Actor document at "${actorUri}" is missing id/inbox.`);
+    }
+    // S-C1: never store an actor (or its key) under an identity the fetched server does not own.
+    if (!isIdBoundToFetch(parsed.id, actorUri, response.finalUrl)) {
+      throw new RemoteFetchError(
+        `Actor document at "${actorUri}" declares a mismatched or cross-origin id.`,
+      );
     }
     return parsed as RemoteActorDocument;
   }

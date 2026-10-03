@@ -590,6 +590,19 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
     return saved as Record<string, unknown>;
   }
 
+  it('drops a Create whose Note id or author belongs to another origin (S-C1)', async () => {
+    for (const noteProps of [
+      { id: 'https://victim.example/notes/forged' },
+      { attributedTo: 'https://victim.example/users/alice' },
+    ]) {
+      const testKit = kit({});
+      await expect(
+        testKit.inbox.handle(buildContext(createNote(noteProps), testKit.signer)),
+      ).resolves.toEqual({ accepted: true, duplicate: false });
+      expect(testKit.postSaves).toHaveLength(0);
+    }
+  });
+
   it('records an endorsed quote for each of the four inbound quote property spellings', async () => {
     const variants: Record<string, unknown>[] = [
       { quote: QUOTED_URI },
