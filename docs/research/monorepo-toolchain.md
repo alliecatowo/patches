@@ -406,18 +406,18 @@ with pnpm already on `PATH`:
   with: { node-version: 24, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
 ```
 
-New, simpler for pnpm 11+: **`pnpm/setup@v2`** is the successor to
+New, simpler for pnpm 11+: **`pnpm/setup@v3`** is the successor to
 `pnpm/action-setup` — installs pnpm's self-contained binary (no Node needed to
 bootstrap) _and_ a JS runtime in one step, replacing `actions/setup-node`
 entirely:
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: pnpm/setup@v2
+- uses: pnpm/setup@v3
   with: { runtime: node@24, cache: true, install: true }
 ```
 
-`pnpm/action-setup` is still correct only for pnpm ≤10; use `pnpm/setup@v2`
+`pnpm/action-setup` is still correct only for pnpm ≤10; use `pnpm/setup@v3`
 for this repo's pnpm 11 pin.
 
 **mise:**

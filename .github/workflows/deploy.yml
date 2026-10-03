@@ -71,7 +71,7 @@ permissions:
   contents: read
 
 concurrency:
-  # One fixed group (not per-sha, unlike web.yml) — a production deploy must never
+  # One fixed group (not per-sha) — a production deploy must never
   # race a second one; overlapping triggers queue in order instead of running in
   # parallel. Never cancel a deploy that's already in flight (`flyctl deploy` mid-run
   # is not something to interrupt).

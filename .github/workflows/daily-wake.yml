@@ -1,0 +1,36 @@
+# Daily wake for the scale-to-zero production machine. The embedded worker runs the
+# retention sweeps and the 30-day purge, but only while the machine is awake; with
+# min_machines_running = 0 a quiet day would skip them entirely. This pings /healthz
+# (which starts the machine) and keeps it warm for a few minutes so the worker loop runs.
+
+name: Daily wake
+
+on:
+  schedule:
+    - cron: '43 4 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: daily-wake
+  cancel-in-progress: false
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wake production and keep it warm
+        run: |
+          url="https://patches-social.fly.dev/healthz"
+          ok=0
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$url" || true)
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            echo "attempt $i: got $code, retrying in 10s..."
+            sleep 10
+          done
+          if [ "$ok" != 1 ]; then echo "healthz never returned 200" >&2; exit 1; fi
+          echo "awake; holding for 4 minutes so the worker sweeps run"
+          for i in $(seq 1 4); do sleep 60; curl -s -o /dev/null --max-time 30 "$url" || true; done
