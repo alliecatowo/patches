@@ -23,13 +23,18 @@ let nextFileId = 0;
  * preview always match the file that will actually be posted.
  */
 export function MediaUploadPreview(props: MediaUploadPreviewProps): JSX.Element | null {
-  let id = fileIds.get(props.file);
+  return <MediaUploadPreviewInner key={fileKey(props.file)} {...props} />;
+}
+
+/** Stable per-`File` identity (a WeakMap, so it never keeps a picked file alive). */
+function fileKey(file: File): number {
+  let id = fileIds.get(file);
   if (id === undefined) {
     nextFileId += 1;
     id = nextFileId;
-    fileIds.set(props.file, id);
+    fileIds.set(file, id);
   }
-  return <MediaUploadPreviewInner key={id} {...props} />;
+  return id;
 }
 
 function MediaUploadPreviewInner({
