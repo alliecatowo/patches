@@ -311,6 +311,8 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
               className={styles['moreMenuButton']}
               onClick={() => setMoreMenuOpen((v) => !v)}
               aria-label="More options"
+              aria-haspopup="menu"
+              aria-expanded={moreMenuOpen}
             >
               <MoreHorizontalIcon size={16} />
             </button>

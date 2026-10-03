@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState, type JSX } from 'react';
 
 import { api } from '../../api/client.js';
+import { Button } from '../../components/ui/index.js';
 import { humanizeEnumValue } from '../../lib/enumLabels.js';
 import styles from '../AuthForm.module.css';
 
@@ -116,13 +117,16 @@ export function FiltersSettingsRoute(): JSX.Element {
               <strong>{filter.name || '(unnamed)'}</strong> —{' '}
               {humanizeEnumValue(filter.action, FilterAction)} on{' '}
               {filter.terms.map((t) => t.value).join(', ')}
-              <button
-                type="button"
+              <Button
+                variant="danger"
+                size="sm"
                 style={{ marginLeft: '0.75rem' }}
+                loading={deleteMutation.isPending && deleteMutation.variables === filter.id}
                 onClick={() => deleteMutation.mutate(filter.id)}
+                aria-label={`Delete filter ${filter.name || '(unnamed)'}`}
               >
                 Delete
-              </button>
+              </Button>
             </li>
           ))}
         </ul>

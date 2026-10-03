@@ -1,7 +1,7 @@
 import { GUESTBOOK_ENTRY_MAX_CHARS } from '@patches/domain';
 import { ReportReason } from '@patches/proto/es';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, type JSX } from 'react';
+import { useId, useState, type JSX } from 'react';
 
 import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
@@ -34,6 +34,7 @@ export function GuestbookSignForm({
   const session = useSession();
   const onError = useErrorToast();
   const queryClient = useQueryClient();
+  const charCountId = useId();
   const [body, setBody] = useState('');
 
   const sign = useMutation({
@@ -47,6 +48,8 @@ export function GuestbookSignForm({
 
   if (session === null) return null;
 
+  const remainingChars = GUESTBOOK_ENTRY_MAX_CHARS - body.length;
+
   return (
     <form
       aria-label="Sign the guestbook"
@@ -56,21 +59,27 @@ export function GuestbookSignForm({
         if (body.trim() !== '') sign.mutate();
       }}
     >
-      <textarea
-        aria-label="Guestbook entry"
-        className={styles['signInput']}
-        value={body}
-        maxLength={GUESTBOOK_ENTRY_MAX_CHARS}
-        placeholder="Leave a note on this page…"
-        rows={2}
-        onChange={(event) => setBody(event.target.value)}
-      />
+      <div className={styles['inputWrap']}>
+        <textarea
+          aria-label="Guestbook entry"
+          aria-describedby={charCountId}
+          className={styles['signInput']}
+          value={body}
+          maxLength={GUESTBOOK_ENTRY_MAX_CHARS}
+          placeholder="Leave a note on this page…"
+          rows={2}
+          onChange={(event) => setBody(event.target.value)}
+        />
+        <div id={charCountId} className={styles['charCounter']} aria-live="polite">
+          {remainingChars}
+        </div>
+      </div>
       <button
         type="submit"
         className={styles['signButton']}
         disabled={sign.isPending || body.trim() === ''}
       >
-        Sign
+        {sign.isPending ? 'Signing…' : 'Sign'}
       </button>
     </form>
   );

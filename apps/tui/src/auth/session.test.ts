@@ -411,5 +411,52 @@ describe('SessionManager.restore with an unreadable store', () => {
     store.get = () => Promise.reject(new SyntaxError('Unexpected end of JSON input'));
     const manager = new SessionManager({ api: fakeApi(), store, nodeOrigin: NODE });
     await expect(manager.restore()).resolves.toBeUndefined();
+||||||| 9706ac36
+describe('SessionManager refresh single-flight', () => {
+  it('shares one refresh call between concurrent ensureAccessToken callers', async () => {
+    const store = new MemoryCredentialStore();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const refreshSession = vi.fn().mockImplementation(async () => {
+      await gate;
+      return { session: session({ accessToken: 'access-2', refreshToken: 'refresh-2' }) };
+    });
+    const api = fakeApi({ refreshSession });
+    const manager = new SessionManager({
+      api,
+      store,
+      nodeOrigin: NODE,
+      refreshSkewMs: 60 * 60 * 1000,
+    });
+    await manager.loginWithPassword('alice', 'hunter2');
+
+    const calls = [
+      manager.ensureAccessToken(),
+      manager.ensureAccessToken(),
+      manager.ensureAccessToken(),
+    ];
+    release();
+    const tokens = await Promise.all(calls);
+
+    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(tokens).toEqual(['access-2', 'access-2', 'access-2']);
+    expect((await store.get(NODE, 'user-1'))?.refreshToken).toBe('refresh-2');
+  });
+
+  it('allows a later refresh after the first settles', async () => {
+    const store = new MemoryCredentialStore();
+    const refreshSession = vi.fn().mockResolvedValue({ session: session() });
+    const manager = new SessionManager({
+      api: fakeApi({ refreshSession }),
+      store,
+      nodeOrigin: NODE,
+      refreshSkewMs: 60 * 60 * 1000,
+    });
+    await manager.loginWithPassword('alice', 'hunter2');
+    await manager.ensureAccessToken();
+    await manager.ensureAccessToken();
+    expect(refreshSession).toHaveBeenCalledTimes(2);
   });
 });

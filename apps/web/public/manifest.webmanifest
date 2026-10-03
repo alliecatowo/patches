@@ -6,8 +6,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#160f24",
-  "theme_color": "#160f24",
+  "background_color": "#282a36",
+  "theme_color": "#282a36",
   "categories": ["social", "news"],
   "icons": [
     {

@@ -56,10 +56,10 @@ describe('theme library', () => {
     document.head.appendChild(meta);
 
     setThemePreference('patches');
-    expect(meta.getAttribute('content')).toBe('#160f24');
+    expect(meta.getAttribute('content')).toBe('#282a36');
 
     setThemePreference('light');
-    expect(meta.getAttribute('content')).toBe('#ffffff');
+    expect(meta.getAttribute('content')).toBe('#eff1f5');
 
     setThemePreference('hacker');
     expect(meta.getAttribute('content')).toBe('#001400');

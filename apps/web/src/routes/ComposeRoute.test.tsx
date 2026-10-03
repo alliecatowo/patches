@@ -106,12 +106,24 @@ describe('ComposeRoute', () => {
     expect(textarea).toHaveValue('****');
   });
 
-  it('toggles content warning input field', () => {
+  it('toggles content warning input field and updates aria-pressed', () => {
     renderCompose();
-    const cwBtn = screen.getByTitle('Toggle content warning');
+    const cwBtn = screen.getByRole('button', { name: 'Toggle content warning' });
+    expect(cwBtn).toHaveAttribute('aria-pressed', 'false');
 
     fireEvent.click(cwBtn);
     expect(screen.getByPlaceholderText('Content warning description…')).toBeInTheDocument();
+    expect(cwBtn).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('provides accessible ARIA labels for all toolbar format buttons', () => {
+    renderCompose();
+    expect(screen.getByRole('button', { name: 'Bold' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Italic' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Code' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quote' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Tag' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Mention' })).toBeInTheDocument();
   });
 
   it('shows @-mention suggestions only after an explicit @ prefix and inserts the handle on select (§219)', async () => {

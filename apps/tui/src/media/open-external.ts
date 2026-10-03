@@ -48,7 +48,9 @@ export function realSpawn(command: string, args: readonly string[]): void {
  * target is a cached local file or a `http(s)` URL. */
 export function openerCommand(platform: NodeJS.Platform, path: string): [string, string[]] {
   if (platform === 'darwin') return ['open', [path]];
-  if (platform === 'win32') return ['cmd', ['/c', 'start', '', path]];
+  // Not `cmd /c start`: cmd re-parses `&`, `|`, `^` and `%VAR%` in a URL as shell syntax
+  // (`https://x/?a=1&calc.exe` would run calc.exe). rundll32 takes the target as one argument.
+  if (platform === 'win32') return ['rundll32', ['url.dll,FileProtocolHandler', path]];
   return ['xdg-open', [path]];
 }
 

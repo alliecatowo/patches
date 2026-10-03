@@ -1,7 +1,13 @@
 import { Code, ConnectError } from '@connectrpc/connect';
 import { describe, expect, it } from 'vitest';
 
-import { describeError, isPrivacyAckRequired, isSignInRequired } from './errors.js';
+import {
+  describeError,
+  isDefinitiveAuthFailure,
+  isPrivacyAckRequired,
+  isSignInRequired,
+  isTransientError,
+} from './errors.js';
 
 const TARGET = 'patches-social.fly.dev';
 
@@ -296,5 +302,23 @@ describe('describeError', () => {
       target: TARGET,
     });
     expect(untouched.hint).toBe('The server may be overloaded. Try again in a moment.');
+  });
+});
+
+describe('isDefinitiveAuthFailure / isTransientError', () => {
+  it('classifies auth rejections as definitive and not transient', () => {
+    for (const code of [Code.Unauthenticated, Code.PermissionDenied]) {
+      expect(isDefinitiveAuthFailure(new ConnectError('x', code))).toBe(true);
+      expect(isTransientError(new ConnectError('x', code))).toBe(false);
+    }
+  });
+
+  it('classifies cold-start failures as transient and not definitive', () => {
+    for (const code of [Code.Unavailable, Code.DeadlineExceeded]) {
+      expect(isTransientError(new ConnectError('x', code))).toBe(true);
+      expect(isDefinitiveAuthFailure(new ConnectError('x', code))).toBe(false);
+    }
+    expect(isTransientError(new TypeError('Failed to fetch'))).toBe(true);
+    expect(isTransientError(new ConnectError('x', Code.NotFound))).toBe(false);
   });
 });

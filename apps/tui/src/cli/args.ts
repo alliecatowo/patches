@@ -50,6 +50,20 @@ const SUBCOMMANDS: readonly Command[] = [
   'e2ee',
 ];
 
+const COMMAND_TOKENS: ReadonlySet<string> = new Set([
+  ...SUBCOMMANDS,
+  'upgrade',
+  'ping',
+  '--once',
+  'visit',
+  '--version',
+  '-v',
+]);
+
+function isCommandToken(argument: string): boolean {
+  return COMMAND_TOKENS.has(argument);
+}
+
 export interface ParsedArgs {
   command: Command;
   target: string;
@@ -120,6 +134,17 @@ export function parseArgs(argv: readonly string[], env: ParseEnvironment = {}): 
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
+    // Once a subcommand word has been seen, its arguments are its own: a value that happens
+    // to equal a command keyword (`tag search login`, `dm send bob ping`, `keys add -v`)
+    // must reach the subcommand verbatim instead of re-dispatching the whole invocation.
+    if (
+      argument !== undefined &&
+      SUBCOMMANDS.includes(result.command) &&
+      isCommandToken(argument)
+    ) {
+      result.rest.push(argument);
+      continue;
+    }
     switch (argument) {
       case '--version':
       case '-v':

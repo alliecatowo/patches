@@ -92,6 +92,13 @@ function okResponse(body: unknown, contentType = 'application/activity+json'): S
   };
 }
 
+/** Serves an object whose `id` is the requested URL, as an honest server would. */
+function mockEchoObject(): void {
+  safeFetchMock.mockImplementation((url: string) =>
+    Promise.resolve({ ...okResponse({ id: url, type: 'Note' }), finalUrl: url }),
+  );
+}
+
 describe('RemoteObjectService', () => {
   let service: RemoteObjectService;
   const peerRateLimiter = new PeerRateLimiterService();
@@ -103,7 +110,7 @@ describe('RemoteObjectService', () => {
 
   describe('fetchObject - policy passthrough', () => {
     it('passes the production policy to safeFetch (no http, no private networks)', async () => {
-      safeFetchMock.mockResolvedValue(okResponse({ id: 'https://r/o', type: 'Note' }));
+      mockEchoObject();
       await service.fetchObject('https://remote.example/object');
       expect(safeFetchMock).toHaveBeenCalledWith(
         'https://remote.example/object',
@@ -120,7 +127,7 @@ describe('RemoteObjectService', () => {
         makeConfig({ isProduction: false }),
         peerRateLimiter,
       );
-      safeFetchMock.mockResolvedValue(okResponse({ id: 'https://r/o', type: 'Note' }));
+      mockEchoObject();
       await labService.fetchObject('https://remote.example/object');
       expect(safeFetchMock).toHaveBeenCalledWith(
         'https://remote.example/object',
@@ -131,11 +138,38 @@ describe('RemoteObjectService', () => {
 
   describe('fetchObject - valid fetch', () => {
     it('returns the parsed ActivityPub object', async () => {
-      safeFetchMock.mockResolvedValue(okResponse({ id: 'https://r/o', type: 'Note' }));
+      mockEchoObject();
       await expect(service.fetchObject('https://remote.example/object')).resolves.toEqual({
-        id: 'https://r/o',
+        id: 'https://remote.example/object',
         type: 'Note',
       });
+    });
+
+    it('rejects an object whose id names a different URL than the one fetched (S-C1)', async () => {
+      safeFetchMock.mockResolvedValue(
+        okResponse({ id: 'https://victim.example/notes/1', type: 'Note' }),
+      );
+      await expect(service.fetchObject('https://evil.example/object')).rejects.toThrow(
+        'Object id does not match the fetched URL',
+      );
+    });
+
+    it('accepts an id equal to the redirect target when same-origin with it', async () => {
+      safeFetchMock.mockResolvedValue({
+        ...okResponse({ id: 'https://remote.example/canonical', type: 'Note' }),
+        finalUrl: 'https://remote.example/canonical',
+      });
+      await expect(service.fetchObject('https://remote.example/alias')).resolves.toBeDefined();
+    });
+
+    it('rejects an id that matches the request but was served from another origin', async () => {
+      safeFetchMock.mockResolvedValue({
+        ...okResponse({ id: 'https://remote.example/alias', type: 'Note' }),
+        finalUrl: 'https://evil.example/alias',
+      });
+      await expect(service.fetchObject('https://remote.example/alias')).rejects.toThrow(
+        RemoteObjectFetchError,
+      );
     });
 
     it('rejects a non-ActivityPub Content-Type', async () => {
@@ -237,7 +271,7 @@ describe('RemoteObjectService', () => {
 
   describe('fetchObject - positive cache', () => {
     it('serves a repeat fetch from cache without calling safeFetch again', async () => {
-      safeFetchMock.mockResolvedValue(okResponse({ id: 'https://r/o', type: 'Note' }));
+      mockEchoObject();
       await service.fetchObject('https://remote.example/object');
       await service.fetchObject('https://remote.example/object');
       expect(safeFetchMock).toHaveBeenCalledTimes(1);
@@ -246,7 +280,7 @@ describe('RemoteObjectService', () => {
 
   describe('fetchObject - origin budget', () => {
     it('exhausts after the per-window limit', async () => {
-      safeFetchMock.mockResolvedValue(okResponse({ id: 'https://r/o', type: 'Note' }));
+      mockEchoObject();
       const origin = 'https://budget.example';
       for (let i = 0; i < 30; i++) {
         await service.fetchObject(`${origin}/object-${String(i)}`);
@@ -258,7 +292,7 @@ describe('RemoteObjectService', () => {
     });
 
     it('separates budgets by origin', async () => {
-      safeFetchMock.mockResolvedValue(okResponse({ id: 'https://r/o', type: 'Note' }));
+      mockEchoObject();
       for (let i = 0; i < 30; i++) {
         await service.fetchObject(`https://origin-a.example/object-${String(i)}`);
       }

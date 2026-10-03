@@ -1,6 +1,8 @@
 import type { Actor, Session } from '@patches/proto/es';
 
-import { api, sessionManager } from './client.js';
+import { isDefinitiveAuthFailure, isTransientError } from '@patches/client';
+
+import { api, sessionManager, setSessionDeadHandler } from './client.js';
 
 /**
  * The signed-in actor the UI renders from. Deliberately in-memory only (no persistence
@@ -33,6 +35,9 @@ function setCurrentActor(actor: Actor | null): void {
   notify();
 }
 
+// A definitively dead session (see `client.ts`) must not leave a signed-in-looking UI behind.
+setSessionDeadHandler(() => setCurrentActor(null));
+
 /** Persists a `Session` proto (from `Login`) into the token store and updates the actor
  * the UI renders. */
 export async function establishSession(session: Session): Promise<void> {
@@ -60,19 +65,36 @@ export async function signOut(): Promise<void> {
  * `sessionManager.withSession` handles the single-flight refresh-and-retry-once itself, so
  * a token that's simply expired (15m access-token TTL, ADR 0016 §9) still recovers.
  */
-export async function restoreSession(): Promise<Actor | null> {
+export async function restoreSession(
+  options: { retryDelaysMs?: readonly number[] } = {},
+): Promise<Actor | null> {
   const token = await sessionManager.getAccessToken();
   if (token === undefined) return null;
-  try {
-    const response = await sessionManager.withSession((accessToken) =>
-      api.auth.getCurrentSession({}, { headers: { authorization: `Bearer ${accessToken}` } }),
-    );
-    setCurrentActor(response.actor ?? null);
-    return getCurrentActor();
-  } catch {
-    // The refresh token itself is invalid/expired — the caller must sign in again.
-    await sessionManager.clear();
-    setCurrentActor(null);
-    return null;
+  const delays = options.retryDelaysMs ?? RESTORE_RETRY_DELAYS_MS;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await sessionManager.withSession((accessToken) =>
+        api.auth.getCurrentSession({}, { headers: { authorization: `Bearer ${accessToken}` } }),
+      );
+      setCurrentActor(response.actor ?? null);
+      return getCurrentActor();
+    } catch (error) {
+      if (isDefinitiveAuthFailure(error)) {
+        // The refresh token itself is invalid/expired — the caller must sign in again.
+        await sessionManager.clear();
+        setCurrentActor(null);
+        return null;
+      }
+      // Anything else (timeout while a scale-to-zero Fly machine boots, 502/503, offline)
+      // says nothing about the stored tokens: keep them, back off and retry, and if the
+      // server stays unreachable surface the error so the app can show "can't reach server"
+      // instead of destroying a valid session.
+      const delay = delays[attempt];
+      if (delay === undefined || !isTransientError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
   }
 }
+
+/** Backoff between boot-time restore attempts (1s, 2s, 4s, 8s, 8s). */
+const RESTORE_RETRY_DELAYS_MS: readonly number[] = [1000, 2000, 4000, 8000, 8000];

@@ -1,68 +1,55 @@
-/**
- * Catppuccin: Latte in the light theme, Mocha in the dark one. Mauve is the brand colour,
- * pink the secondary. Terminal captures stay Mocha in both themes, like a real terminal.
- */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+/* rosepine: light and dark palettes. Terminal captures stay dark in both themes. */
 :root {
-  --ctp-base: #eff1f5;
-  --ctp-mantle: #e6e9ef;
-  --ctp-crust: #dce0e8;
-  --ctp-surface0: #ccd0da;
-  --ctp-surface1: #bcc0cc;
-  --ctp-text: #4c4f69;
-  --ctp-sub: #6c6f85;
-  --ctp-mauve: #8839ef;
-  --ctp-pink: #ea76cb;
-  --ctp-green: #40a02b;
-
-  --vp-c-bg: var(--ctp-base);
-  --vp-c-bg-alt: var(--ctp-mantle);
-  --vp-c-bg-elv: var(--ctp-mantle);
-  --vp-c-bg-soft: var(--ctp-mantle);
-  --vp-c-text-1: var(--ctp-text);
-  --vp-c-text-2: var(--ctp-sub);
-  --vp-c-text-3: #7c7f93;
-  --vp-c-divider: var(--ctp-surface0);
-  --vp-c-gutter: var(--ctp-surface0);
-  --vp-c-default-soft: var(--ctp-mantle);
-  --vp-c-brand-1: #8839ef;
-  --vp-c-brand-2: #7a2fdc;
-  --vp-c-brand-3: #8839ef;
-  --vp-c-brand-soft: rgba(136, 57, 239, 0.12);
-  --vp-button-brand-bg: #8839ef;
-  --vp-button-brand-hover-bg: #7a2fdc;
-  --vp-button-brand-text: #eff1f5;
+  --vp-c-bg: #faf4ed;
+  --vp-c-bg-alt: #f2e9e1;
+  --vp-c-bg-elv: #f2e9e1;
+  --vp-c-bg-soft: #f2e9e1;
+  --vp-c-text-1: #575279;
+  --vp-c-text-2: #6e6a86;
+  --vp-c-text-3: #797593;
+  --vp-c-divider: #dfd5cc;
+  --vp-c-gutter: #dfd5cc;
+  --vp-c-default-soft: #f2e9e1;
+  --vp-c-brand-1: #7b5aa6;
+  --vp-c-brand-2: #6a4a95;
+  --vp-c-brand-3: #7b5aa6;
+  --vp-c-brand-soft: color-mix(in srgb, #7b5aa6 14%, transparent);
+  --vp-button-brand-bg: #7b5aa6;
+  --vp-button-brand-hover-bg: #6a4a95;
+  --vp-button-brand-text: #faf4ed;
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-hover-border: transparent;
+  --vp-code-block-bg: #f2e9e1;
   --vp-font-family-mono:
     'JetBrains Mono', 'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --pt-head: 'IBM Plex Mono', ui-monospace, monospace;
 }
-
 .dark {
-  --ctp-base: #1e1e2e;
-  --ctp-mantle: #181825;
-  --ctp-crust: #11111b;
-  --ctp-surface0: #313244;
-  --ctp-surface1: #45475a;
-  --ctp-text: #cdd6f4;
-  --ctp-sub: #a6adc8;
-  --ctp-mauve: #cba6f7;
-  --ctp-pink: #f5c2e7;
-  --ctp-green: #a6e3a1;
-
-  --vp-c-text-3: #7f849c;
-  --vp-c-brand-1: #cba6f7;
-  --vp-c-brand-2: #d5b8f9;
-  --vp-c-brand-3: #cba6f7;
-  --vp-c-brand-soft: rgba(203, 166, 247, 0.14);
-  --vp-button-brand-bg: #cba6f7;
-  --vp-button-brand-hover-bg: #d5b8f9;
-  --vp-button-brand-text: #1e1e2e;
-}
-
-.vp-doc a {
-  text-decoration-color: color-mix(in srgb, var(--vp-c-brand-1) 45%, transparent);
+  --vp-c-bg: #191724;
+  --vp-c-bg-alt: #1f1d2e;
+  --vp-c-bg-elv: #1f1d2e;
+  --vp-c-bg-soft: #1f1d2e;
+  --vp-c-text-1: #e0def4;
+  --vp-c-text-2: #b4b0cc;
+  --vp-c-text-3: #908caa;
+  --vp-c-divider: #2a2740;
+  --vp-c-gutter: #2a2740;
+  --vp-c-default-soft: #1f1d2e;
+  --vp-c-brand-1: #c4a7e7;
+  --vp-c-brand-2: #d4bcee;
+  --vp-c-brand-3: #c4a7e7;
+  --vp-c-brand-soft: color-mix(in srgb, #c4a7e7 14%, transparent);
+  --vp-button-brand-bg: #c4a7e7;
+  --vp-button-brand-hover-bg: #d4bcee;
+  --vp-button-brand-text: #191724;
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-hover-border: transparent;
+  --vp-code-block-bg: #1f1d2e;
 }
 .vp-doc h1,
 .vp-doc h2 {
-  font-family: var(--vp-font-family-mono);
+  font-family: var(--pt-head);
   letter-spacing: -0.01em;
 }
 .vp-doc h2 {
@@ -70,34 +57,38 @@
   padding-top: 0;
 }
 .VPNavBarTitle .title {
-  font-family: var(--vp-font-family-mono);
+  font-family: var(--pt-head);
   font-weight: 600;
 }
 
 /* ---- home ---- */
-.pt-home-page .VPPage {
+.pt-page .VPPage {
   box-sizing: border-box;
   max-width: 1040px;
   margin: 0 auto;
   padding: 56px 24px 24px;
+  overflow-x: hidden;
 }
-.pt-home-page .VPPage h1 {
-  font-family: var(--vp-font-family-mono);
-  font-size: clamp(2rem, 5.2vw, 3.1rem);
+.pt-page .VPPage h1 {
+  font-family: var(--pt-head);
+  font-size: clamp(1.8rem, 5vw, 3rem);
   line-height: 1.15;
   letter-spacing: -0.03em;
   margin: 0 0 16px;
   color: var(--vp-c-text-1);
 }
-.pt-home-page .VPPage h1 .pt-prompt {
+.pt-page .VPPage h1 .pt-prompt {
   color: var(--vp-c-brand-1);
 }
-.pt-lede {
+.pt-page .VPPage p {
+  line-height: 1.7;
+  margin: 14px 0;
+}
+.pt-page .VPPage .pt-lede {
   font-size: 1.1rem;
   color: var(--vp-c-text-2);
-  max-width: 36em;
+  max-width: 38em;
   margin: 0 0 24px;
-  line-height: 1.6;
 }
 .pt-actions {
   display: flex;
@@ -127,10 +118,9 @@
   background: var(--vp-button-brand-hover-bg);
   color: var(--vp-button-brand-text);
 }
-
 .pt-term {
-  background: #1e1e2e;
-  color: #cdd6f4;
+  background: #191724;
+  color: #e0def4;
   border: 1px solid var(--vp-c-divider);
   border-radius: 6px;
   font-family: var(--vp-font-family-mono);
@@ -139,11 +129,11 @@
   overflow: hidden;
 }
 .pt-term-bar {
-  background: #181825;
-  color: #7f849c;
+  background: #1f1d2e;
+  color: #6e6a86;
   padding: 6px 14px;
   font-size: 0.75rem;
-  border-bottom: 1px solid #313244;
+  border-bottom: 1px solid #2a2740;
 }
 .pt-term pre {
   margin: 0;
@@ -155,45 +145,43 @@
   font: inherit;
 }
 .pt-term .m {
-  color: #7f849c;
+  color: #6e6a86;
 }
 .pt-term .u {
-  color: #f5c2e7;
+  color: #ebbcba;
   font-weight: 600;
 }
 .pt-term .g {
-  color: #a6e3a1;
+  color: #9ccfd8;
 }
 .pt-term .p {
-  color: #cba6f7;
+  color: #c4a7e7;
 }
-.pt-term-status {
-  border-top: 1px solid #45475a;
-  padding: 8px 18px 10px;
-  color: #7f849c;
-  font-size: 0.78rem;
-  overflow-x: auto;
-  white-space: pre;
+.pt-term .r {
+  color: #eb6f92;
 }
-
-.pt-home-page .VPPage h2 {
-  font-family: var(--vp-font-family-mono);
+.pt-term .y {
+  color: #f6c177;
+}
+.pt-term .c {
+  color: #9ccfd8;
+}
+.pt-page .VPPage h2 {
+  font-family: var(--pt-head);
   font-size: 1.15rem;
   margin: 56px 0 16px;
   border: 0;
   padding: 0;
   color: var(--vp-c-text-1);
 }
-.pt-home-page .VPPage h2::before {
-  content: '## ';
+.pt-page .VPPage h2::before {
+  content: '› ';
   color: var(--vp-c-brand-1);
 }
-
 .pt-facts {
   margin: 0;
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 0;
   border-top: 1px solid var(--vp-c-divider);
 }
 .pt-facts dt,
@@ -220,12 +208,17 @@
     padding-bottom: 0;
     border-bottom: 0;
   }
+  .pt-page .VPPage {
+    padding-top: 32px;
+  }
 }
-
 .pt-shots {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 20px;
+}
+.pt-shots figure:first-child {
+  grid-column: 1 / -1;
 }
 @media (max-width: 640px) {
   .pt-shots {
@@ -242,50 +235,91 @@
   border-radius: 6px;
 }
 .pt-shots figcaption {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: var(--vp-c-text-2);
   margin-top: 6px;
+  line-height: 1.5;
 }
-
-.pt-home-page .VPPage div[class*='language-'] {
-  margin: 12px 0;
-}
-.pt-home-page .VPPage .pt-lede {
-  margin-top: 0;
-}
-.pt-home-page .VPPage p {
-  line-height: 1.7;
-  margin: 14px 0;
-}
-.pt-home-page .VPPage {
-  overflow-x: hidden;
-}
-@media (max-width: 640px) {
-  .pt-home-page .VPPage {
-    padding-top: 32px;
-  }
-}
-.pt-home-page .VPPage div[class*='language-'] {
+.pt-page .VPPage div[class*='language-'] {
   background: var(--vp-c-bg-alt);
   border: 1px solid var(--vp-c-divider);
   border-radius: 6px;
   padding: 12px 18px;
   overflow-x: auto;
+  margin: 12px 0;
   font-family: var(--vp-font-family-mono);
   font-size: 0.85rem;
 }
-.pt-home-page .VPPage div[class*='language-'] .lang,
-.pt-home-page .VPPage div[class*='language-'] .copy {
+.pt-page .VPPage div[class*='language-'] .lang,
+.pt-page .VPPage div[class*='language-'] .copy {
   display: none;
 }
-.pt-home-page .VPPage div[class*='language-'] pre {
+.pt-page .VPPage div[class*='language-'] pre {
   margin: 0;
   background: none;
 }
-.pt-home-page .VPPage .custom-block {
-  margin: 16px 0;
-  padding: 12px 16px;
-  border-radius: 6px;
+.pt-page .VPPage p a,
+.pt-page .VPPage dd a {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.pt-page .VPPage :not(pre) > code {
   background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.88em;
+}
+
+/* identity: Rose Pine, IBM Plex Mono, facts laid out like posts in the timeline */
+.pt-term-status {
+  border-top: 1px solid #2a2740;
+  padding: 8px 18px 10px;
+  color: #6e6a86;
+  font-size: 0.78rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+.pt-term {
+  background: #191724;
+}
+.pt-page .VPPage h1 {
+  font-weight: 500;
+}
+.pt-page .VPPage {
+  max-width: 880px;
+}
+.pt-facts {
+  display: block;
+  border-top: 0;
+}
+.pt-facts dt {
+  display: block;
+  border-bottom: 0;
+  padding: 14px 0 0 18px;
+  border-left: 2px solid var(--vp-c-divider);
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+}
+.pt-facts dt::before {
+  content: '@';
+  opacity: 0.7;
+}
+.pt-facts dd {
+  padding: 4px 0 14px 18px;
+  border-bottom: 0;
+  border-left: 2px solid var(--vp-c-divider);
+}
+.pt-shots figcaption {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.8rem;
+}
+@media (max-width: 640px) {
+  .pt-facts dt {
+    padding-bottom: 0;
+  }
+}
+.pt-shots figure:first-child {
+  grid-column: auto;
 }

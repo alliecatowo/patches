@@ -81,6 +81,31 @@ export function isPrivacyAckRequired(error: unknown): boolean {
   );
 }
 
+/**
+ * True only when the server definitively rejected the credentials (`Unauthenticated` /
+ * `PermissionDenied`). Anything else — timeout, 502/503 while a scale-to-zero machine
+ * boots, offline — says nothing about whether a stored token is still valid, so callers
+ * must not discard a session on it.
+ */
+export function isDefinitiveAuthFailure(error: unknown): boolean {
+  const code = ConnectError.from(error).code;
+  return code === Code.Unauthenticated || code === Code.PermissionDenied;
+}
+
+/**
+ * True for failures that are expected to clear on their own and are safe to retry for
+ * idempotent reads: `Unavailable` (connect maps HTTP 502/503/504 here), `DeadlineExceeded`
+ * (a cold start outlasting the per-call deadline), and a raw network failure (fetch
+ * `TypeError`, which Connect wraps as `Unknown`).
+ */
+export function isTransientError(error: unknown): boolean {
+  const connectError = ConnectError.from(error);
+  if (connectError.code === Code.Unavailable || connectError.code === Code.DeadlineExceeded) {
+    return true;
+  }
+  return connectError.code === Code.Unknown && connectError.cause instanceof TypeError;
+}
+
 /** The server's own message, when it sent one worth showing. */
 function serverMessage(error: ConnectError): string | undefined {
   const trimmed = error.rawMessage.trim();

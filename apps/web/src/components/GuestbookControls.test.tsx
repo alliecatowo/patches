@@ -65,6 +65,38 @@ describe('GuestbookSignForm', () => {
     expect(screen.queryByRole('button', { name: 'Sign' })).not.toBeInTheDocument();
   });
 
+  it('updates character counter and shows signing loading state on submit', async () => {
+    signIn('viewer-1');
+    let resolveSign!: (val: object) => void;
+    mockSignGuestbook.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSign = resolve;
+        }),
+    );
+    renderTree(<GuestbookSignForm handle="allie" slug="home" />);
+
+    // Initially 500 characters remaining
+    expect(screen.getByText('500')).toBeInTheDocument();
+
+    const input = screen.getByLabelText('Guestbook entry');
+    fireEvent.change(input, { target: { value: 'Hello world' } });
+
+    // 500 - 11 = 489
+    expect(screen.getByText('489')).toBeInTheDocument();
+
+    const button = screen.getByRole('button', { name: 'Sign' });
+    fireEvent.click(button);
+
+    // Button label transitions to "Signing…" while mutation is pending
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Signing…' })).toBeDisabled());
+
+    resolveSign({ entry: {} });
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Sign' })).toBeInTheDocument());
+    expect(screen.getByText('500')).toBeInTheDocument();
+  });
+
   it('submits the trimmed body and refreshes the list on success', async () => {
     signIn('viewer-1');
     mockSignGuestbook.mockResolvedValue({ entry: {} });

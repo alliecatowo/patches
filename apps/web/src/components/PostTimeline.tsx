@@ -1,3 +1,4 @@
+import { describeError, isTransientError } from '@patches/client';
 import type { PageInfo, Post } from '@patches/proto/es';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type JSX } from 'react';
@@ -6,6 +7,8 @@ import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts.js';
 import { PostCard } from './PostCard.js';
 import { PullToRefresh } from './PullToRefresh.js';
 import styles from './PostTimeline.module.css';
+
+const MAX_AUTO_RETRIES = 4;
 
 export interface PostPage {
   posts: Post[];
@@ -41,6 +44,11 @@ export function PostTimeline({
     getNextPageParam: (lastPage) => (lastPage.page?.hasMore ? lastPage.page.nextCursor : undefined),
   });
 
+  // Cold-start awareness: while react-query is silently retrying a transient failure
+  // (502/503/deadline from a scale-to-zero API machine) say so instead of showing an
+  // unexplained skeleton.
+  const waking = query.failureCount > 0 && isTransientError(query.failureReason);
+
   const posts = query.data?.pages.flatMap((p) => p.posts) ?? [];
   const [focusedIndex, setFocusedIndex] = useState(0);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -51,10 +59,12 @@ export function PostTimeline({
   useEffect(() => {
     if (topId === undefined) return;
     const interval = setInterval(() => {
-      void fetchPage('').then((page) => {
-        const latestId = page.posts[0]?.id;
-        if (latestId !== undefined && latestId !== topId) setHasNewer(true);
-      });
+      void fetchPage('')
+        .then((page) => {
+          const latestId = page.posts[0]?.id;
+          if (latestId !== undefined && latestId !== topId) setHasNewer(true);
+        })
+        .catch(() => undefined); // a failed background poll is not worth surfacing
     }, 30_000);
     return () => clearInterval(interval);
   }, [topId, fetchPage]);
@@ -64,13 +74,24 @@ export function PostTimeline({
     if (!sentinel) return;
     const observer = new IntersectionObserver((entries) => {
       const [entry] = entries;
-      if (entry?.isIntersecting && query.hasNextPage && !query.isFetchingNextPage) {
+      if (
+        entry?.isIntersecting &&
+        query.hasNextPage &&
+        !query.isFetchingNextPage &&
+        !query.isFetchNextPageError
+      ) {
         void query.fetchNextPage();
       }
     });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [query.hasNextPage, query.isFetchingNextPage, query.fetchNextPage, query]);
+  }, [
+    query.hasNextPage,
+    query.isFetchingNextPage,
+    query.isFetchNextPageError,
+    query.fetchNextPage,
+    query,
+  ]);
 
   useKeyboardShortcuts(
     {
@@ -79,6 +100,25 @@ export function PostTimeline({
     },
     posts.length > 0,
   );
+
+  // Terminal failure with nothing loaded: keep trying in the background (a cold start can
+  // outlast the in-query retries) with a growing delay, bounded so a genuinely broken
+  // server is not hammered forever.
+  const [autoRetries, setAutoRetries] = useState(0);
+  const failedEmpty = query.isError && query.data === undefined;
+  const retryable = failedEmpty && isTransientError(query.error);
+  const { refetch } = query;
+  useEffect(() => {
+    if (!retryable || autoRetries >= MAX_AUTO_RETRIES) return;
+    const timer = setTimeout(
+      () => {
+        setAutoRetries((n) => n + 1);
+        void refetch();
+      },
+      Math.min(5_000 * 2 ** autoRetries, 30_000),
+    );
+    return () => clearTimeout(timer);
+  }, [retryable, autoRetries, refetch]);
 
   const handleRefresh = async (): Promise<void> => {
     setHasNewer(false);
@@ -107,20 +147,32 @@ export function PostTimeline({
             </div>
           </div>
         ))}
+        {waking ? (
+          <p className={styles['loadingMore']} role="status">
+            Waking the server up, this can take up to a minute…
+          </p>
+        ) : null}
       </div>
     );
   }
 
-  if (query.isError) {
+  // Only a failure with NO loaded data replaces the list. A failed later page or background
+  // refresh keeps every already-loaded post and shows an inline retry instead.
+  if (failedEmpty) {
     return (
-      <div className={styles['empty']}>
+      <div className={styles['empty']} role="alert">
         <p>Couldn&apos;t load this timeline.</p>
+        <p>{describeError(query.error).message}</p>
+        {retryable && autoRetries < MAX_AUTO_RETRIES ? <p>Retrying automatically…</p> : null}
         <button
           type="button"
           className={styles['retryButton']}
-          onClick={() => void query.refetch()}
+          onClick={() => {
+            setAutoRetries(0);
+            void query.refetch();
+          }}
         >
-          Try refreshing
+          Try again
         </button>
       </div>
     );
@@ -158,6 +210,25 @@ export function PostTimeline({
         ))}
 
         <div ref={sentinelRef} className={styles['sentinel']} />
+
+        {query.isError ? (
+          <div className={styles['loadingMore']} role="alert">
+            <span>
+              {query.isFetchNextPageError
+                ? "Couldn't load more posts."
+                : "Couldn't refresh this timeline."}
+            </span>
+            <button
+              type="button"
+              className={styles['retryButton']}
+              onClick={() =>
+                void (query.isFetchNextPageError ? query.fetchNextPage() : query.refetch())
+              }
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
 
         {query.isFetchingNextPage ? (
           <div className={styles['loadingMore']}>

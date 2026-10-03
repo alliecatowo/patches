@@ -199,3 +199,27 @@ describe('parseArgs', () => {
     expect(parseArgs(['visit', 'alice']).command).toBe('help');
   });
 });
+
+describe('parseArgs subcommand argument hijacking', () => {
+  const cases: ReadonlyArray<[string[], string, string[]]> = [
+    [['tag', 'search', 'login'], 'tag', ['search', 'login']],
+    [['dm', 'send', 'bob', 'ping'], 'dm', ['send', 'bob', 'ping']],
+    [['keys', 'add', '-v'], 'keys', ['add', '-v']],
+    [['filter', 'add', 'logout'], 'filter', ['add', 'logout']],
+    [['tag', 'search', 'visit'], 'tag', ['search', 'visit']],
+    [['tag', 'search', '--once'], 'tag', ['search', '--once']],
+  ];
+  it.each(cases)('keeps %j with its subcommand', (argv, command, rest) => {
+    const parsed = parseArgs(argv);
+    expect(parsed.command).toBe(command);
+    expect(parsed.rest).toEqual(rest);
+    expect(parsed.error).toBeUndefined();
+  });
+
+  it('still honours connection flags after a subcommand', () => {
+    const parsed = parseArgs(['tag', 'search', 'x', '--server', 'a:1', '--insecure']);
+    expect(parsed.command).toBe('tag');
+    expect(parsed.target).toBe('a:1');
+    expect(parsed.insecure).toBe(true);
+  });
+});

@@ -24,6 +24,7 @@ export function MediaLightbox({
 }: MediaLightboxProps): JSX.Element | null {
   const [overrideIndex, setOverrideIndex] = useState<number | null>(null);
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const currentIndex = overrideIndex ?? initialIndex;
@@ -61,6 +62,25 @@ export function MediaLightbox({
           const curr = i ?? initialIndex;
           return curr < images.length - 1 ? curr + 1 : 0;
         });
+      } else if (e.key === 'Home') {
+        setOverrideIndex(0);
+      } else if (e.key === 'End') {
+        setOverrideIndex(images.length - 1);
+      } else if (e.key === 'Tab' && dialogRef.current) {
+        // Keep Tab inside the dialog while it is open.
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (first === undefined || last === undefined) return;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     };
 
@@ -110,6 +130,7 @@ export function MediaLightbox({
     <div
       className={styles['overlay']}
       onClick={handleClose}
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label="Image lightbox"

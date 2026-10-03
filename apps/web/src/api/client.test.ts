@@ -135,6 +135,98 @@ describe('session expiry', () => {
   });
 });
 
+describe('session expiry vs transient failures', () => {
+  const originalFetch = global.fetch;
+  const mockToastError = vi.fn();
+  const assignMock = vi.fn();
+
+  function json(status: number, body: unknown): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.resetModules();
+    mockToastError.mockReset();
+    assignMock.mockReset();
+    vi.doMock('sonner', () => ({ toast: { error: mockToastError } }));
+    vi.stubGlobal('location', { ...window.location, assign: assignMock });
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.unstubAllGlobals();
+  });
+
+  async function signedIn() {
+    const client = await import('./client.js');
+    const { getActorSession } = await import('./session.js');
+    await client.sessionManager.setSession({ accessToken: 'access-1', refreshToken: 'refresh-1' });
+    const { setActorSession } = await import('./session.js');
+    setActorSession({ id: 'a1', handle: 'allie' } as never);
+    return { ...client, getActorSession };
+  }
+
+  it.each([503, 502])(
+    'keeps tokens and the actor when refresh fails with HTTP %i (cold start)',
+    async (status) => {
+      global.fetch = vi.fn((input: RequestInfo | URL) =>
+        Promise.resolve(
+          String(input instanceof Request ? input.url : input).includes('RefreshSession')
+            ? json(status, { code: 'unavailable', message: 'cold' })
+            : json(401, { code: 'unauthenticated', message: 'expired' }),
+        ),
+      );
+      const { api, sessionManager, getActorSession } = await signedIn();
+
+      await expect(api.actors.getActorByHandle({ handle: 'allie' })).rejects.toBeDefined();
+
+      expect(await sessionManager.getAccessToken()).toBe('access-1');
+      expect(getActorSession()).not.toBeNull();
+      expect(mockToastError).not.toHaveBeenCalled();
+      expect(assignMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('clears tokens AND the cached actor when the refresh token is definitively dead', async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(json(401, { code: 'unauthenticated', message: 'dead' })),
+    );
+    const { api, sessionManager, getActorSession } = await signedIn();
+
+    await api.actors.getActorByHandle({ handle: 'allie' }).catch(() => undefined);
+
+    expect(await sessionManager.getAccessToken()).toBeUndefined();
+    expect(getActorSession()).toBeNull();
+    expect(assignMock).toHaveBeenCalledWith('/login');
+  });
+
+  it('does not sign out when a call answers Unauthenticated for a bad argument (wrong current password)', async () => {
+    global.fetch = vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve(
+        String(input instanceof Request ? input.url : input).includes('RefreshSession')
+          ? json(200, {
+              session: { accessToken: 'access-2', refreshToken: 'refresh-2' },
+            })
+          : json(401, { code: 'unauthenticated', message: 'wrong password' }),
+      ),
+    );
+    const { api, sessionManager, getActorSession } = await signedIn();
+
+    await expect(
+      api.auth.changePassword({ currentPassword: 'nope', newPassword: 'x'.repeat(12) }),
+    ).rejects.toBeDefined();
+
+    expect(await sessionManager.getAccessToken()).toBe('access-2');
+    expect(getActorSession()).not.toBeNull();
+    expect(mockToastError).not.toHaveBeenCalled();
+    expect(assignMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('logoutCurrentSession', () => {
   beforeEach(() => {
     window.localStorage.clear();

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { AppConfigService } from '../../config/app-config.service.js';
 import { parseBoundedJson } from './security/bounded-json.js';
+import { isIdBoundToFetch } from './security/origin-binding.js';
 import { defaultSafeFetchPolicy, safeFetch, SafeFetchError } from './security/safe-fetch.js';
 import {
   ACTIVITY_JSON_CONTENT_TYPE,
@@ -145,6 +146,11 @@ export class RemoteObjectService {
 
     if (!this.isValidActivityPubObject(parsed)) {
       throw new RemoteObjectFetchError('Response is not a valid ActivityPub object', 400);
+    }
+
+    // S-C1: the object must be the one we asked for, served by the origin it claims.
+    if (!isIdBoundToFetch((parsed as ActivityPubObject).id, uri, response.finalUrl)) {
+      throw new RemoteObjectFetchError('Object id does not match the fetched URL', 400);
     }
 
     return parsed as ActivityPubObject;

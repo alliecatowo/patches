@@ -31,6 +31,23 @@ describe('MediaLightbox', () => {
     expect(screen.getByText('Photo 2')).toBeInTheDocument();
   });
 
+  it('jumps with Home/End and keeps Tab inside the dialog', () => {
+    render(<MediaLightbox images={images} isOpen={true} onClose={vi.fn()} />);
+
+    fireEvent.keyDown(window, { key: 'End' });
+    expect(screen.getByText('2 / 2')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Home' });
+    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+
+    const buttons = screen.getAllByRole('button');
+    const last = buttons[buttons.length - 1] as HTMLElement;
+    last.focus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(document.activeElement).toBe(buttons[0]);
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+  });
+
   it('closes on escape key or close button click', () => {
     const onClose = vi.fn();
     render(<MediaLightbox images={images} isOpen={true} onClose={onClose} />);

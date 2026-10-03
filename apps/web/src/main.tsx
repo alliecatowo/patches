@@ -11,6 +11,7 @@ import './lib/theme.js';
 import { useSessionKeepAlive } from './hooks/useSessionKeepAlive.js';
 import { installGlobalCollectors } from './lib/diagnosticsReporter.js';
 import { log } from './lib/log.js';
+import { queryRetryDelay, shouldRetryQuery } from './lib/queryRetry.js';
 import { initWebVitals } from './lib/webVitals.js';
 import { registerServiceWorker } from './pwa/serviceWorkerRegistration.js';
 import { router } from './router.js';
@@ -67,7 +68,8 @@ log('info', 'patches web boot', {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: shouldRetryQuery,
+      retryDelay: queryRetryDelay,
       staleTime: 15_000,
       refetchOnWindowFocus: false,
     },

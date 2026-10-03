@@ -610,6 +610,18 @@ function inlineWords(nodes: readonly InlineNode[], plain: boolean): LayoutRun[] 
   return runs;
 }
 
+/** Keeps at most `width - 1` cells of a prefix so a body column always remains. */
+function clampPrefix(prefix: string, width: number): string {
+  const max = Math.max(0, width - 1);
+  if (cellWidth(prefix) <= max) return prefix;
+  let out = '';
+  for (const char of prefix) {
+    if (cellWidth(out + char) > max) break;
+    out += char;
+  }
+  return out;
+}
+
 /** Greedy word wrap over role-tagged words, matching `wrappedRowCount`'s rules. */
 function wrapRuns(
   runs: readonly LayoutRun[],
@@ -620,6 +632,9 @@ function wrapRuns(
   const lines: LayoutLine[] = [];
   let current: LayoutRun[] = [];
   let used = 0;
+  // Deeply nested quotes/lists must not push the prefix past the line, or no word fits.
+  firstPrefix = clampPrefix(firstPrefix, width);
+  laterPrefix = clampPrefix(laterPrefix, width);
   let prefix = firstPrefix;
 
   const start = (): void => {
@@ -652,8 +667,9 @@ function wrapRuns(
           taken += char;
         }
         if (taken === '') {
-          commit();
-          continue;
+          // A wide char that cannot fit `room`: take it anyway (overflow is clipped
+          // downstream) so the loop always makes progress.
+          taken = String.fromCodePoint(remainder.codePointAt(0) ?? 0x20);
         }
         current.push({ ...run, text: taken });
         used += cellWidth(taken);
