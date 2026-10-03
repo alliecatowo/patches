@@ -21,6 +21,11 @@ kill_timeout = "30s"
 # `PUBLIC_ORIGIN`/`NODE_DOMAIN` name this node.
 [env]
   NODE_ENV = "production"
+  # Scale to zero: the job worker (a Postgres poll loop) runs as a child of the server
+  # process (apps/server/src/embedded-worker.ts) instead of on its own always-on Machine, so
+  # the single Machine stops when idle and wakes on the next request. Queued jobs run while
+  # the Machine is awake; delayed/scheduled jobs run on the next wake.
+  WORKER_IN_PROCESS = "true"
   LOG_LEVEL = "info"
   GRPC_HOST = "0.0.0.0"
   GRPC_PORT = "50051"
@@ -50,7 +55,7 @@ kill_timeout = "30s"
   OPERATOR_CONTACT = "Operated by Allison Coleman (allisonemilycoleman@gmail.com) — a solo self-hosted instance, not a company."
   DATA_LOCATION = "App: Fly.io (iad, US). Database: Neon Postgres (aws-us-east-2, US). Media: Cloudflare R2."
 
-# One image, two process groups. Fly runs each group's Machines with the corresponding
+# One image, one process group (`server`; the worker is embedded, see WORKER_IN_PROCESS). Fly runs each group's Machines with the corresponding
 # command below, overriding the image's default CMD (`infra/docker/Dockerfile`'s CMD is
 # only what runs under a plain `podman run`/`docker run`). Paths are relative to the
 # runtime image's WORKDIR (/app), matching where `pnpm deploy` placed each app (see
@@ -58,7 +63,6 @@ kill_timeout = "30s"
 # into its own top-level directory (`server/`, `worker/`).
 [processes]
   server = "node server/dist/main.js"
-  worker = "node worker/dist/main.js"
 
 # Runs once per deploy, before new Machines take traffic. Gets the same secrets/env vars
 # as the app (DATABASE_URL, etc.) but no volumes — fine, migrations don't need one.
@@ -75,6 +79,9 @@ kill_timeout = "30s"
   internal_port = 50051
   protocol = "tcp"
   processes = ["server"]
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
 
   [[services.ports]]
     handlers = ["tls", "http"]
@@ -99,6 +106,9 @@ kill_timeout = "30s"
   internal_port = 8080
   protocol = "tcp"
   processes = ["server"]
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
 
   [[services.ports]]
     handlers = ["tls", "http"]
@@ -134,26 +144,15 @@ kill_timeout = "30s"
     grace_period = "10s"
     processes = ["server"]
 
-# Autoscaling is planned, not configured (docs/operations/deployment.md's deploy checklist):
-# `min_machines`/`max_machines` and a `[services.scaling]` table are not part of the fly.toml
-# schema — `flyctl config validate` accepts them silently (Fly ignores unrecognised keys) and
-# `fly scale show` confirms nothing is applied. `services` is an array of tables
-# (`[[services]]` above), so a bare `[services.scaling]` would in any case attach to the last
-# `[[services]]` entry (the internal metrics service), not a top-level section. The documented
-# per-service knobs are `auto_stop_machines`/`auto_start_machines`/`min_machines_running`
-# (`docs/research/fly-io.md`); wire those up under the relevant `[[services]]` block when this
-# is picked up, not a `.scaling` subtable.
+# Scale to zero: autostop/autostart + min 0 on the public http and grpc services. Fly stops
+# the Machine after ~5 min without proxied requests and restarts it on the next one.
 
 # VM sizing per process group
+# 1 GB: the server and the embedded worker (two Node processes) share this Machine.
 [[vm]]
   process_group = "server"
   size = "shared-cpu-1x"
-  memory = "512mb"
-
-[[vm]]
-  process_group = "worker"
-  size = "shared-cpu-1x"
-  memory = "512mb"
+  memory = "1gb"
 
 [deploy.release_command_vm]
   size = "shared-cpu-1x"
