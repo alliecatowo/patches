@@ -710,12 +710,6 @@ importers:
       '@node-rs/argon2':
         specifier: 'catalog:'
         version: 2.2.1
-      '@patches/client':
-        specifier: workspace:*
-        version: link:../../packages/client
-      '@patches/crypto':
-        specifier: workspace:*
-        version: link:../../packages/crypto
       ink:
         specifier: 'catalog:'
         version: 7.1.1(@types/react@19.3.0)(react-devtools-core@6.1.5)(react@19.3.0)
@@ -744,6 +738,12 @@ importers:
       '@grpc/proto-loader':
         specifier: 'catalog:'
         version: 0.8.1
+      '@patches/client':
+        specifier: workspace:*
+        version: link:../../packages/client
+      '@patches/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@patches/domain':
         specifier: workspace:*
         version: link:../../packages/domain

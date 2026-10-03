@@ -47,8 +47,6 @@
     "@connectrpc/connect-node": "catalog:",
     "@napi-rs/keyring": "catalog:",
     "@node-rs/argon2": "catalog:",
-    "@patches/client": "workspace:*",
-    "@patches/crypto": "workspace:*",
     "ink": "catalog:",
     "ink-spinner": "catalog:",
     "react": "catalog:",
@@ -60,6 +58,8 @@
   "devDependencies": {
     "@grpc/grpc-js": "catalog:",
     "@grpc/proto-loader": "catalog:",
+    "@patches/client": "workspace:*",
+    "@patches/crypto": "workspace:*",
     "@patches/domain": "workspace:*",
     "@patches/proto": "workspace:*",
     "@patches/terminal-media": "workspace:*",
