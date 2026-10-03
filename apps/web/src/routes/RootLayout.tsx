@@ -96,10 +96,12 @@ export function RootLayout(): JSX.Element {
             <span className={styles['navLabel']}>Search</span>
           </NavLink>
 
-          <NavLink to="/compose" className={NAV_LINK_CLASS}>
-            <ComposeIcon className={styles['navIcon']} />
-            <span className={styles['navLabel']}>Compose</span>
-          </NavLink>
+          {session ? (
+            <NavLink to="/compose" className={NAV_LINK_CLASS}>
+              <ComposeIcon className={styles['navIcon']} />
+              <span className={styles['navLabel']}>Compose</span>
+            </NavLink>
+          ) : null}
 
           <NavLink
             to="/notifications"
@@ -148,10 +150,12 @@ export function RootLayout(): JSX.Element {
         </div>
 
         {/* Desktop Primary Compose Button */}
-        <Link to="/compose" className={styles['desktopComposeButton']}>
-          <ComposeIcon size={18} />
-          <span>New Post</span>
-        </Link>
+        {session ? (
+          <Link to="/compose" className={styles['desktopComposeButton']}>
+            <ComposeIcon size={18} />
+            <span>New Post</span>
+          </Link>
+        ) : null}
 
         {/* Desktop Sidebar Bottom User Card */}
         <div className={styles['bottomNavArea']}>
@@ -296,7 +300,7 @@ export function RootLayout(): JSX.Element {
       </nav>
 
       {/* Floating Right-Thumb Radial Fan-Out FAB (Mobile) */}
-      <ThumbNavFab unreadCount={unreadCount} />
+      {session ? <ThumbNavFab unreadCount={unreadCount} /> : null}
 
       {/* Sleek Terminal-Style Profile Dropdown & Sheet */}
       <ProfileMenu isOpen={profileMenuOpen} onClose={() => setProfileMenuOpen(false)} />

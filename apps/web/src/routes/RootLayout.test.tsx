@@ -89,9 +89,12 @@ describe('RootLayout', () => {
     renderLayout();
 
     const primary = screen.getByRole('navigation', { name: 'Primary' });
-    for (const name of ['Home', 'Search', 'Compose', 'Notifications']) {
+    for (const name of ['Home', 'Search', 'Notifications']) {
       expect(within(primary).getByRole('link', { name })).toBeInTheDocument();
     }
+    // Signed-out visitors cannot post, so no compose entry points are offered.
+    expect(screen.queryByRole('link', { name: /compose|new post/i })).toBeNull();
+    expect(document.querySelector('a[href="/compose"]')).toBeNull();
 
     const more = within(openMore());
     expect(more.getByRole('link', { name: 'Mod log' })).toHaveAttribute('href', '/moderation/log');

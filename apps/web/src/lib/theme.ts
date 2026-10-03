@@ -28,21 +28,21 @@ export const THEME_CATALOG: readonly ThemeInfo[] = [
     name: 'Follow system',
     description: 'Matches your OS dark/light mode preference automatically.',
     preview: {
-      bg: '#161b22',
-      fg: '#e6edf3',
-      accent: '#a78bfa',
-      border: '#30363d',
+      bg: '#181825',
+      fg: '#cdd6f4',
+      accent: '#cba6f7',
+      border: '#45475a',
     },
   },
   {
     id: 'patches',
     name: 'Patches',
-    description: 'Signature deep purple midnight with neon violet and cyan accents.',
+    description: 'Dracula: soft violet on charcoal, pink and green accents.',
     preview: {
-      bg: '#160f24',
-      fg: '#f7f1ff',
-      accent: '#d8a7ff',
-      border: '#55336f',
+      bg: '#282a36',
+      fg: '#f8f8f2',
+      accent: '#bd93f9',
+      border: '#4d5066',
     },
   },
   {
@@ -50,10 +50,10 @@ export const THEME_CATALOG: readonly ThemeInfo[] = [
     name: 'Dark',
     description: 'Clean modern slate dark with purple highlights.',
     preview: {
-      bg: '#0d1117',
-      fg: '#e6edf3',
-      accent: '#a78bfa',
-      border: '#30363d',
+      bg: '#1e1e2e',
+      fg: '#cdd6f4',
+      accent: '#cba6f7',
+      border: '#45475a',
     },
   },
   {
@@ -61,10 +61,10 @@ export const THEME_CATALOG: readonly ThemeInfo[] = [
     name: 'Light',
     description: 'Clean crisp daylight theme with deep royal purple.',
     preview: {
-      bg: '#ffffff',
-      fg: '#16181c',
-      accent: '#6b46c1',
-      border: '#d8dee4',
+      bg: '#eff1f5',
+      fg: '#4c4f69',
+      accent: '#8839ef',
+      border: '#bcc0cc',
     },
   },
   {
@@ -105,10 +105,10 @@ export const THEME_CATALOG: readonly ThemeInfo[] = [
     name: 'Pastel',
     description: 'Soft cyberpunk dreamy lavender and mint.',
     preview: {
-      bg: '#24203a',
-      fg: '#fff8ff',
-      accent: '#ffc2e2',
-      border: '#5a4b78',
+      bg: '#24273a',
+      fg: '#cad3f5',
+      accent: '#f5bde6',
+      border: '#494d64',
     },
   },
 ];
@@ -126,14 +126,14 @@ const VALID_PREFERENCES: readonly ThemePreference[] = [
 ];
 
 const THEME_META_COLORS: Readonly<Record<ThemePreference, string>> = {
-  system: '#160f24',
-  patches: '#160f24',
-  dark: '#0d1117',
-  light: '#ffffff',
+  system: '#282a36',
+  patches: '#282a36',
+  dark: '#1e1e2e',
+  light: '#eff1f5',
   paper: '#f7f2e8',
   mono: '#000000',
   hacker: '#001400',
-  pastel: '#24203a',
+  pastel: '#24273a',
 };
 
 type Listener = () => void;
