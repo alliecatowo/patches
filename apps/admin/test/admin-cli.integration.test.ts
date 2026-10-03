@@ -1135,6 +1135,10 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           metadata: { reason: 'first strike' },
         });
 
+        // Gap on both sides of `since`: `created_at` is a microsecond DB timestamp but `since`
+        // is truncated to the millisecond, so a `since` taken immediately after the first
+        // insert can land in the same millisecond and make `>= since` match the first row too.
+        await new Promise((resolve) => setTimeout(resolve, 20));
         const since = new Date();
         await new Promise((resolve) => setTimeout(resolve, 20));
 
