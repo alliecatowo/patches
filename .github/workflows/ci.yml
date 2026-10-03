@@ -325,6 +325,26 @@ jobs:
 
       - run: pnpm test:integration
 
+  # PR CI is builds and tests only: this proves the production image still builds without
+  # pushing it or touching Fly (no registry login, no secrets, so Dependabot PRs can run
+  # it). Real Fly/Neon previews are opt-in via the `preview` label (preview.yml).
+  docker-build:
+    name: docker-build (image builds, not pushed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          push: false
+          build-args: PATCHES_BUILD_SHA=${{ github.sha }}
+          # No gha layer cache on purpose: the Dockerfile's `pnpm install --offline` relies on
+          # BuildKit cache *mounts* (pnpm metadata), which are not part of cached layers. A layer
+          # cache hit on the fetch step leaves the mounts empty on a fresh runner and the offline
+          # install fails with ERR_PNPM_NO_OFFLINE_META. Always build cold.
+
   actionlint:
     name: actionlint
     runs-on: ubuntu-latest
@@ -343,7 +363,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [plan, quality, proto, build-test, integration, actionlint]
+    needs: [plan, quality, proto, build-test, integration, docker-build, actionlint]
     runs-on: ubuntu-latest
     steps:
       - name: Require all jobs to have succeeded

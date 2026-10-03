@@ -44,6 +44,16 @@ describe('FollowButton', () => {
     mockUseSession.mockReset();
   });
 
+  it('renders accessible loading state while relationship query is pending', () => {
+    signIn('viewer-1');
+    mockGetRelationship.mockImplementation(() => new Promise(() => {}));
+    renderTree(<FollowButton actorId="actor-2" />);
+
+    const loadingBtn = screen.getByRole('button', { name: 'Loading follow status' });
+    expect(loadingBtn).toBeDisabled();
+    expect(loadingBtn).toHaveAttribute('aria-busy', 'true');
+  });
+
   it('follows and writes the relationship into the cache on success', async () => {
     signIn('viewer-1');
     mockGetRelationship.mockResolvedValue({ relationship: { state: FollowState.NONE } });
