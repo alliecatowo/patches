@@ -248,8 +248,11 @@ case "${1:-run}" in
   up) cmd_up ;;
   walk) cmd_walk ;;
   run)
+    # Tear down even when `up` or the walk fails, or the next run sees stale PIDs/ports.
+    trap cmd_down EXIT
     cmd_up
     cmd_walk
+    trap - EXIT
     cmd_down
     echo "Lab torn down. Database ${DB_NAME} kept (drop by hand for a clean slate)."
     ;;

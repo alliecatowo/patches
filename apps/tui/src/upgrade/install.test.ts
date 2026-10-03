@@ -3,7 +3,7 @@ import type { ChildProcess, spawn } from 'node:child_process';
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { detectInstallMethod, installUpgrade } from './install.js';
+import { detectInstallMethod, installUpgrade, isTrustedAssetUrl } from './install.js';
 
 describe('detectInstallMethod', () => {
   const noWorkspaceFile = (): boolean => false;
@@ -73,7 +73,10 @@ function fakeSpawn(behavior: {
   };
 }
 
-const upgrade = { assetUrl: 'https://example.test/releases/patches-social-0.1.0-alpha.3.tgz' };
+const upgrade = {
+  assetUrl:
+    'https://github.com/alliecatowo/patches/releases/download/v0.1.0-alpha.3/patches-social-0.1.0-alpha.3.tgz',
+};
 
 describe('installUpgrade', () => {
   it('refuses to attempt an upgrade from a repo checkout', async () => {
@@ -169,5 +172,30 @@ describe('installUpgrade', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.message).toContain('ENOENT');
+  });
+});
+
+describe('isTrustedAssetUrl', () => {
+  it('accepts only https github.com release tarballs', () => {
+    expect(isTrustedAssetUrl(upgrade.assetUrl)).toBe(true);
+    for (const bad of [
+      'http://github.com/a/b/releases/download/v1/x.tgz',
+      'https://evil.test/a/b/releases/download/v1/x.tgz',
+      '--registry=https://evil.test',
+      'git+ssh://github.com/a/b.git',
+      'https://github.com/a/b/releases/download/v1/x.tgz --foo',
+      'https://github.com.evil.test/a/b/releases/download/v1/x.tgz',
+    ])
+      expect(isTrustedAssetUrl(bad)).toBe(false);
+  });
+
+  it('refuses to run an installer for an untrusted URL', async () => {
+    const spawnFn = vi.fn();
+    const result = await installUpgrade(
+      { assetUrl: '--registry=https://evil.test' },
+      { spawnFn: spawnFn as never, argv1: '/usr/lib/node_modules/patches-social/dist/cli.js' },
+    );
+    expect(result.ok).toBe(false);
+    expect(spawnFn).not.toHaveBeenCalled();
   });
 });
