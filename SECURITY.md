@@ -24,7 +24,7 @@ Instead, report privately using one of these:
 1. **GitHub private vulnerability reporting** (preferred): open a report via
    the "Security" tab on this repository → "Report a vulnerability". This
    creates a private advisory that only maintainers can see.
-2. **Email**: allisonemilycoleman@gmail.com. Please include "SECURITY" in
+2. **Email**: me@allisons.dev. Please include "SECURITY" in
    the subject line so it doesn't get lost.
 
 When reporting, include as much of the following as you reasonably can:
