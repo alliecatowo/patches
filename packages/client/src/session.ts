@@ -1,6 +1,8 @@
 import { Code, ConnectError, createClient, type Client, type Transport } from '@connectrpc/connect';
 import { AuthService } from '@patches/proto/es';
 
+import { isDefinitiveAuthFailure } from './errors.js';
+
 /**
  * The subset of `patches.v1.Session` a client needs to keep making calls (spec §163,
  * ADR 0016 §9). Deliberately excludes `actor`/expiry timestamps/`emailVerified` — those
@@ -268,11 +270,12 @@ export class SessionManager {
       try {
         refreshed = await this.refresh();
       } catch (refreshError) {
-        // The refresh token itself is dead (rotated-then-reused, expired, or family
-        // revoked). Holding onto it guarantees an infinite 401→refresh→fail loop that
-        // hammers the node's reuse-detection every retry — drop the pair and surface
-        // "not signed in" so the caller routes to sign-in instead.
-        await this.clear();
+        // Only a definitive auth rejection means the refresh token is dead (rotated-then-
+        // reused, expired, or family revoked). Holding onto it would loop 401→refresh→fail
+        // against the node's reuse-detection, so drop the pair and let the caller route to
+        // sign-in. A transient failure (timeout, 502/503 during a Fly cold start, offline)
+        // says nothing about the token: keep it and rethrow so the next attempt can succeed.
+        if (isDefinitiveAuthFailure(refreshError)) await this.clear();
         throw refreshError;
       }
       return fn(refreshed.accessToken);

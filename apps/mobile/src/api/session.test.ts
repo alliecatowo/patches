@@ -1,4 +1,5 @@
 import { create } from '@bufbuild/protobuf';
+import { Code, ConnectError } from '@connectrpc/connect';
 import { ActorSchema, SessionSchema } from '@patches/proto/es';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -38,6 +39,7 @@ const { state, sessionManagerMock, getCurrentSession } = vi.hoisted(() => {
 vi.mock('./client.js', () => ({
   api: { auth: { getCurrentSession } },
   sessionManager: sessionManagerMock,
+  setSessionDeadHandler: vi.fn(),
 }));
 
 import {
@@ -108,13 +110,40 @@ describe('mobile session store', () => {
 
   it('restoreSession clears the session when the server rejects the stored token', async () => {
     state.accessToken = 'stale-token';
-    getCurrentSession.mockRejectedValue(new Error('Unauthenticated'));
+    getCurrentSession.mockRejectedValue(new ConnectError('nope', Code.Unauthenticated));
 
     const result = await restoreSession();
 
     expect(result).toBeNull();
     expect(sessionManagerMock.clear).toHaveBeenCalled();
     expect(getCurrentActor()).toBeNull();
+  });
+
+  it('restoreSession keeps the tokens and retries through a cold start (503 then success)', async () => {
+    state.accessToken = 'stored-token';
+    getCurrentSession
+      .mockRejectedValueOnce(new ConnectError('cold', Code.Unavailable))
+      .mockRejectedValueOnce(new ConnectError('slow', Code.DeadlineExceeded))
+      .mockResolvedValue({ actor: actor('allie') });
+
+    const result = await restoreSession({ retryDelaysMs: [0, 0, 0] });
+
+    expect(result?.handle).toBe('allie');
+    expect(sessionManagerMock.clear).not.toHaveBeenCalled();
+    expect(state.accessToken).toBe('stored-token');
+  });
+
+  it('restoreSession does not wipe tokens when the server stays unreachable; it throws', async () => {
+    state.accessToken = 'stored-token';
+    getCurrentSession.mockRejectedValue(new ConnectError('down', Code.Unavailable));
+
+    await expect(restoreSession({ retryDelaysMs: [0, 0] })).rejects.toMatchObject({
+      code: Code.Unavailable,
+    });
+
+    expect(getCurrentSession).toHaveBeenCalledTimes(3);
+    expect(sessionManagerMock.clear).not.toHaveBeenCalled();
+    expect(state.accessToken).toBe('stored-token');
   });
 
   it('notifies subscribers when the actor changes', async () => {

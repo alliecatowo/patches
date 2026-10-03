@@ -19,6 +19,8 @@ export {
 } from './session.js';
 export {
   describeError,
+  isDefinitiveAuthFailure,
+  isTransientError,
   isPrivacyAckRequired,
   isSignInRequired,
   type DescribedError,

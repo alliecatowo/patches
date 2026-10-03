@@ -1,6 +1,6 @@
-import { Code, ConnectError, type Interceptor } from '@connectrpc/connect';
+import { type Interceptor } from '@connectrpc/connect';
 import { createConnectTransport } from '@patches/client/connect';
-import { createPatchesApi, SessionManager } from '@patches/client';
+import { createPatchesApi, isDefinitiveAuthFailure, SessionManager } from '@patches/client';
 import { AuthService, type Session } from '@patches/proto/es';
 import { toast } from 'sonner';
 
@@ -167,10 +167,17 @@ const authInterceptor: Interceptor = (next) => async (req) => {
       return next(req);
     });
   } catch (error) {
-    // A second Unauthenticated (or a failed refresh) means the refresh token itself is
-    // no longer valid — sign out locally so the UI stops presenting stale state.
-    if (error instanceof ConnectError && error.code === Code.Unauthenticated) {
-      await signOut();
+    // `withSession` clears the stored tokens only when the refresh itself was definitively
+    // rejected (dead refresh token). Mirror that into the UI: drop the cached actor and
+    // send the user to sign-in, otherwise the app keeps looking signed in while every
+    // request goes out anonymous. A transient refresh failure (timeout, 502/503 on a Fly
+    // cold start) keeps the tokens, so it falls through untouched.
+    //
+    // Deliberately keyed off "are the tokens gone?" rather than "was the error
+    // Unauthenticated?": RPCs like ChangePassword answer a wrong *argument* with
+    // Unauthenticated even though the session is fine, and that must not sign anyone out.
+    if (isDefinitiveAuthFailure(error) && (await sessionManager.getAccessToken()) === undefined) {
+      clearActorSession();
       notifySessionExpired();
     }
     throw error;

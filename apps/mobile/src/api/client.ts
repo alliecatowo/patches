@@ -1,6 +1,6 @@
-import { Code, ConnectError, type Interceptor } from '@connectrpc/connect';
+import { type Interceptor } from '@connectrpc/connect';
 import { createConnectTransport } from '@patches/client/connect';
-import { createPatchesApi, SessionManager } from '@patches/client';
+import { createPatchesApi, isDefinitiveAuthFailure, SessionManager } from '@patches/client';
 import { AuthService } from '@patches/proto/es';
 
 import { SecureCredentialStore } from './credentialStore.js';
@@ -40,6 +40,14 @@ export const sessionManager = new SessionManager({ transport: refreshTransport, 
  * never need a bearer token, and retrying a failed `RefreshSession` would recurse. Ported
  * from `apps/web/src/api/client.ts`'s `authInterceptor`.
  */
+let sessionDeadHandler: (() => void) | undefined;
+
+/** Registered by `session.ts` (which imports this module, so it cannot be imported here)
+ * to drop the cached actor when the session is definitively dead. */
+export function setSessionDeadHandler(handler: () => void): void {
+  sessionDeadHandler = handler;
+}
+
 const authInterceptor: Interceptor = (next) => async (req) => {
   if (req.service.typeName === AuthService.typeName) return next(req);
   const token = await sessionManager.getAccessToken();
@@ -50,10 +58,13 @@ const authInterceptor: Interceptor = (next) => async (req) => {
       return next(req);
     });
   } catch (error) {
-    // A second Unauthenticated (or a failed refresh) means the refresh token itself is no
-    // longer valid — clear the stored session so the UI stops presenting stale state.
-    if (error instanceof ConnectError && error.code === Code.Unauthenticated) {
-      await sessionManager.clear();
+    // `withSession` clears the stored tokens only when the refresh itself was definitively
+    // rejected. Tell the UI so it stops looking signed in; a transient refresh failure
+    // (timeout, 502/503 on a Fly cold start) keeps the tokens and is not a sign-out. Keyed
+    // off "are the tokens gone?" so an RPC that answers Unauthenticated for a bad argument
+    // (e.g. wrong current password) does not end the session.
+    if (isDefinitiveAuthFailure(error) && (await sessionManager.getAccessToken()) === undefined) {
+      sessionDeadHandler?.();
     }
     throw error;
   }

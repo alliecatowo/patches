@@ -462,4 +462,42 @@ describe('SessionManager cross-tab storage sync (B-169)', () => {
 
     expect(() => session.dispose()).not.toThrow();
   });
+
+  describe('refresh failures', () => {
+    async function setup(refreshError: ConnectError) {
+      const transport = createRouterTransport((router) => {
+        router.service(AuthService, {
+          refreshSession() {
+            throw refreshError;
+          },
+        });
+      });
+      const store = new InMemoryCredentialStore();
+      await store.save({ accessToken: 'expired', refreshToken: 'r1' });
+      const session = new SessionManager({ transport, credentialStore: store });
+      const run = () =>
+        session.withSession(() =>
+          Promise.reject(new ConnectError('expired', Code.Unauthenticated)),
+        );
+      return { store, run };
+    }
+
+    it.each([Code.Unavailable, Code.DeadlineExceeded, Code.Internal])(
+      'keeps the stored tokens when refresh fails transiently (code %i)',
+      async (code) => {
+        const { store, run } = await setup(new ConnectError('boom', code));
+        await expect(run()).rejects.toMatchObject({ code });
+        expect(await store.load()).toEqual({ accessToken: 'expired', refreshToken: 'r1' });
+      },
+    );
+
+    it.each([Code.Unauthenticated, Code.PermissionDenied])(
+      'clears the tokens when refresh is definitively rejected (code %i)',
+      async (code) => {
+        const { store, run } = await setup(new ConnectError('dead', code));
+        await expect(run()).rejects.toMatchObject({ code });
+        expect(await store.load()).toBeUndefined();
+      },
+    );
+  });
 });
