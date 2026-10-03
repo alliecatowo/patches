@@ -153,6 +153,7 @@ export function MessagesRoute(): JSX.Element {
     e2eeStatus.kind === 'not-enrolled' ||
     e2eeStatus.kind === 'refused' ||
     e2eeStatus.kind === 'fault' ||
+    e2eeStatus.kind === 'locked' ||
     e2eeStatus.kind === 'enrolling';
   const mobilePane =
     compose.phase !== 'closed' || showNeedsAuthority || deviceNeedsAttention ? 'detail' : 'list';
@@ -234,6 +235,23 @@ export function E2eePanel({
   onEnroll: () => void;
   onWipe: () => void;
 }): JSX.Element | null {
+  if (status.kind === 'locked') {
+    return (
+      <Panel
+        centered
+        tone="alert"
+        role="alert"
+        title="Messages are open in another window"
+        description={status.copy}
+        footer={
+          <Button variant="primary" fullWidth onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        }
+      />
+    );
+  }
+
   if (status.kind === 'fault') {
     return (
       <Panel

@@ -24,19 +24,21 @@ export function E2eeStatusChip({
   const chip: { tone: StatusTone; label: string; title: string } =
     status.kind === 'fault'
       ? { tone: 'danger', label: 'Messaging unavailable', title: status.copy }
-      : status.kind === 'not-enrolled' || status.kind === 'refused'
-        ? {
-            tone: 'warning',
-            label: 'Not a messaging device',
-            title: `${requiredConversationDisclosure('E2EE_V1')} ${WEB_E2EE_COPY.notEnrolled}`,
-          }
-        : status.kind === 'enrolling'
-          ? { tone: 'neutral', label: 'Enrolling this browser…', title: 'Enrolling…' }
-          : {
-              tone: 'positive',
-              label: 'End-to-end encrypted',
-              title: `${requiredConversationDisclosure('E2EE_V1')} This browser holds its own device keys.`,
-            };
+      : status.kind === 'locked'
+        ? { tone: 'warning', label: 'Open in another window', title: status.copy }
+        : status.kind === 'not-enrolled' || status.kind === 'refused'
+          ? {
+              tone: 'warning',
+              label: 'Not a messaging device',
+              title: `${requiredConversationDisclosure('E2EE_V1')} ${WEB_E2EE_COPY.notEnrolled}`,
+            }
+          : status.kind === 'enrolling'
+            ? { tone: 'neutral', label: 'Enrolling this browser…', title: 'Enrolling…' }
+            : {
+                tone: 'positive',
+                label: 'End-to-end encrypted',
+                title: `${requiredConversationDisclosure('E2EE_V1')} This browser holds its own device keys.`,
+              };
 
   return (
     <StatusChip tone={chip.tone} icon={<ShieldIcon size={13} />} title={chip.title}>

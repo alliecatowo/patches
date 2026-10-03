@@ -266,7 +266,7 @@ export function MessageThreadRoute(): JSX.Element {
               the Messages list.
             </ThreadNotice>
           ) : null}
-          {e2eeStatus.kind === 'fault' ? (
+          {e2eeStatus.kind === 'fault' || e2eeStatus.kind === 'locked' ? (
             <ThreadNotice tone="alert" role="alert">
               {e2eeStatus.copy}
             </ThreadNotice>
