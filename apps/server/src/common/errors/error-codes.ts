@@ -11,6 +11,15 @@ export const ERROR_CODES = [
   'AUTH_INVALID_CREDENTIALS',
   'AUTH_EMAIL_UNVERIFIED',
   'AUTH_SESSION_EXPIRED',
+  /**
+   * Not in §57's starter list: an already-authenticated call (a valid, unexpired access
+   * token) whose account was suspended after the token was issued (P6-004, spec §65's
+   * `user suspend`). Distinct from `AUTH_SESSION_EXPIRED`/`AUTH_INVALID_CREDENTIALS` so a
+   * client can tell "your account was suspended" apart from "sign in again" — login itself
+   * stays uniform (`AUTH_INVALID_CREDENTIALS`) per §166's no-enumeration rule; this code is
+   * only ever seen by a caller who already proved who they are.
+   */
+  'ACCOUNT_SUSPENDED',
   'ACTOR_NOT_FOUND',
   'HANDLE_TAKEN',
   'ACTOR_BLOCKED',
@@ -52,6 +61,7 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   AUTH_INVALID_CREDENTIALS: GrpcStatus.UNAUTHENTICATED,
   AUTH_EMAIL_UNVERIFIED: GrpcStatus.FAILED_PRECONDITION,
   AUTH_SESSION_EXPIRED: GrpcStatus.UNAUTHENTICATED,
+  ACCOUNT_SUSPENDED: GrpcStatus.PERMISSION_DENIED,
   ACTOR_NOT_FOUND: GrpcStatus.NOT_FOUND,
   HANDLE_TAKEN: GrpcStatus.ALREADY_EXISTS,
   ACTOR_BLOCKED: GrpcStatus.PERMISSION_DENIED,

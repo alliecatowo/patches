@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { safeUrlSchema } from '../../common/validation/url.js';
 
 /**
  * Service-boundary validation for actor profile inputs (spec §58, §103). Limits mirror
@@ -44,17 +45,10 @@ export const locationTextSchema = z
     `location must be at most ${String(LOCATION_TEXT_MAX_LENGTH)} characters`,
   );
 
-/** `z.url({ protocol: /^https?$/ })`, not `z.httpUrl()` — see LEARNINGS: zod-v4-url-validation
- * (`z.httpUrl()` rejects a self-hosted node's `localhost` links). An empty string (field
+/** §104 URL-scheme allowlist (http(s) only, no embedded credentials), shared with
+ * `modules/posts/validation.ts` via `common/validation/url.ts`. An empty string (field
  * cleared) is allowed through separately by the caller, not by this schema. */
-export const websiteUrlSchema = z
-  .string()
-  .trim()
-  .max(
-    WEBSITE_URL_MAX_LENGTH,
-    `website URL must be at most ${String(WEBSITE_URL_MAX_LENGTH)} characters`,
-  )
-  .pipe(z.url({ protocol: /^https?$/, error: 'website URL must be a valid http(s) URL' }));
+export const websiteUrlSchema = safeUrlSchema(WEBSITE_URL_MAX_LENGTH, 'website URL');
 
 export const uuidInputSchema = z.uuid('must be a valid id');
 

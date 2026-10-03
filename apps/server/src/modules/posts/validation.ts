@@ -2,6 +2,7 @@ import { MAX_POST_MEDIA } from '@patches/database';
 import { z } from 'zod';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { safeUrlSchema } from '../../common/validation/url.js';
 
 /**
  * Service-boundary validation for post inputs (spec §58, §103 — the same three-places rule
@@ -21,11 +22,9 @@ const bodySchema = z
     `post body must be at most ${String(POST_BODY_MAX_LENGTH)} characters`,
   );
 
-const linkUrlSchema = z
-  .string()
-  .trim()
-  .max(LINK_URL_MAX_LENGTH, `link URL must be at most ${String(LINK_URL_MAX_LENGTH)} characters`)
-  .pipe(z.url({ protocol: /^https?$/, error: 'link URL must be a valid http(s) URL' }));
+/** §104 URL-scheme allowlist, shared with `modules/actors/validation.ts` via
+ * `common/validation/url.ts`. */
+const linkUrlSchema = safeUrlSchema(LINK_URL_MAX_LENGTH, 'link URL');
 
 /** Same length budget as `body` (spec §58) — a content warning is a label, not a second post. */
 const contentWarningSchema = z

@@ -38,3 +38,15 @@ export type {
   CreateTestNotificationOptions,
   CreateTestReportOptions,
 } from './interactions.js';
+
+export {
+  createTestGuestbookEntry,
+  createTestPage,
+  createTestPageRevision,
+  testPageDocument,
+} from './pages.js';
+export type {
+  CreateTestGuestbookEntryOptions,
+  CreateTestPageOptions,
+  CreateTestPageRevisionOptions,
+} from './pages.js';

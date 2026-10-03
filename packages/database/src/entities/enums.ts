@@ -45,8 +45,12 @@ export type AuthCodePurpose = (typeof AUTH_CODE_PURPOSES)[number];
 export const NOTIFICATION_TYPES = ['FOLLOW', 'LIKE', 'REPLY', 'MENTION', 'MODERATION'] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
-/** A report's target (`INITIAL_VISION.md` §64's `subject_type`). */
-export const REPORT_SUBJECT_TYPES = ['ACTOR', 'POST'] as const;
+/** A report's target (`INITIAL_VISION.md` §64's `subject_type`). `GUESTBOOK_ENTRY` (P45-003)
+ * is reportable per §172 ("guestbook entries are ... reportable, §64") — `ModerationService`
+ * has no guestbook-entry RPC, so `PageService.ReportGuestbookEntry` (`pages.proto`) writes
+ * this subject type directly into the same `reports` table `ModerationService` uses, rather
+ * than duplicating the report model. */
+export const REPORT_SUBJECT_TYPES = ['ACTOR', 'POST', 'GUESTBOOK_ENTRY'] as const;
 export type ReportSubjectType = (typeof REPORT_SUBJECT_TYPES)[number];
 
 export const REPORT_REASONS = [
@@ -82,6 +86,12 @@ export type OutboxJobStatus = (typeof OUTBOX_JOB_STATUSES)[number];
  * command acted on. */
 export const ADMIN_AUDIT_SUBJECT_TYPES = ['USER', 'INVITE', 'REPORT', 'POST', 'JOB'] as const;
 export type AdminAuditSubjectType = (typeof ADMIN_AUDIT_SUBJECT_TYPES)[number];
+
+/** `pages.visibility` (`INITIAL_VISION.md` §170-172) — mirrors `posts.visibility`'s
+ * vocabulary minus `FOLLOWERS`, which has no meaning for a Page (there is no per-viewer
+ * follow-gated rendering in v1). */
+export const PAGE_VISIBILITIES = ['PUBLIC', 'UNLISTED'] as const;
+export type PageVisibility = (typeof PAGE_VISIBILITIES)[number];
 
 /**
  * Builds `"column" IN ('A', 'B')` for a `@Check(...)` expression from a value list, so the

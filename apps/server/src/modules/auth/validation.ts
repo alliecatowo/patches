@@ -59,8 +59,13 @@ const labelSchema = z
     `label must be at most ${String(CREDENTIAL_LABEL_MAX_LENGTH)} characters`,
   );
 
-/** An emailed code or an invite code: opaque to us, but bounded so it can't be abusive. */
-const opaqueCodeSchema = z.string().trim().min(1, 'code is required').max(200, 'code is too long');
+/** An emailed code, an invite code, or a GitHub device code: opaque to us, but bounded so it
+ * can't be abusive. */
+export const opaqueCodeSchema = z
+  .string()
+  .trim()
+  .min(1, 'code is required')
+  .max(200, 'code is too long');
 
 export const registerInputSchema = z.object({
   handle: handleSchema,

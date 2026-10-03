@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Box, Text, useApp, useInput, useStdin, useWindowSize } from 'ink';
-import { type ReactElement, useCallback, useEffect, useRef, useState } from 'react';
+import { type ReactElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Actor, Post } from '@patches/proto';
 
 import { present } from '../api/present.js';
@@ -15,6 +15,9 @@ import { StatusBar } from '../components/StatusBar.js';
 import { TerminalTooSmall } from '../components/TerminalTooSmall.js';
 import { useServerInfo } from '../hooks/useServerInfo.js';
 import { useUnreadCount } from '../hooks/useUnreadCount.js';
+import { MediaCache } from '../media/cache.js';
+import { MediaSessionProvider } from '../media/media-session.js';
+import { openMediaExternally, type OpenMediaOptions } from '../media/open-external.js';
 import { AccountsScreen } from '../screens/AccountsScreen.js';
 import { BookmarksScreen } from '../screens/BookmarksScreen.js';
 import { ComposeScreen } from '../screens/ComposeScreen.js';
@@ -37,6 +40,11 @@ export interface AppProps {
   credentialStore: CredentialStore;
   draftStore?: DraftStore;
   env?: NodeJS.ProcessEnv;
+  /** Overridden in tests — a real `MediaCache` writes to the user's XDG cache dir. */
+  mediaCache?: MediaCache;
+  /** Threaded into every `o` (open externally) call — tests inject `spawnFn` here to
+   * record the call instead of actually launching an OS opener (spec §76). */
+  openMediaOptions?: OpenMediaOptions;
 }
 
 type Screen =
@@ -87,6 +95,8 @@ export function App({
   credentialStore,
   draftStore,
   env = process.env,
+  mediaCache,
+  openMediaOptions,
 }: AppProps): ReactElement {
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
@@ -115,6 +125,14 @@ export function App({
 
   const [store] = useState<DraftStore>(() => draftStore ?? new FileDraftStore());
   const [draft, setDraft] = useState<ComposeDraft>(emptyDraft);
+
+  // One cache/session for the whole app (spec §32) — `useMemo` so `MediaAttachments`'
+  // fetch effect (keyed on this object's identity) doesn't refire every render.
+  const [cache] = useState<MediaCache>(() => mediaCache ?? new MediaCache());
+  const mediaSession = useMemo(
+    () => ({ api, cache, ensureAccessToken }),
+    [api, cache, ensureAccessToken],
+  );
 
   // Which actor `profile` currently shows — set by `g p` (the caller's own),
   // or by selecting a post's author (B-017). `undefined` until one of those fires.
@@ -350,6 +368,23 @@ export function App({
     openReport({ type: 'actor', id: actor.id, label: `@${actor.handle}` });
   }
 
+  /** `o` on a post row (B-004/P5-003, spec §76) — downloads and opens its first
+   * attachment with the OS default handler. A no-op (not an error) for a post with no
+   * media. */
+  function openMedia(post: Post): void {
+    const first = post.media[0];
+    if (first === undefined) return;
+    if (session === undefined) {
+      setNotice('Log in first — press L.');
+      return;
+    }
+    openMediaExternally(api, cache, first, ensureAccessToken, { env, ...openMediaOptions }).catch(
+      (error: unknown) => {
+        setNotice(describeGrpcError(error, api.target).title);
+      },
+    );
+  }
+
   /** `x` on the accounts screen (B-022) — signs out of the current session and
    * returns to a logged-out screen. */
   async function logout(): Promise<void> {
@@ -365,6 +400,7 @@ export function App({
     onToggleLike: (post) => void toggleLike(post),
     onToggleBookmark: (post) => void toggleBookmark(post),
     onReport: reportPost,
+    onOpenMedia: openMedia,
     decorate: decoratePost,
   };
 
@@ -423,155 +459,157 @@ export function App({
   }
 
   return (
-    <PlainModeProvider plain={plain}>
-      <Box flexDirection="column" justifyContent="space-between" height={rows}>
-        <Box flexDirection="column" paddingX={1} paddingY={1}>
-          {screen === 'help' && <HelpScreen target={api.target} />}
-          {screen === 'connect' && <ConnectScreen target={api.target} state={serverInfoState} />}
-          {screen === 'local' && (
-            <LocalScreen
-              api={api}
-              isActive={screen === 'local' && !pendingGo}
-              actions={rowActions}
-            />
-          )}
-          {screen === 'home' && session !== undefined && (
-            <HomeScreen
-              api={api}
-              isActive={screen === 'home' && !pendingGo}
-              ensureAccessToken={ensureAccessToken}
-              actions={rowActions}
-            />
-          )}
-          {screen === 'search' && (
-            <SearchScreen
-              api={api}
-              isActive={screen === 'search'}
-              onOpenActor={(actor) => openProfile(actor.id, actor)}
-              onCancel={() => setScreen(priorScreen)}
-            />
-          )}
-          {screen === 'profile' && profileTarget !== undefined && (
-            <ProfileScreen
-              api={api}
-              actorId={profileTarget.actorId}
-              knownActor={profileTarget.knownActor}
-              isActive={screen === 'profile' && !pendingGo}
-              actions={rowActions}
-              viewerActorId={session?.userId}
-              ensureAccessToken={ensureAccessToken}
-              onReportActor={reportActor}
-            />
-          )}
-          {screen === 'thread' && threadStack.length > 0 && (
-            <ThreadScreen
-              api={api}
-              postId={threadStack[threadStack.length - 1] ?? ''}
-              isActive={screen === 'thread' && !pendingGo}
-              actions={rowActions}
-              onBack={threadBack}
-            />
-          )}
-          {screen === 'bookmarks' && session !== undefined && (
-            <BookmarksScreen
-              api={api}
-              isActive={screen === 'bookmarks' && !pendingGo}
-              ensureAccessToken={ensureAccessToken}
-              actions={rowActions}
-            />
-          )}
-          {screen === 'notifications' && session !== undefined && (
-            <NotificationsScreen
-              api={api}
-              isActive={screen === 'notifications' && !pendingGo}
-              ensureAccessToken={ensureAccessToken}
-              onOpenPost={openThread}
-              onOpenAuthor={(actor) => openProfile(actor.id, actor)}
-              onMarkedAllRead={() => setUnreadNonce((current) => current + 1)}
-            />
-          )}
-          {screen === 'report' && reportTarget !== undefined && session !== undefined && (
-            <ReportScreen
-              api={api}
-              target={reportTarget}
-              ensureAccessToken={ensureAccessToken}
-              isActive={screen === 'report'}
-              onCancel={() => setScreen(priorScreen)}
-              onSubmitted={() => {
-                setNotice('Report submitted — thank you.');
-                setScreen(priorScreen);
-              }}
-            />
-          )}
-          {screen === 'accounts' && session !== undefined && (
-            <AccountsScreen
-              api={api}
-              env={env}
-              session={session}
-              isActive={screen === 'accounts'}
-              ensureAccessToken={ensureAccessToken}
-              onLogout={() => void logout()}
-              onBack={() => setScreen(priorScreen)}
-            />
-          )}
-          {screen === 'login' && (
-            <LoginScreen
-              api={api}
-              sessionManager={sessionManager}
-              env={env}
-              isActive={screen === 'login'}
-              onCancel={() => setScreen(priorScreen)}
-              onSuccess={(newSession) => {
-                setSession(newSession);
-                setScreen(priorScreen);
-              }}
-            />
-          )}
-          {screen === 'compose' && session !== undefined && (
-            <ComposeScreen
-              api={api}
-              draft={draft}
-              onChange={updateDraft}
-              onCancel={() => setScreen(priorScreen)}
-              isActive={screen === 'compose'}
-              ensureAccessToken={ensureAccessToken}
-              onSubmitted={(post) => {
-                const cleared = emptyDraft();
-                setDraft(cleared);
-                void store.clear();
-                if (post.inReplyToId !== '') {
-                  // A reply just posted — show its own thread (parent for context,
-                  // itself in focus) rather than the author's whole timeline. Set
-                  // directly (not `openThread`) so `priorScreen` — already the screen
-                  // `r` was pressed from — survives for `Esc` to return to.
-                  setThreadStack([post.id]);
-                  setScreen('thread');
-                } else if (present(post.author)) {
-                  openProfile(post.author.id, post.author);
-                } else if (session !== undefined) {
-                  openProfile(session.userId, session.actor);
-                } else {
-                  setScreen('profile');
-                }
-              }}
-            />
-          )}
-        </Box>
+    <MediaSessionProvider session={mediaSession}>
+      <PlainModeProvider plain={plain}>
+        <Box flexDirection="column" justifyContent="space-between" height={rows}>
+          <Box flexDirection="column" paddingX={1} paddingY={1}>
+            {screen === 'help' && <HelpScreen target={api.target} />}
+            {screen === 'connect' && <ConnectScreen target={api.target} state={serverInfoState} />}
+            {screen === 'local' && (
+              <LocalScreen
+                api={api}
+                isActive={screen === 'local' && !pendingGo}
+                actions={rowActions}
+              />
+            )}
+            {screen === 'home' && session !== undefined && (
+              <HomeScreen
+                api={api}
+                isActive={screen === 'home' && !pendingGo}
+                ensureAccessToken={ensureAccessToken}
+                actions={rowActions}
+              />
+            )}
+            {screen === 'search' && (
+              <SearchScreen
+                api={api}
+                isActive={screen === 'search'}
+                onOpenActor={(actor) => openProfile(actor.id, actor)}
+                onCancel={() => setScreen(priorScreen)}
+              />
+            )}
+            {screen === 'profile' && profileTarget !== undefined && (
+              <ProfileScreen
+                api={api}
+                actorId={profileTarget.actorId}
+                knownActor={profileTarget.knownActor}
+                isActive={screen === 'profile' && !pendingGo}
+                actions={rowActions}
+                viewerActorId={session?.userId}
+                ensureAccessToken={ensureAccessToken}
+                onReportActor={reportActor}
+              />
+            )}
+            {screen === 'thread' && threadStack.length > 0 && (
+              <ThreadScreen
+                api={api}
+                postId={threadStack[threadStack.length - 1] ?? ''}
+                isActive={screen === 'thread' && !pendingGo}
+                actions={rowActions}
+                onBack={threadBack}
+              />
+            )}
+            {screen === 'bookmarks' && session !== undefined && (
+              <BookmarksScreen
+                api={api}
+                isActive={screen === 'bookmarks' && !pendingGo}
+                ensureAccessToken={ensureAccessToken}
+                actions={rowActions}
+              />
+            )}
+            {screen === 'notifications' && session !== undefined && (
+              <NotificationsScreen
+                api={api}
+                isActive={screen === 'notifications' && !pendingGo}
+                ensureAccessToken={ensureAccessToken}
+                onOpenPost={openThread}
+                onOpenAuthor={(actor) => openProfile(actor.id, actor)}
+                onMarkedAllRead={() => setUnreadNonce((current) => current + 1)}
+              />
+            )}
+            {screen === 'report' && reportTarget !== undefined && session !== undefined && (
+              <ReportScreen
+                api={api}
+                target={reportTarget}
+                ensureAccessToken={ensureAccessToken}
+                isActive={screen === 'report'}
+                onCancel={() => setScreen(priorScreen)}
+                onSubmitted={() => {
+                  setNotice('Report submitted — thank you.');
+                  setScreen(priorScreen);
+                }}
+              />
+            )}
+            {screen === 'accounts' && session !== undefined && (
+              <AccountsScreen
+                api={api}
+                env={env}
+                session={session}
+                isActive={screen === 'accounts'}
+                ensureAccessToken={ensureAccessToken}
+                onLogout={() => void logout()}
+                onBack={() => setScreen(priorScreen)}
+              />
+            )}
+            {screen === 'login' && (
+              <LoginScreen
+                api={api}
+                sessionManager={sessionManager}
+                env={env}
+                isActive={screen === 'login'}
+                onCancel={() => setScreen(priorScreen)}
+                onSuccess={(newSession) => {
+                  setSession(newSession);
+                  setScreen(priorScreen);
+                }}
+              />
+            )}
+            {screen === 'compose' && session !== undefined && (
+              <ComposeScreen
+                api={api}
+                draft={draft}
+                onChange={updateDraft}
+                onCancel={() => setScreen(priorScreen)}
+                isActive={screen === 'compose'}
+                ensureAccessToken={ensureAccessToken}
+                onSubmitted={(post) => {
+                  const cleared = emptyDraft();
+                  setDraft(cleared);
+                  void store.clear();
+                  if (post.inReplyToId !== '') {
+                    // A reply just posted — show its own thread (parent for context,
+                    // itself in focus) rather than the author's whole timeline. Set
+                    // directly (not `openThread`) so `priorScreen` — already the screen
+                    // `r` was pressed from — survives for `Esc` to return to.
+                    setThreadStack([post.id]);
+                    setScreen('thread');
+                  } else if (present(post.author)) {
+                    openProfile(post.author.id, post.author);
+                  } else if (session !== undefined) {
+                    openProfile(session.userId, session.actor);
+                  } else {
+                    setScreen('profile');
+                  }
+                }}
+              />
+            )}
+          </Box>
 
-        <Box flexDirection="column" paddingX={1}>
-          <Text color={theme.muted}>{'─'.repeat(Math.max(0, columns - 2))}</Text>
-          {notice === undefined ? null : <Text color={theme.warn}>{notice}</Text>}
-          <StatusBar
-            target={api.target}
-            status={statusLabel(serverInfoState.status)}
-            statusColor={statusColor(serverInfoState.status)}
-            handle={session?.actor?.handle}
-            keys={statusKeys(screen, session !== undefined)}
-            unreadCount={unreadCount}
-          />
+          <Box flexDirection="column" paddingX={1}>
+            <Text color={theme.muted}>{'─'.repeat(Math.max(0, columns - 2))}</Text>
+            {notice === undefined ? null : <Text color={theme.warn}>{notice}</Text>}
+            <StatusBar
+              target={api.target}
+              status={statusLabel(serverInfoState.status)}
+              statusColor={statusColor(serverInfoState.status)}
+              handle={session?.actor?.handle}
+              keys={statusKeys(screen, session !== undefined)}
+              unreadCount={unreadCount}
+            />
+          </Box>
         </Box>
-      </Box>
-    </PlainModeProvider>
+      </PlainModeProvider>
+    </MediaSessionProvider>
   );
 }
 
@@ -583,7 +621,16 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
   if (screen === 'accounts') return ['a add key', 'x log out', 'Esc back'];
   if (screen === 'notifications') return ['j/k move', 'Enter open', 'm mark all read'];
   if (screen === 'thread') {
-    return ['Enter thread', 'p author', 'r reply', 'l like', 'b bookmark', '! report', 'Esc back'];
+    return [
+      'Enter thread',
+      'p author',
+      'r reply',
+      'l like',
+      'b bookmark',
+      'o open media',
+      '! report',
+      'Esc back',
+    ];
   }
   if (screen === 'local' || screen === 'home' || screen === 'profile' || screen === 'bookmarks') {
     return [
@@ -593,6 +640,7 @@ function statusKeys(screen: Screen, authenticated: boolean): string[] {
       'r reply',
       'l like',
       'b bookmark',
+      'o open media',
       '! report',
       'g h/l/p go',
       '? help',

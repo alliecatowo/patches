@@ -553,6 +553,31 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
           expect(error.code).toBe(GrpcStatus.UNAUTHENTICATED);
         }
       });
+
+      it('rejects an already-issued access token once the account is suspended (P6-004)', async () => {
+        const handle = `suspendme${suffix()}`;
+        const password = 'suspend-this-account';
+        const { session } = await register({ handle, password });
+        const userId = await userIdForHandle(handle);
+
+        // Still valid before the suspension — same token used below, only the account
+        // status changes in between (`patches-admin user suspend`'s effect, without going
+        // through the CLI).
+        await callUnary<GetCurrentSessionRequest, GetCurrentSessionResponse>(
+          auth.getCurrentSession.bind(auth),
+          {},
+          { accessToken: session?.accessToken ?? '' },
+        );
+
+        await dataSource.getRepository(User).update({ id: userId }, { status: 'SUSPENDED' });
+
+        const error = await expectRejection<GetCurrentSessionRequest, GetCurrentSessionResponse>(
+          auth.getCurrentSession.bind(auth),
+          {},
+          { accessToken: session?.accessToken ?? '' },
+        );
+        expect(error.code).toBe(GrpcStatus.PERMISSION_DENIED);
+      });
     });
 
     describe('SSH login (§166)', () => {

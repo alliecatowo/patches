@@ -43,16 +43,17 @@ import {
 } from '@patches/proto/nest';
 
 import { AppError } from '../../common/errors/app-error.js';
-import { AuthGuard } from './auth.guard.js';
+import { AuthGuard, extractBearerToken } from './auth.guard.js';
 import {
   credentialTypeFromProto,
   toProtoActor,
   toProtoCredential,
+  toProtoGitHubLoginStatus,
   toProtoSession,
 } from './auth.mapper.js';
 import { AuthService } from './auth.service.js';
 import { CurrentSession } from './session-context.js';
-import { type AccessTokenClaims } from './token.service.js';
+import { type AccessTokenClaims, TokenService } from './token.service.js';
 
 /**
  * Transport adapter for `patches.v1.AuthService` — protobuf in, protobuf out, no business
@@ -68,7 +69,10 @@ import { type AccessTokenClaims } from './token.service.js';
 @Controller()
 @AuthServiceControllerMethods()
 export class AuthController implements AuthServiceController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly tokens: TokenService,
+  ) {}
 
   async register(@Payload() request: RegisterRequest): Promise<RegisterResponse> {
     const session = await this.auth.register({
@@ -176,16 +180,51 @@ export class AuthController implements AuthServiceController {
   }
 
   /**
-   * GitHub is schema-only until Phase 6 (§167, §176): it is the first outbound HTTP call to a
-   * third party and wants that phase's URL/timeout/SSRF baseline first. `UNIMPLEMENTED` is the
-   * honest answer — never a fake pending status a client would poll forever.
+   * No `@UseGuards(AuthGuard)`: `BeginGitHubLogin` is valid both anonymously (login with an
+   * already-linked GitHub credential) and authenticated (link GitHub to the caller's own
+   * account, spec §167's "linking ... MUST require an authenticated Patches session" —
+   * enforced by `AuthService` reading `callerUserId`, not by rejecting anonymous calls
+   * outright, since the very same RPC also serves the login case). An invalid bearer token is
+   * simply treated as anonymous rather than rejected — the guard's job is to reject bad
+   * tokens on endpoints that *require* auth, not this one.
    */
-  beginGitHubLogin(@Payload() _request: BeginGitHubLoginRequest): BeginGitHubLoginResponse {
-    throw gitHubNotImplemented();
+  async beginGitHubLogin(
+    @Payload() _request: BeginGitHubLoginRequest,
+    @Ctx() metadata?: Metadata,
+  ): Promise<BeginGitHubLoginResponse> {
+    const callerUserId = await this.optionalCallerUserId(metadata);
+    const begun = await this.auth.beginGitHubLogin(callerUserId);
+    return {
+      deviceCode: begun.deviceCode,
+      userCode: begun.userCode,
+      verificationUri: begun.verificationUri,
+      interval: begun.interval,
+      expiresAt: dateToTimestamp(begun.expiresAt),
+    };
   }
 
-  pollGitHubLogin(@Payload() _request: PollGitHubLoginRequest): PollGitHubLoginResponse {
-    throw gitHubNotImplemented();
+  async pollGitHubLogin(
+    @Payload() request: PollGitHubLoginRequest,
+  ): Promise<PollGitHubLoginResponse> {
+    const result = await this.auth.pollGitHubLogin(request.deviceCode);
+    return {
+      status: toProtoGitHubLoginStatus(result.status),
+      session: result.status === 'COMPLETE' ? toProtoSession(result.session) : undefined,
+    };
+  }
+
+  /** `undefined` for no token, an invalid token, or a token whose account is gone/suspended —
+   * every one of those cases just means "treat this `BeginGitHubLogin` call as anonymous",
+   * not "reject the call" (see the method's own doc comment above). */
+  private async optionalCallerUserId(metadata: Metadata | undefined): Promise<string | undefined> {
+    const token = extractBearerToken(metadata);
+    if (token === undefined) return undefined;
+    try {
+      const claims = await this.tokens.verifyAccessToken(token);
+      return claims.userId;
+    } catch {
+      return undefined;
+    }
   }
 
   @UseGuards(AuthGuard)
@@ -261,8 +300,4 @@ function requireSession(session: AccessTokenClaims | undefined): AccessTokenClai
     throw new AppError('AUTH_INVALID_CREDENTIALS', 'Authentication required.');
   }
   return session;
-}
-
-function gitHubNotImplemented(): AppError {
-  return new AppError('NOT_IMPLEMENTED', 'GitHub login is not available on this node yet.');
 }
