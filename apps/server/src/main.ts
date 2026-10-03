@@ -12,6 +12,7 @@ import { readDotEnvFile } from '@patches/config';
 
 import { Logger as PinoLoggerService } from 'nestjs-pino';
 import { validateEnv } from './config/env.schema.js';
+import { embeddedWorkerEnabled, startEmbeddedWorker } from './embedded-worker.js';
 import { createGrpcMicroservice } from './grpc-options.js';
 import { webVitalsCorsMiddleware } from './modules/observability/web-vitals-cors.js';
 import { ReadinessState } from './modules/system/readiness-state.js';
@@ -208,6 +209,24 @@ async function bootstrap(): Promise<void> {
     const { startMetricsServer } = await import('@patches/observability/metrics-server');
     await startMetricsServer(env.METRICS_PORT);
     appLogger.log(`metrics server listening on :${String(env.METRICS_PORT)}`);
+  }
+
+  // Scale-to-zero: run the job worker on this same Machine so it can stop when idle (see
+  // `embedded-worker.ts`). Off by default; the dedicated `worker` process group is unaffected.
+  if (embeddedWorkerEnabled(process.env)) {
+    const embedded = startEmbeddedWorker({
+      entrypoint: process.env.WORKER_ENTRYPOINT ?? 'worker/dist/main.js',
+      log: (message) => {
+        appLogger.log(message);
+      },
+    });
+    // Registered after Nest's shutdown hooks; the child drains concurrently with the server.
+    process.once('SIGTERM', () => {
+      void embedded.stop();
+    });
+    process.once('SIGINT', () => {
+      void embedded.stop();
+    });
   }
 }
 

@@ -736,3 +736,14 @@ environment. Everything up to producing and installing the tarball is verified a
 - `docs/operations/database.md` — migration policy.
 - `docs/operations/backups.md` — backup/restore procedure.
 - `docs/operations/incidents.md` — rollback and incident response.
+
+## Scale to zero (2026-10-02)
+
+`infra/fly/fly.toml` runs a single `server` Machine with `auto_stop_machines = "stop"`,
+`auto_start_machines = true`, `min_machines_running = 0` on the http and grpc services. The job
+worker no longer has its own Machine: `WORKER_IN_PROCESS=true` makes the server spawn
+`worker/dist/main.js` as a child process (`apps/server/src/embedded-worker.ts`), because a
+service-less `worker` Machine can never be woken by traffic. Jobs are claimed while the Machine is
+awake; delayed or scheduled jobs (retention sweeps, 30-day purge) run on the next wake. A
+long-lived gRPC/TUI connection keeps the Machine up. After deploying, destroy the old worker
+Machine if it still exists (`fly machine destroy <id> -a patches-social --force`).
