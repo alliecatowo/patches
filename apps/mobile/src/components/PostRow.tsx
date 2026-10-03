@@ -1,8 +1,10 @@
-import type { Post } from '@patches/proto/es';
-import { useState, type JSX } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { MediaAttachment, Post } from '@patches/proto/es';
+import { useEffect, useState, type JSX } from 'react';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
+import { api } from '../api/client.js';
 import { formatCount, formatRelativeTime } from '../lib/format.js';
+import { resolvePostMediaAttachments, type ResolvedMediaAttachment } from '../media/attachment.js';
 
 export interface PostRowProps {
   post: Post;
@@ -14,6 +16,64 @@ export interface PostRowProps {
   /** Open the author's Patches Page/wall — the mobile Pages viewer's entry point from a
    * timeline (B-082). Optional so contexts without a page stack render inert handles. */
   onOpenPage?: (handle: string) => void;
+}
+
+function PostMedia({ media }: { media: readonly MediaAttachment[] }): JSX.Element | null {
+  const [resolved, setResolved] = useState<ResolvedMediaAttachment[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (media.length === 0) {
+      setResolved([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    resolvePostMediaAttachments(api.media, media)
+      .then((res) => {
+        if (!cancelled) {
+          setResolved(res);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [media]);
+
+  if (media.length === 0) return null;
+
+  return (
+    <View style={styles.mediaGrid}>
+      {loading ? (
+        <Text style={styles.muted}>Loading media…</Text>
+      ) : (
+        resolved.map((item, idx) => {
+          if (item.failed || !item.url) {
+            return (
+              <View key={item.mediaId || idx} style={styles.mediaPlaceholder}>
+                <Text style={styles.muted}>Media unavailable</Text>
+              </View>
+            );
+          }
+          return (
+            <View key={item.mediaId || idx} style={styles.mediaContainer}>
+              <Image source={{ uri: item.url }} style={styles.mediaImage} resizeMode="cover" />
+              {item.altText ? (
+                <Text style={styles.mediaAlt} numberOfLines={2}>
+                  {item.altText}
+                </Text>
+              ) : null}
+            </View>
+          );
+        })
+      )}
+    </View>
+  );
 }
 
 /**
@@ -70,7 +130,10 @@ export function PostRow({
           {post.deleted ? (
             <Text style={styles.body}>This post was deleted.</Text>
           ) : (
-            <Text style={styles.body}>{post.body}</Text>
+            <>
+              {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
+              {post.media && post.media.length > 0 ? <PostMedia media={post.media} /> : null}
+            </>
           )}
         </>
       )}
@@ -120,4 +183,16 @@ const styles = StyleSheet.create({
   count: { color: '#888', fontSize: 12 },
   actions: { flexDirection: 'row', gap: 20, marginTop: 8 },
   action: { color: '#7c9cff', fontSize: 13 },
+  mediaGrid: { marginTop: 8, gap: 8 },
+  mediaContainer: { borderRadius: 6, overflow: 'hidden', backgroundColor: '#161618' },
+  mediaImage: { width: '100%', height: 200, borderRadius: 6 },
+  mediaAlt: { color: '#888', fontSize: 12, marginTop: 2 },
+  mediaPlaceholder: {
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#2a2a2c',
+    borderRadius: 6,
+  },
+  muted: { color: '#888', fontSize: 13 },
 });
