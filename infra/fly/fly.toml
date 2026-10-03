@@ -123,6 +123,11 @@ kill_timeout = "30s"
   internal_port = 9090
   protocol = "tcp"
   processes = ["server"]
+  # Must match the public services: Fly only auto-stops a Machine when every service on it
+  # allows it, so leaving this one at the default (off) pinned the Machine awake.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
   # No [[services.ports]] = no external exposure
 
 # Real application-level health check (A-043): `GET /healthz` on the server process's HTTP
