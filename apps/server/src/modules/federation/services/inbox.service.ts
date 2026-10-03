@@ -37,6 +37,7 @@ import { verifyRequestSignature } from '../signatures/http-signature.js';
 import { DeliveryService } from './delivery.service.js';
 import { DomainBlockService } from './domain-block.service.js';
 import { KeyService } from './key.service.js';
+import { isIdBoundToFetch, sameOrigin } from '../security/origin-binding.js';
 import { RemoteActorService } from './remote-actor.service.js';
 import { TagExtractionService } from '../../../modules/tags/tag-extraction.service.js';
 import { normalizeTagIdentity } from '../../../modules/tags/tag-grammar.js';
@@ -417,6 +418,11 @@ export class InboxService {
     const noteId = note.id;
     const content = note.content;
     if (typeof noteId !== 'string' || typeof content !== 'string') return undefined;
+    // S-C1/S-L10: a verified sender may only mint objects on its own origin.
+    if (!sameOrigin(noteId, sender.canonicalUri ?? '')) return undefined;
+    if (typeof note.attributedTo === 'string' && note.attributedTo !== sender.canonicalUri) {
+      return undefined;
+    }
 
     const origin = this.config.publicOrigin;
     const inReplyToRaw = note.inReplyTo;
@@ -580,6 +586,8 @@ export class InboxService {
     ) {
       return null;
     }
+    // S-C1: fetchObject already bound `id` to quoteUri; the author must share its origin.
+    if (!sameOrigin(attributedTo, docId)) return null;
 
     const authorActor = await this.remoteActors.getOrFetchByUri(manager, attributedTo);
     if (authorActor === null) return null;
@@ -909,6 +917,9 @@ export class InboxService {
     ) {
       return null;
     }
+    // S-C1: the Note must be the object we fetched and its author must share its origin.
+    if (!isIdBoundToFetch(noteId, objectUri, response.finalUrl)) return null;
+    if (!sameOrigin(attributedTo, noteId)) return null;
 
     const authorActor = await this.remoteActors.getOrFetchByUri(manager, attributedTo);
     if (authorActor === null) return null;
