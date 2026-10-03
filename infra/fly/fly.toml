@@ -51,8 +51,8 @@ kill_timeout = "30s"
   # this node cannot read message bodies, but it can see delivery metadata.
   PRIVACY_NOTICE_SUMMARY = "This node (patches-social.fly.dev) stores your account, profile, posts, and direct-message ciphertext in a Postgres database (Neon, aws-us-east-2); uploaded images are stored in Cloudflare R2. Public posts and profile fields are visible to anyone who can reach this node. Direct messages are end-to-end encrypted: this node cannot read message bodies, but it can always see who you message and when. Reporting a message shares the content you explicitly select with the operators as evidence. Deleting a post tombstones it for thread integrity; deleting your account starts a 30-day grace period, after which your content is purged except records tied to an open report or appeal. Export or delete your data any time from the privacy screen. Full policy and contact details: see the terms link and operator identity below."
   TERMS_URL = "https://github.com/alliecatowo/patches/blob/main/docs/product/privacy.md"
-  APPEAL_INSTRUCTIONS = "Use the in-client appeal flow (the Appeals screen / patches appeal) within the appeal window shown on your notice, or email allisonemilycoleman@gmail.com with your handle, the notice ID, and why you believe it was wrong. One appeal per notice."
-  OPERATOR_CONTACT = "Operated by Allison Coleman (allisonemilycoleman@gmail.com) — a solo self-hosted instance, not a company."
+  APPEAL_INSTRUCTIONS = "Use the in-client appeal flow (the Appeals screen / patches appeal) within the appeal window shown on your notice, or email me@allisons.dev with your handle, the notice ID, and why you believe it was wrong. One appeal per notice."
+  OPERATOR_CONTACT = "Operated by Allison Coleman (me@allisons.dev) — a solo self-hosted instance, not a company."
   DATA_LOCATION = "App: Fly.io (iad, US). Database: Neon Postgres (aws-us-east-2, US). Media: Cloudflare R2."
 
 # One image, one process group (`server`; the worker is embedded, see WORKER_IN_PROCESS). Fly runs each group's Machines with the corresponding
