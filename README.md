@@ -257,7 +257,7 @@ See [`scripts/screenshots/regenerate-tui.sh`](scripts/screenshots/regenerate-tui
 ## Repository layout
 
 ```
-apps/server            NestJS 11 gRPC server (modular monolith)
+apps/server            NestJS 12 gRPC server (modular monolith)
 apps/worker             NestJS standalone background-job worker (media, exports, federation delivery, ...)
 apps/tui                Ink 7 / React 19 terminal client  (`patches`)
 apps/web                Responsive browser GUI (Vite + React 19), Connect transport, no separate backend
