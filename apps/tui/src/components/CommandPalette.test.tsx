@@ -3,7 +3,7 @@ import { render } from 'ink-testing-library';
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Command } from '../app/commands.js';
+import { paletteBindings, filterPaletteBindings, type Command } from '../app/commands.js';
 import { createKeyLayerStack, KeyLayerProvider } from '../app/input.js';
 import { ContentSizeProvider } from '../app/layout.js';
 import { CommandPalette, type CommandPaletteProps } from './CommandPalette.js';
@@ -130,5 +130,32 @@ describe('CommandPalette contextual commands (P12-116)', () => {
     expect(onInvoke).toHaveBeenCalledOnce();
     const [invocation] = onInvoke.mock.calls[0] as [{ source: string }];
     expect(invocation.source).toBe('palette');
+  });
+});
+
+describe('CommandPalette scrolling (B-043: selection stays visible)', () => {
+  it('scrolls the viewport as j moves the selection past the first page', async () => {
+    // The same order/filter the component itself computes for `baseProps()` (screen
+    // 'home', authenticated) with an empty query — this is what the old
+    // `items.slice(0, visibleRows)` implementation never scrolled away from.
+    const items = filterPaletteBindings('', paletteBindings('home', true));
+    expect(items.length).toBeGreaterThan(9);
+    const first = items[0];
+    const tenth = items[9];
+    if (first === undefined || tenth === undefined) throw new Error('fixture too small');
+    const firstLabel = first.description ?? first.hint;
+    const tenthLabel = tenth.description ?? tenth.hint;
+
+    const { stack, lastFrame } = renderPalette(baseProps());
+    for (let index = 0; index < 9; index += 1) {
+      await dispatch(stack, 'j');
+    }
+    const frame = lastFrame() ?? '';
+    const selectedLine = frame.split('\n').find((line) => line.includes(tenthLabel));
+    expect(selectedLine).toBeDefined();
+    expect(selectedLine).toContain('›');
+    // Proves it actually scrolled, not just grew the window: the first page's top row
+    // must have left the frame once the selection moved nine rows past it.
+    expect(frame).not.toContain(firstLabel);
   });
 });

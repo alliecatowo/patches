@@ -210,6 +210,19 @@ export const KEYMAP: readonly Binding[] = [
     commands: [{ name: 'search', argument: 'required', usage: 'search <query>' }],
   },
   {
+    // B-042: plain `g <key>` always replaces the screen — this is the explicit
+    // "open beside" request for the one `g`-reachable destination (`v`, your Patches
+    // Page) that would otherwise combine with a list beneath it into a split pane.
+    keys: 'Ctrl+G',
+    hint: 'go to (split)',
+    description:
+      'Like g <key>, but opens the destination in the second pane instead of replacing the screen',
+    group: 'Navigation',
+    on: 'global',
+    helpOnly: true,
+    region: 'shell',
+  },
+  {
     keys: 'Esc',
     hint: 'back',
     description: 'Back one screen — always exactly one level, from every screen',

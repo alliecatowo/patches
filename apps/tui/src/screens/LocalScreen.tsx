@@ -39,8 +39,11 @@ export function LocalScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
     [api, ensureAccessToken, refreshKey],
   );
+  // B-043: a stable cache key lets a second mount of this screen (the palette
+  // overlay's frozen background snapshot, `components/Overlay.tsx`) render the
+  // already-loaded page instead of flashing "Loading" behind the palette.
   const { posts, loading, loadingMore, hasMore, error, loadMore, refresh, refreshing, newCount } =
-    usePaginatedPosts(api.target, fetchPage);
+    usePaginatedPosts(api.target, fetchPage, `local:${api.target}:${String(refreshKey)}`);
 
   useInput(
     (input) => {

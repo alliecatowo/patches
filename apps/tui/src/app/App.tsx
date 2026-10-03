@@ -25,6 +25,7 @@ import { LinearModeProvider } from '../hooks/useLinearMode.js';
 import { NowProvider } from '../hooks/useNow.js';
 import { TerminalTooSmall } from '../components/TerminalTooSmall.js';
 import { ToastLine, type Toast, type ToastKind } from '../components/Toast.js';
+import { clearListCache } from '../hooks/usePaginatedPosts.js';
 import { useServerInfo } from '../hooks/useServerInfo.js';
 import { useUnreadCount } from '../hooks/useUnreadCount.js';
 import { MediaCache } from '../media/cache.js';
@@ -248,6 +249,10 @@ export function App({
   const [pendingGo, setPendingGoState] = useState(false);
   const pendingGoRef = useRef(false);
   const pendingGoTimer = useRef<NodeJS.Timeout | undefined>(undefined);
+  // Set by `Ctrl+G` (vs. plain `g`) before the prefix's second key lands — B-042's
+  // explicit "open beside" request. Read once by the one destination that cares (`v`)
+  // and cleared on every fresh prefix press.
+  const pendingGoAllowSplitRef = useRef(false);
   const refreshPulseTimer = useRef<NodeJS.Timeout | undefined>(undefined);
   function setPendingGo(next: boolean): void {
     pendingGoRef.current = next;
@@ -564,12 +569,15 @@ export function App({
     setStack((current) => push(current, next));
   }
 
-  /** A `g x`-style jump — see `navigation.jump`. */
-  function goTo(next: NavEntry): void {
+  /** A `g x`-style jump — see `navigation.jump`. `options.split` threads through
+   * (B-042): omitted keeps today's list+detail pairing, `{ split: false }` (the plain
+   * `g`/`:` path) forces a single-pane replace even when a list sits beneath the
+   * destination. */
+  function goTo(next: NavEntry, options?: { split?: boolean }): void {
     navigated.current = true;
     setLegacySubmodeActive(false);
     clearModals();
-    setStack((current) => jump(current, next));
+    setStack((current) => jump(current, next, options));
   }
 
   /** `Esc` (and `q` away from the root) — exactly one level, from every screen. */
@@ -647,7 +655,10 @@ export function App({
     navigate({ screen: 'page', handle, slug });
   }
 
-  function openOwnPage(): void {
+  /** `g v`/`:page` (own page). A plain jump never auto-splits (B-042, owner report:
+   * "split-pane opens unexpectedly on navigation") — only `Ctrl+G v`'s explicit "open
+   * beside" request (`allowSplit`) leaves the ordinary list+detail pairing in place. */
+  function openOwnPage(options: { allowSplit?: boolean } = {}): void {
     if (session === undefined) {
       notify('Log in first — press L.');
       return;
@@ -657,7 +668,10 @@ export function App({
       notify("Your profile hasn't loaded yet — try again in a moment.");
       return;
     }
-    goTo({ screen: 'page', handle, slug: '' });
+    goTo(
+      { screen: 'page', handle, slug: '' },
+      options.allowSplit === true ? undefined : { split: false },
+    );
   }
 
   /** `p` on a selected post row (B-017) — profile viewing needs no session. */
@@ -943,6 +957,11 @@ export function App({
     await sessionManager.logout();
     setSession(undefined);
     setReactionOverrides(new Map());
+    // B-043's background-snapshot cache is shared across mounts by design — clear it
+    // here for the same reason `reactionOverrides` is cleared above: a signed-out
+    // viewer, or the next account on this node, must never render a page cached under
+    // the previous session.
+    clearListCache();
     // A "Signed in as @alice" toast outliving the sign-out would be actively wrong.
     setToast(undefined);
     setStack(reset(rootEntry(false)));
@@ -1541,13 +1560,15 @@ export function App({
     }
     if (pendingGoRef.current) {
       setPendingGo(false);
+      const allowSplit = pendingGoAllowSplitRef.current;
+      pendingGoAllowSplitRef.current = false;
       if (input === 'p') openOwnProfile();
       else if (input === 'l') goTo({ screen: 'local' });
       else if (input === 'h') requireSession({ screen: 'home' });
       else if (input === 's') goTo({ screen: 'search' });
       else if (input === 'b') requireSession({ screen: 'bookmarks' });
       else if (input === 'n') requireSession({ screen: 'notifications' });
-      else if (input === 'v') openOwnPage();
+      else if (input === 'v') openOwnPage({ allowSplit });
       else if (input === 'e') requireSession({ screen: 'editProfile' });
       else if (input === 'd') requireSession({ screen: 'messages' });
       else if (input === 'c') {
@@ -1592,6 +1613,17 @@ export function App({
       toggleMessagesDrawer();
       return;
     }
+    // `Ctrl+G` — the same `g <key>` prefix, but B-042's explicit "open beside"
+    // request: a detail destination that would normally replace the screen
+    // (`openOwnPage`) keeps its ordinary split pairing instead. Bare `g` below always
+    // clears this flag first, so it never leaks into a later plain jump.
+    if (isCtrlKey(input, key, 'g')) {
+      pendingGoAllowSplitRef.current = true;
+      setPendingGo(true);
+      clearTimeout(pendingGoTimer.current);
+      pendingGoTimer.current = setTimeout(() => setPendingGo(false), 600);
+      return;
+    }
     if (input === 'L') {
       goTo({ screen: session === undefined ? 'login' : 'accounts' });
       return;
@@ -1625,6 +1657,7 @@ export function App({
       return;
     }
     if (input === 'g') {
+      pendingGoAllowSplitRef.current = false;
       setPendingGo(true);
       clearTimeout(pendingGoTimer.current);
       pendingGoTimer.current = setTimeout(() => setPendingGo(false), 600);

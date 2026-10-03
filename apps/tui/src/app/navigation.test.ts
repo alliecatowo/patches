@@ -82,4 +82,24 @@ describe('navigation stack (owner feedback 2026-08-18: "esc doesn\'t always go b
     expect(reset({ screen: 'local' })).toEqual(local);
     expect(canGoBack(stack)).toBe(true);
   });
+
+  describe('B-042: a plain jump never auto-splits, and back stays symmetric', () => {
+    it('marks a non-root jump `split: false` only when explicitly asked to', () => {
+      const home: NavStack = [{ screen: 'home' }];
+      const plain = jump(home, { screen: 'page', handle: 'alice', slug: '' }, { split: false });
+      expect(currentScreen(plain)).toBe('page');
+      expect(plain[plain.length - 1]).toMatchObject({ screen: 'page', split: false });
+
+      // Omitting the option (the `Ctrl+G` "open beside" path) leaves it unset, the
+      // same shape `jump()` always produced before this flag existed.
+      const withSplit = jump(home, { screen: 'page', handle: 'alice', slug: '' });
+      expect(withSplit[withSplit.length - 1]).not.toHaveProperty('split');
+    });
+
+    it('still pops back to exactly where you jumped from, split or not', () => {
+      const home: NavStack = [{ screen: 'home' }];
+      const plain = jump(home, { screen: 'page', handle: 'alice', slug: '' }, { split: false });
+      expect(currentScreen(pop(plain))).toBe('home');
+    });
+  });
 });
