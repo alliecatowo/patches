@@ -263,7 +263,10 @@ export function HomeRoute(): JSX.Element {
           <button
             type="button"
             className={`${styles['tab']} ${tab === 'home' ? styles['active'] : ''}`}
-            onClick={() => setTab('home')}
+            onClick={() => {
+              setTab('home');
+              setActiveViewId(undefined);
+            }}
           >
             Home
           </button>
@@ -272,7 +275,10 @@ export function HomeRoute(): JSX.Element {
           <button
             type="button"
             className={`${styles['tab']} ${tab === 'local' ? styles['active'] : ''}`}
-            onClick={() => setTab('local')}
+            onClick={() => {
+              setTab('local');
+              setActiveViewId(undefined);
+            }}
           >
             Everyone here
           </button>

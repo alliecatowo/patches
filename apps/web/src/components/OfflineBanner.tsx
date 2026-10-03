@@ -26,7 +26,7 @@ export function OfflineBanner(): JSX.Element | null {
   return (
     <div className={styles['banner']} role="alert">
       <WifiOffIcon size={16} />
-      <span>You are offline — cached content available. Reconnecting…</span>
+      <span>You are offline. Reconnecting…</span>
     </div>
   );
 }

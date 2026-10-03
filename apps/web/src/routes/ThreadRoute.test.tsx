@@ -1,3 +1,4 @@
+import { Code, ConnectError } from '@connectrpc/connect';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
 import type { PatchesApi } from '@patches/client';
 import type { Actor, Post } from '@patches/proto/es';
@@ -118,6 +119,32 @@ describe('ThreadRoute', () => {
       createObjectURL: (): string => 'blob:test',
       revokeObjectURL: (): void => undefined,
     });
+  });
+
+  it('does not call a failed fetch "gone": shows the error with a retry (cold start / offline)', async () => {
+    mockUseSession.mockReturnValue(null);
+    mockGetPost.mockRejectedValue(new ConnectError('cold', Code.Unavailable));
+    renderThread();
+
+    expect(await screen.findByRole('button', { name: /try again/i })).toBeInTheDocument();
+    expect(screen.queryByText(/this post is gone/i)).not.toBeInTheDocument();
+  });
+
+  it('still says "gone" for a genuine NotFound', async () => {
+    mockUseSession.mockReturnValue(null);
+    mockGetPost.mockRejectedValue(new ConnectError('nope', Code.NotFound));
+    renderThread();
+
+    expect(await screen.findByText(/this post is gone/i)).toBeInTheDocument();
+  });
+
+  it('shows an error instead of "No replies yet." when the replies query failed', async () => {
+    mockUseSession.mockReturnValue(null);
+    mockListReplies.mockRejectedValue(new ConnectError('boom', Code.Unavailable));
+    renderThread();
+
+    expect(await screen.findByText(/couldn.t load replies/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no replies yet/i)).not.toBeInTheDocument();
   });
 
   it('renders root post and guest prompt when not signed in', async () => {

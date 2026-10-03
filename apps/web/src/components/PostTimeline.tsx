@@ -42,7 +42,7 @@ export function PostTimeline({
   });
 
   const posts = query.data?.pages.flatMap((p) => p.posts) ?? [];
-  const [focusedIndex, setFocusedIndex] = useState(0);
+  const [focusedIndex, setFocusedIndex] = useState(-1);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const [hasNewer, setHasNewer] = useState(false);
   const topId = query.data?.pages[0]?.posts[0]?.id;
