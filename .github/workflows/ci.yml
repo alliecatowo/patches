@@ -138,7 +138,11 @@ jobs:
         run: pnpm proto:gen
 
       - name: Fail if generated code is stale or wasn't committed
-        run: git diff --exit-code -- packages/proto/src/generated
+        # `add -N` makes brand-new generated files visible to `git diff`; both generator
+        # trees are checked (generated-es is the one the clients actually use).
+        run: |
+          git add -N packages/proto/src
+          git diff --exit-code -- packages/proto/src/generated packages/proto/src/generated-es
 
   build-test:
     name: build-test (build + unit tests)

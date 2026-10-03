@@ -377,7 +377,7 @@ jobs:
           # output (tee keeps it visible in the log for debugging).
           web_url="$(pnpm exec wrangler pages deploy apps/web/dist \
             --project-name patches-web \
-            --branch "pr-${{ github.event.pull_request.number || inputs.pr_number }}" \
+            --branch "pr-${PR_NUMBER}" \
             2>&1 | tee /dev/stderr | grep -oE 'https://[a-zA-Z0-9.-]+\.pages\.dev' | head -n 1)"
           [ -n "$web_url" ] || { echo "wrangler did not print a *.pages.dev URL" >&2; exit 1; }
           echo "web_url=$web_url" >> "$GITHUB_OUTPUT"
@@ -432,7 +432,7 @@ jobs:
           FLY_PREVIEW_ORG: ${{ vars.FLY_PREVIEW_ORG }}
         run: |
           set -euo pipefail
-          pr="${{ github.event.pull_request.number || inputs.pr_number }}"
+          pr="${PR_NUMBER}"
           web_url="${{ steps.web_deploy.outputs.web_url }}"
           branch_alias="https://pr-${pr}.patches-web.pages.dev"
           # The deploy a few steps up just replaced both machines; setting a secret
@@ -462,7 +462,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
-          pr="${{ github.event.pull_request.number || inputs.pr_number }}"
+          pr="${PR_NUMBER}"
           origin="https://pr-${pr}.patches-web.pages.dev"
           # The HTTP/Connect edge is :8443 — :443 is the gRPC service (spec of
           # infra/preview/fly-preview.toml); healthz lives behind the HTTP one.
