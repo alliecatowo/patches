@@ -26,6 +26,8 @@ function renderPostCard(post: Post, focused = false): ReturnType<typeof render> 
 }
 
 describe('PostCard', () => {
+  afterEach(() => clearActorSession());
+
   const mockPost: Post = {
     $typeName: 'patches.v1.Post',
     id: 'post-123',
@@ -67,6 +69,8 @@ describe('PostCard', () => {
   });
 
   it('updates aria-expanded attribute when options menu is toggled', () => {
+    // The menu is only offered to signed-in viewers (an empty one is useless to guests).
+    setActorSession({ id: 'actor-viewer', handle: 'viewer' } as never);
     renderPostCard(mockPost);
     const optionsBtn = screen.getByRole('button', { name: 'More options' });
     expect(optionsBtn).toHaveAttribute('aria-haspopup', 'menu');
@@ -221,8 +225,6 @@ describe('PostCard', () => {
   });
 
   describe('more-options menu', () => {
-    afterEach(() => clearActorSession());
-
     it('lets a signed-in viewer open the report form from someone else’s post', () => {
       setActorSession({ id: 'actor-viewer', handle: 'viewer' } as never);
       renderPostCard(mockPost);
