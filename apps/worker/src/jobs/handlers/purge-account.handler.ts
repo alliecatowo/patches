@@ -3,7 +3,9 @@ import {
   AccountDeletionRequest,
   AccountExport,
   Actor,
+  ActorFlair,
   ActorPrivacyPrefs,
+  Appeal,
   appendAdminAuditLog,
   Bookmark,
   CommunityMember,
@@ -17,16 +19,22 @@ import {
   E2eeMailboxEnvelope,
   E2eeOneTimePrekey,
   E2eeSignedPrekey,
+  Filter,
   FilterListSubscription,
+  GuestbookEntry,
   Follow,
   FollowRequest,
   LabelerSubscription,
   Like,
   Media,
+  Notification,
+  Page,
   Post,
+  PostEdit,
   purgeAccountPayloadSchema,
   RefreshToken,
   Repost,
+  Report,
   TagMute,
   User,
   type JobType,
@@ -46,7 +54,8 @@ import { type JobContext, type JobHandler } from '../job-handler.js';
 /**
  * `PURGE_ACCOUNT` (P14-010/P14-024, `INITIAL_VISION.md` §197.4): erases an account's content
  * once its grace period has elapsed. Scope: profile fields, posts and bodies, media objects,
- * follows, follow requests (both directions), reactions (likes), bookmarks, reposts, community
+ * post edit history, profile pages and guestbook entries, filters, notifications, report/appeal
+ * text, avatar/banner/nameplate styling, credential secrets, follows, follow requests (both directions), reactions (likes), bookmarks, reposts, community
  * memberships, muted tags, filter-list subscriptions, labeler subscriptions, export
  * archives, sessions, and credentials — plus the notice acknowledgement itself
  * ("filters, lists, subscriptions, and acknowledgements", §197.4). Filter *lists* and labelers
@@ -146,9 +155,18 @@ export class PurgeAccountHandler implements JobHandler {
         bio: null,
         locationText: null,
         websiteUrl: null,
+        avatarMediaId: null,
+        bannerMediaId: null,
+        nameplate: null,
+        profileFrame: null,
+        nameTagStyle: null,
+        accentColor: null,
+        alsoKnownAs: null,
+        movedToUri: null,
         deletedAt: actor.deletedAt ?? now,
       },
     );
+    await manager.getRepository(ActorFlair).delete({ actorId });
 
     if (actor.userId !== null) {
       const userId = actor.userId;
@@ -171,6 +189,18 @@ export class PurgeAccountHandler implements JobHandler {
       await manager
         .getRepository(Credential)
         .update({ userId, revokedAt: IsNull() }, { revokedAt: now });
+      // Revoking is not erasing (S-H6): drop the password hash, SSH fingerprint / GitHub id /
+      // passkey public material and labels so the row no longer identifies or authenticates.
+      await manager.getRepository(Credential).update(
+        { userId },
+        {
+          identifier: null,
+          secretHash: null,
+          publicMaterial: null,
+          metadata: null,
+          label: null,
+        },
+      );
     }
 
     // Posts and bodies (spec §197.4). `link_url` is left as-is on LINK posts: nulling it would
@@ -183,6 +213,33 @@ export class PurgeAccountHandler implements JobHandler {
       .getRepository(Post)
       .update({ authorActorId: actorId }, { body: null, contentWarning: null });
 
+    // Every earlier version of every edited post (S-H6): `post_edits` keeps the prior body and
+    // content warning, which the tombstone above does not touch.
+    await manager
+      .getRepository(PostEdit)
+      .createQueryBuilder()
+      .delete()
+      .where('post_id IN (SELECT id FROM posts WHERE author_actor_id = :actorId)', { actorId })
+      .execute();
+
+    // Profile pages (revisions, assets and the guestbook on them cascade) and guestbook
+    // entries this actor signed on other people's pages (S-H6).
+    await manager.getRepository(Page).delete({ actorId });
+    await manager.getRepository(GuestbookEntry).delete({ authorActorId: actorId });
+
+    // Filters and their terms/scopes (cascade), notifications received and caused, and the
+    // free text the actor submitted in reports and appeals (S-H6). The moderation records
+    // themselves stay; only the actor's own words are scrubbed.
+    await manager.getRepository(Filter).delete({ actorId });
+    await manager
+      .getRepository(Notification)
+      .createQueryBuilder()
+      .delete()
+      .where('recipient_actor_id = :actorId OR actor_id = :actorId', { actorId })
+      .execute();
+    await manager.getRepository(Report).update({ reporterActorId: actorId }, { details: null });
+    await manager.getRepository(Appeal).update({ actorId }, { statement: '' });
+
     // Media rows: storage objects were already deleted above (outside the transaction); this
     // is the row-level half.
     await manager.getRepository(Media).update(
@@ -193,6 +250,8 @@ export class PurgeAccountHandler implements JobHandler {
         sourceObjectKey: null,
         displayObjectKey: null,
         thumbnailObjectKey: null,
+        altText: null,
+        contentHash: null,
       },
     );
 
