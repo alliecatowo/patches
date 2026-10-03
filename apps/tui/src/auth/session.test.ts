@@ -404,3 +404,12 @@ describe('ambient access token publication (B-040)', () => {
     expect(getAmbientAccessToken()).toBeUndefined();
   });
 });
+
+describe('SessionManager.restore with an unreadable store', () => {
+  it('resolves undefined instead of rejecting when the store throws', async () => {
+    const store = new MemoryCredentialStore();
+    store.get = () => Promise.reject(new SyntaxError('Unexpected end of JSON input'));
+    const manager = new SessionManager({ api: fakeApi(), store, nodeOrigin: NODE });
+    await expect(manager.restore()).resolves.toBeUndefined();
+  });
+});

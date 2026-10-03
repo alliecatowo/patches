@@ -1,6 +1,8 @@
-import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+
+import { readJsonOr, writeFileAtomic } from '../fs/atomic-json.js';
 
 /**
  * A refresh session for one (node, user) pair, held on disk/in the keyring.
@@ -76,18 +78,9 @@ function resolveByNode<T extends { nodeOrigin: string; userId: string }>(
   return forNode.length === 1 ? forNode[0] : undefined;
 }
 
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && 'code' in error;
-}
-
 async function readJsonFile<T>(path: string, fallback: T): Promise<T> {
-  try {
-    const raw = await readFile(path, 'utf8');
-    return JSON.parse(raw) as T;
-  } catch (error) {
-    if (isErrnoException(error) && error.code === 'ENOENT') return fallback;
-    throw error;
-  }
+  // Corrupt/truncated JSON falls back (and is quarantined) rather than crashing launch.
+  return readJsonOr(path, fallback);
 }
 
 // ---------------------------------------------------------------------------
@@ -165,13 +158,11 @@ export class FileCredentialStore implements CredentialStore {
   }
 
   private async writeAll(entries: readonly StoredCredential[]): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
-    await writeFile(this.path, `${JSON.stringify(entries, null, 2)}\n`, {
-      encoding: 'utf8',
+    // Temp file + rename (mode forced to 0600 against umask widening, research note §4).
+    await writeFileAtomic(this.path, `${JSON.stringify(entries, null, 2)}\n`, {
       mode: 0o600,
+      dirMode: 0o700,
     });
-    // Guard against umask widening the mode on creation (research note §4).
-    await chmod(this.path, 0o600);
   }
 
   async get(nodeOrigin: string, userId?: string): Promise<StoredCredential | undefined> {
@@ -244,8 +235,7 @@ async function writeAccountsIndex(
   path: string,
   accounts: readonly AccountSummary[],
 ): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify({ accounts }, null, 2)}\n`, 'utf8');
+  await writeFileAtomic(path, `${JSON.stringify({ accounts }, null, 2)}\n`);
 }
 
 /**

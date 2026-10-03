@@ -884,15 +884,22 @@ export function App({
   // and `store` are stable for the component's lifetime (created once via `useState`
   // initializers above), so this still only ever runs once.
   useEffect(() => {
-    void sessionManager.restore().then((restored) => {
-      if (restored === undefined) return;
-      setSession(restored);
-      // Only if the viewer hasn't already gone somewhere themselves.
-      if (!navigated.current) setStack((current) => promoteRootToHome(current));
-    });
-    void store.load().then((loaded) => {
-      if (loaded !== undefined) setDraft(loaded);
-    });
+    void sessionManager.restore().then(
+      (restored) => {
+        if (restored === undefined) return;
+        setSession(restored);
+        // Only if the viewer hasn't already gone somewhere themselves.
+        if (!navigated.current) setStack((current) => promoteRootToHome(current));
+      },
+      () => undefined,
+    );
+    // A bad draft file must never stop launch: treat any failure as "no draft".
+    void store.load().then(
+      (loaded) => {
+        if (loaded !== undefined) setDraft(loaded);
+      },
+      () => undefined,
+    );
   }, [sessionManager, store]);
 
   // Saved presentation preferences for this node+actor (P12-113). `--theme`/

@@ -130,9 +130,9 @@ export class SessionManager {
    * step in both cases is the same: show the logged-out UI.
    */
   async restore(userId?: string): Promise<ActiveSession | undefined> {
-    const stored = await this.store.get(this.nodeOrigin, userId);
-    if (stored === undefined) return undefined;
     try {
+      const stored = await this.store.get(this.nodeOrigin, userId);
+      if (stored === undefined) return undefined;
       const response = await this.api.refreshSession({ refreshToken: stored.refreshToken });
       return this.applySession(response.session, stored.userId);
     } catch {

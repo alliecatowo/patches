@@ -1,6 +1,8 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+
+import { readJsonOr, writeFileAtomic } from '../fs/atomic-json.js';
 
 /**
  * An unsent compose draft (spec §80). Only non-sensitive text — an access/refresh
@@ -58,10 +60,6 @@ export function draftFilePath(): string {
   return join(dataDir(), 'compose-draft.json');
 }
 
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && 'code' in error;
-}
-
 function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
 }
@@ -106,20 +104,13 @@ export class FileDraftStore implements DraftStore {
   }
 
   async load(): Promise<ComposeDraft | undefined> {
-    let raw: string;
-    try {
-      raw = await readFile(this.path, 'utf8');
-    } catch (error) {
-      if (isErrnoException(error) && error.code === 'ENOENT') return undefined;
-      throw error;
-    }
-    const parsed: unknown = JSON.parse(raw);
+    // A truncated or corrupt draft file loads as "no draft" (and is moved aside).
+    const parsed = await readJsonOr<unknown>(this.path, undefined);
     return isComposeDraft(parsed) ? parsed : undefined;
   }
 
   async save(draft: ComposeDraft): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, `${JSON.stringify(draft, null, 2)}\n`, 'utf8');
+    await writeFileAtomic(this.path, `${JSON.stringify(draft, null, 2)}\n`);
   }
 
   async clear(): Promise<void> {
