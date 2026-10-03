@@ -2,8 +2,10 @@ import { generateKeyPairSync } from 'node:crypto';
 
 import {
   Actor,
+  ActorPrivacyPrefs,
   Block,
   Follow,
+  FollowRequest,
   InboxActivity,
   Mute,
   Post,
@@ -364,6 +366,7 @@ describe('InboxService — Update semantics (A-035)', () => {
  * A-035 suite above; the only faked collaborator with behavior is `fetchObject`. */
 describe('InboxService — inbound quotes + tags (P18-007)', () => {
   const ORIGIN = 'http://origin.test';
+  const AS_PUBLIC = 'https://www.w3.org/ns/activitystreams#Public';
   const QUOTED_URI = 'https://remote2.test/notes/9';
   const BOB_URI = 'https://remote2.test/users/bob';
   const LOCAL_QUOTED_ID = '11111111-1111-4111-8111-111111111111';
@@ -373,6 +376,7 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
     type: 'Note',
     content: 'quoted body',
     attributedTo: BOB_URI,
+    to: [AS_PUBLIC],
   };
 
   interface QuoteKit {
@@ -384,6 +388,9 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
     quoteAuthSaves: Record<string, unknown>[];
     tagSaves: Record<string, unknown>[];
     postTagSaves: Record<string, unknown>[];
+    followSaves: Record<string, unknown>[];
+    followRequestSaves: Record<string, unknown>[];
+    deliveries: ReturnType<typeof vi.fn>;
   }
 
   function quotedRow(overrides: Partial<Post> = {}): Post {
@@ -423,6 +430,7 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
     follows?: Record<string, unknown>[];
     blocks?: Record<string, unknown>[];
     blockedDomains?: string[];
+    privacyPrefs?: Record<string, unknown>[];
     fetchReturns?: Record<string, unknown> | null;
     fetchThrows?: Error;
   }): QuoteKit {
@@ -494,11 +502,39 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
       }),
     };
 
+    const localAlice = fakeSender('', {
+      id: 'local-alice',
+      handle: 'alice',
+      handleNormalized: 'alice',
+      homeServer: null,
+      isLocal: true,
+      canonicalUri: null,
+    });
     const actorRepo = matchingRepo([
       sender as unknown as Record<string, unknown>,
       bob as unknown as Record<string, unknown>,
+      localAlice as unknown as Record<string, unknown>,
     ]);
-    const followRepo = matchingRepo(options.follows ?? []);
+    const followSaves: Record<string, unknown>[] = [];
+    const followRepo = {
+      ...matchingRepo(options.follows ?? []),
+      create: vi.fn((value: unknown) => value),
+      save: vi.fn((row: Record<string, unknown>) => {
+        followSaves.push(row);
+        return Promise.resolve(row);
+      }),
+    };
+    const followRequestSaves: Record<string, unknown>[] = [];
+    const followRequestRepo = {
+      findOne: vi.fn().mockResolvedValue(null),
+      create: vi.fn((value: unknown) => value),
+      save: vi.fn((row: Record<string, unknown>) => {
+        followRequestSaves.push(row);
+        return Promise.resolve(row);
+      }),
+    };
+    const prefsRepo = matchingRepo(options.privacyPrefs ?? []);
+    const deliveries = vi.fn();
     const blockRepo = matchingRepo(options.blocks ?? []);
     const muteRepo = matchingRepo([]);
 
@@ -528,6 +564,8 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
       new Map<unknown, unknown>([
         [Actor, actorRepo],
         [Follow, followRepo],
+        [FollowRequest, followRequestRepo],
+        [ActorPrivacyPrefs, prefsRepo],
         [Block, blockRepo],
         [Mute, muteRepo],
         [QuoteAuthorization, quoteAuthRepo],
@@ -545,7 +583,7 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
       remoteActors,
       { fetchObject } as unknown as RemoteObjectService,
       domainBlocks,
-      { enqueue: vi.fn() } as unknown as DeliveryService,
+      { enqueue: deliveries } as unknown as DeliveryService,
       { notifyFollow: vi.fn(), notifyLike: vi.fn() } as unknown as NotificationsService,
       { getOrCreateKeyPair: vi.fn() } as unknown as KeyService,
       new FederationMetricsService({ federationEnabled: false } as AppConfigService),
@@ -564,6 +602,9 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
       quoteAuthSaves,
       tagSaves,
       postTagSaves,
+      followSaves,
+      followRequestSaves,
+      deliveries,
     };
   }
 
@@ -578,6 +619,7 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
         id: `https://remote.test/notes/quote-${seq}`,
         type: 'Note',
         content: 'quoting',
+        to: [AS_PUBLIC],
         ...noteProps,
       },
     };
@@ -589,6 +631,65 @@ describe('InboxService — inbound quotes + tags (P18-007)', () => {
     expect(saved).toBeDefined();
     return saved as Record<string, unknown>;
   }
+
+  it('maps the audience to a visibility and never ingests direct notes (S-H5)', async () => {
+    const cases: [Record<string, unknown>, string | undefined][] = [
+      [{ to: [AS_PUBLIC], cc: [] }, 'PUBLIC'],
+      [{ to: ['https://remote.test/users/alice/followers'], cc: [AS_PUBLIC] }, 'UNLISTED'],
+      [{ to: ['https://remote.test/users/alice/followers'], cc: [] }, 'FOLLOWERS'],
+      [{ to: [`${ORIGIN}/users/bob`], cc: [] }, undefined],
+      [{ to: undefined, cc: undefined }, undefined],
+    ];
+    for (const [audience, expected] of cases) {
+      const testKit = kit({});
+      await testKit.inbox.handle(buildContext(createNote(audience), testKit.signer));
+      expect(testKit.postSaves.at(-1)?.visibility).toBe(expected);
+    }
+  });
+
+  it('does not ingest a fetched quoted note that is not publicly addressed (S-H5)', async () => {
+    const testKit = kit({
+      fetchReturns: { ...QUOTED_NOTE_DOC, to: [`${BOB_URI}/followers`], cc: [] },
+    });
+    await testKit.inbox.handle(buildContext(createNote({ quote: QUOTED_URI }), testKit.signer));
+    expect(testKit.postSaves.map((row) => row.canonicalUri)).not.toContain(QUOTED_URI);
+  });
+
+  function followActivity(sender: Actor): Record<string, unknown> {
+    seq += 1;
+    return {
+      id: `https://remote.test/activities/follow-${seq}`,
+      type: 'Follow',
+      actor: sender.canonicalUri,
+      object: `${ORIGIN}/users/alice`,
+    };
+  }
+
+  it('auto-accepts a remote Follow of an open account', async () => {
+    const testKit = kit({});
+    await testKit.inbox.handle(buildContext(followActivity(testKit.sender), testKit.signer));
+    expect(testKit.followSaves).toHaveLength(1);
+    expect(testKit.deliveries).toHaveBeenCalledOnce();
+  });
+
+  it('queues a follow request instead of accepting for a locked account (S-H5)', async () => {
+    const testKit = kit({ privacyPrefs: [{ actorId: 'local-alice', locked: true }] });
+    await testKit.inbox.handle(buildContext(followActivity(testKit.sender), testKit.signer));
+    expect(testKit.followSaves).toHaveLength(0);
+    expect(testKit.followRequestSaves).toEqual([
+      { requesterActorId: 'sender-1', targetActorId: 'local-alice' },
+    ]);
+    expect(testKit.deliveries).not.toHaveBeenCalled();
+  });
+
+  it('ignores a remote Follow when the local account blocked the requester (S-H5)', async () => {
+    const testKit = kit({
+      blocks: [{ blockerActorId: 'local-alice', blockedActorId: 'sender-1' }],
+    });
+    await testKit.inbox.handle(buildContext(followActivity(testKit.sender), testKit.signer));
+    expect(testKit.followSaves).toHaveLength(0);
+    expect(testKit.deliveries).not.toHaveBeenCalled();
+  });
 
   it('drops a Create whose Note id or author belongs to another origin (S-C1)', async () => {
     for (const noteProps of [
