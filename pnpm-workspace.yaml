@@ -160,5 +160,6 @@ overrides:
   'fast-uri@<3.1.7': ^3.1.7 # ajv@8
   'vite@<6.4.3': ^6.4.3 # vitepress@1 (docs site build only)
   'qs@<6.16.0': ^6.16.0 # express/body-parser (Dependabot alerts 7, 8)
-  'esbuild@0.28.1': 0.28.2 # Dependabot alert 4 (exact pin only; vitepress/vite 6 needs its older esbuild)
+  'esbuild@0.28.1': 0.28.2 # Dependabot alert 4
+  'esbuild@0.27.7': 0.28.2 # tsup@8 (Dependabot alert 4; dev server file-read, fixed in 0.28.1)
   'uuid@<11.1.1': ^11.1.1 # xcode@3 via expo (CJS-compatible; Dependabot alert 3)
