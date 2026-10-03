@@ -232,7 +232,13 @@ export function HomeRoute(): JSX.Element {
   // certain to fail on a closed node, the exact "error surface instead of a designed state"
   // this fix exists to remove.
   if (session === null && nodeInfoQuery.isPending) {
-    return <></>;
+    return (
+      <div className={styles['tabExplainer']} role="status">
+        {nodeInfoQuery.failureCount > 0
+          ? 'Waking the server up, this can take up to a minute…'
+          : 'Loading…'}
+      </div>
+    );
   }
 
   const publicReadClosed = session === null && nodeInfoQuery.data?.publicRead === false;
@@ -254,7 +260,11 @@ export function HomeRoute(): JSX.Element {
     );
   }
 
-  const showLocalTab = session !== null || nodeInfoQuery.data?.publicRead === true;
+  // If the node-info probe failed outright we cannot tell whether reads are open, so
+  // fall through to the local timeline: it carries its own error/retry UI, whereas
+  // rendering nothing left the signed-out home completely blank.
+  const showLocalTab =
+    session !== null || nodeInfoQuery.data?.publicRead === true || nodeInfoQuery.isError;
 
   return (
     <div>

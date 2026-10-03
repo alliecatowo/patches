@@ -48,15 +48,37 @@ export default function App(): JSX.Element {
     setPageHandle(normalizeHandle(handle));
   };
 
+  const [unreachable, setUnreachable] = useState(false);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+
   useEffect(() => {
-    void restoreSession().finally(() => setBooting(false));
-  }, []);
+    setBooting(true);
+    setUnreachable(false);
+    // A transient failure keeps the stored tokens (restoreSession retries with backoff
+    // first); only a definitive rejection signs the user out.
+    restoreSession()
+      .catch(() => setUnreachable(true))
+      .finally(() => setBooting(false));
+  }, [restoreAttempt]);
 
   if (booting) {
     return (
       <SafeAreaView style={styles.center}>
         <StatusBar style="light" />
         <ActivityIndicator />
+      </SafeAreaView>
+    );
+  }
+
+  if (actor === null && unreachable) {
+    return (
+      <SafeAreaView style={styles.center}>
+        <StatusBar style="light" />
+        <Text style={styles.handle}>Can&apos;t reach the Patches server.</Text>
+        <Text style={styles.signOut}>Your session is kept. Check your connection and retry.</Text>
+        <TouchableOpacity onPress={() => setRestoreAttempt((n) => n + 1)}>
+          <Text style={styles.signOut}>Try again</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }

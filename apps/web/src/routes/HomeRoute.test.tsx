@@ -1,3 +1,4 @@
+import { Code, ConnectError } from '@connectrpc/connect';
 import type { PatchesApi } from '@patches/client';
 import type { GetNodeInfoResponse } from '@patches/proto/es';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -64,5 +65,17 @@ describe('HomeRoute (B-044)', () => {
     expect(await screen.findByRole('button', { name: /everyone here/i })).toBeInTheDocument();
     expect(screen.getByText(/every public post on this server/i)).toBeInTheDocument();
     expect(screen.queryByText(/invite-only/i)).not.toBeInTheDocument();
+  });
+
+  it('never renders blank when node-info fails: falls through to the local timeline', async () => {
+    mockGetNodeInfo.mockRejectedValue(new ConnectError('cold', Code.Unavailable));
+    mockListLocalFeed.mockResolvedValue({ posts: [], page: undefined });
+
+    const { container } = renderHome();
+
+    expect(screen.getByRole('status')).toBeInTheDocument(); // not blank while pending
+    expect(await screen.findByRole('button', { name: /everyone here/i })).toBeInTheDocument();
+    expect(mockListLocalFeed).toHaveBeenCalled();
+    expect(container).not.toBeEmptyDOMElement();
   });
 });
