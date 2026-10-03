@@ -117,6 +117,12 @@ const envObjectSchema = z.object({
    * the load-shedding this task is about, not itself a limit. */
   WORKER_BACKLOG_WARN_THRESHOLD: z.coerce.number().int().positive().default(1_000),
   WORKER_BACKLOG_LOG_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+  /**
+   * Seeds the self-perpetuating `E2EE_RETENTION_SWEEP` chain when none is live (ADR 0031 §4:
+   * activation is an explicit post-deploy gate). Defaults on because the registry-aware
+   * server and worker handler ship in the same image; set `false` to stop seeding.
+   */
+  E2EE_RETENTION_SCHEDULE_ENABLED: z.enum(['true', 'false']).default('true'),
   /** How often `JobRunner` pushes the `workerQueueDepth` gauge (B-101). */
   WORKER_QUEUE_DEPTH_INTERVAL_MS: z.coerce.number().int().positive().default(10_000),
   /** B-102: how many days to retain notifications before the cleanup job deletes them. */

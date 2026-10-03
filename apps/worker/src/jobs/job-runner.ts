@@ -2,7 +2,6 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   claimOutboxJobs,
   countPendingOutboxJobs,
-  enqueueOutboxJobIfAbsent,
   markOutboxJobFailed,
   markOutboxJobSucceeded,
   isAuthCodeEmailJobType,
@@ -14,6 +13,7 @@ import { AppConfigService } from '../config/app-config.service.js';
 import { DATA_SOURCE } from '../database/database.module.js';
 import { deliveryMetrics, getQueueDepth } from '../federation/delivery-metrics.js';
 import { workerQueueDepth } from '@patches/observability';
+import { ensureRecurringJobs, utcDateKey } from './recurring-jobs.js';
 import { JobDispatcher } from './job-dispatcher.js';
 import { OutboxCircuitBreaker } from './outbox-circuit-breaker.js';
 import { releaseUnhandledJob } from './release-claim.js';
@@ -24,18 +24,6 @@ import { sweepStaleLeases } from './stale-lease-sweep.js';
  * .ts`'s `LOG_INTERVAL_MS`), **deliberately duplicated** rather than shared (no cross-app-`src`
  * import convention in this repo, same reasoning as this file's other federation primitives). */
 const FEDERATION_METRICS_LOG_INTERVAL_MS = 60_000;
-
-/** B-102: daily notification cleanup runs at 03:00 UTC. We check once per loop pass whether
- * it's time to enqueue the job — the `available_at` mechanism handles the exact timing, but we
- * enqueue a new job each day when the clock crosses 03:00 UTC. */
-function getNextCleanupAvailableAt(now: Date): Date {
-  const next = new Date(now);
-  next.setUTCHours(3, 0, 0, 0);
-  if (next <= now) {
-    next.setUTCDate(next.getUTCDate() + 1);
-  }
-  return next;
-}
 
 /**
  * `min(currentMs * 2, maxMs)` — the idle-poll backoff step (`docs/architecture/jobs.md` §8).
@@ -83,8 +71,9 @@ export class JobRunner {
   private lastBacklogLogAtMs = 0;
   /** B-101: tracks when we last pushed the queue-depth gauge. */
   private lastQueueDepthPushAtMs = 0;
-  /** B-102: tracks when we last enqueued the daily notification cleanup job. */
-  private lastCleanupEnqueueAtMs = 0;
+  /** S-H3: UTC date for which the recurring maintenance jobs were last ensured. Unset at boot,
+   * so every wake of the scale-to-zero machine schedules today's jobs on its first pass. */
+  private lastRecurringEnsureDay: string | undefined;
   /** S-002 (`docs/operations/abuse-protection.md`): per-job-type circuit breaker — see its
    * own doc comment. Constructed here (not injected) since its two parameters are read once
    * from config at process boot, same as `RateLimitService`'s static `WINDOWS`. */
@@ -115,7 +104,7 @@ export class JobRunner {
       this.logFederationMetricsIfDue();
       await this.logBacklogIfDue();
       await this.pushQueueDepthIfDue();
-      await this.enqueueDailyCleanupIfDue();
+      await this.ensureRecurringJobsIfDue();
 
       const excludeTypes = this.circuitBreaker.excludedTypes();
       const claimed = await this.dataSource.transaction((manager) =>
@@ -189,39 +178,29 @@ export class JobRunner {
     workerQueueDepth.set({ queue: 'outbox' }, depth);
   }
 
-  /** B-102: enqueues the daily `CLEAN_EXPIRED_NOTIFICATIONS` job at 03:00 UTC.
-   * Runs once per day when the loop crosses the 03:00 UTC boundary. Uses `available_at`
-   * to schedule the exact execution time, and an insert-time idempotency-key conflict check
-   * (`enqueueOutboxJobIfAbsent`) so multiple concurrent workers can never double-enqueue —
-   * or crash the claim loop on a lost check-then-insert race. */
-  private async enqueueDailyCleanupIfDue(): Promise<void> {
-    const now = Date.now();
-    const nextCleanupAt = getNextCleanupAvailableAt(new Date(now));
-    const nextCleanupMs = nextCleanupAt.getTime();
-
-    // If we already enqueued for this cleanup window, skip.
-    if (this.lastCleanupEnqueueAtMs >= nextCleanupMs - 24 * 60 * 60 * 1000) return;
-
-    // If it's not yet time to enqueue (we're before 03:00 UTC of the target day), wait.
-    // We enqueue shortly after midnight so the job is ready by 03:00 UTC.
-    const enqueueAfterMs = nextCleanupMs - 3 * 60 * 60 * 1000; // 3 hours before = midnight UTC
-    if (now < enqueueAfterMs) return;
-
-    this.lastCleanupEnqueueAtMs = now;
-
-    // Enqueue the job with available_at set to 03:00 UTC. The idempotency key is date-based;
-    // a concurrent worker that scheduled the same day makes this a no-op, not an error.
-    const idempotencyKey = `CLEAN_EXPIRED_NOTIFICATIONS:${nextCleanupAt.toISOString().split('T')[0]}`;
-    const inserted = await enqueueOutboxJobIfAbsent(this.dataSource.manager, {
-      type: 'CLEAN_EXPIRED_NOTIFICATIONS',
-      payload: {},
-      availableAt: nextCleanupAt,
-      idempotencyKey,
-    });
-
-    if (inserted) {
-      this.logger.log(
-        JSON.stringify({ event: 'cleanup_job_enqueued', availableAt: nextCleanupAt.toISOString() }),
+  /** S-H3: ensures today's recurring maintenance jobs (token/upload/notification cleanup, the
+   * E2EE retention chain) exist, due immediately, once per UTC day and on every boot. Inserts
+   * are idempotent (`ensureRecurringJobs`), so concurrent workers and repeated wakes are safe.
+   * A failure is logged and retried next pass; it must never take down the claim loop. */
+  private async ensureRecurringJobsIfDue(): Promise<void> {
+    const now = new Date();
+    const day = utcDateKey(now);
+    if (this.lastRecurringEnsureDay === day) return;
+    try {
+      const enqueued = await ensureRecurringJobs(this.dataSource.manager, now, {
+        e2eeRetention: this.config.e2eeRetentionScheduleEnabled,
+      });
+      this.lastRecurringEnsureDay = day;
+      if (enqueued.length > 0) {
+        this.logger.log(JSON.stringify({ event: 'recurring_jobs_enqueued', day, types: enqueued }));
+      }
+    } catch (error) {
+      this.logger.warn(
+        JSON.stringify({
+          event: 'recurring_jobs_enqueue_failed',
+          day,
+          error: error instanceof Error ? error.name : typeof error,
+        }),
       );
     }
   }

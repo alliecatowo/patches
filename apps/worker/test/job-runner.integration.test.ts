@@ -93,6 +93,7 @@ describe.skipIf(!testDatabaseUrl)('JobRunner (integration, real Postgres)', () =
       leaseSweepIntervalMs: 60_000,
       authCodeDeliveryKeys: AUTH_CODE_KEYS,
       authCodeDeliveryActiveKeyId: AUTH_CODE_KEY_ID,
+      notificationTtlDays: 30,
       ...overrides,
     } as AppConfigService;
   }
