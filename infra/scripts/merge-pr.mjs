@@ -66,8 +66,12 @@ const checks = (pr.statusCheckRollup ?? []).map((check) => ({
   name: check.name ?? check.context ?? '(unnamed)',
   status: check.status ?? 'COMPLETED',
   result: check.conclusion ?? check.state ?? null,
+  at: Date.parse(check.completedAt ?? check.startedAt ?? '') || 0,
 }));
-const ciOk = checks.find((check) => check.name === REQUIRED_CHECK);
+// The rollup lists every run (reruns, dispatches): judge the most recent one, not the first.
+const ciOk = checks
+  .filter((check) => check.name === REQUIRED_CHECK)
+  .sort((a, b) => b.at - a.at)[0];
 
 let refusal = null;
 if (ciOk === undefined) {

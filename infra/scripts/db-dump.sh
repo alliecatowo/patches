@@ -22,7 +22,10 @@ BACKUP_DIR="backups"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT_FILE="${BACKUP_DIR}/patches-${TIMESTAMP}.sql.gz"
 
+# The dump holds PII and token hashes: owner-only files and directory.
+umask 077
 mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
 
 if [ -z "${DATABASE_URL:-}" ]; then
   if [ ! -f .env ]; then
