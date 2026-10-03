@@ -47,4 +47,17 @@ describe('MediaUploadPreview', () => {
     unmount();
     expect(revokeObjectURL).not.toHaveBeenCalled();
   });
+
+  it('shows the new file (not the old blob URL) when the same slot is given a different file', () => {
+    const a = new File(['a'], 'a.png', { type: 'image/png' });
+    const b = new File(['b'], 'b.png', { type: 'image/png' });
+    const { container, rerender } = render(<MediaUploadPreview file={a} alt="" />);
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:test-1');
+
+    // What `key={idx}` does after removing tile 0: same component instance, next file.
+    rerender(<MediaUploadPreview file={b} alt="" />);
+
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:test-2');
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:test-1');
+  });
 });

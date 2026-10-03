@@ -1,3 +1,4 @@
+import { Code, ConnectError } from '@connectrpc/connect';
 import { describeError } from '@patches/client';
 import { PostVisibility, QuotePolicy, type Post } from '@patches/proto/es';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +14,10 @@ import { useErrorToast } from '../hooks/useErrorToast.js';
 import { useSession } from '../hooks/useSession.js';
 import { uploadMedia, type MediaUploadHandle } from '../lib/mediaUpload.js';
 import styles from './ThreadRoute.module.css';
+
+function isNotFound(error: unknown): boolean {
+  return ConnectError.from(error).code === Code.NotFound;
+}
 
 const MAX_MEDIA = 4;
 /** Bounded ancestor walk (spec §24: "do not load an arbitrarily large thread in one
@@ -199,6 +204,17 @@ export function ThreadRoute(): JSX.Element {
   const uploading = uploads.some((u) => u.status === 'uploading');
 
   if (postQuery.isPending) return <p style={{ padding: '1rem' }}>Loading…</p>;
+  if (postQuery.isError && !isNotFound(postQuery.error)) {
+    // Offline, 5xx or a cold start: NOT "gone". Say so and let the viewer retry.
+    return (
+      <div style={{ padding: '1rem' }} role="alert">
+        <p>{describeError(postQuery.error).message}</p>
+        <button type="button" onClick={() => void postQuery.refetch()}>
+          Try again
+        </button>
+      </div>
+    );
+  }
   if (postQuery.isError || !rootPost) return <p style={{ padding: '1rem' }}>This post is gone.</p>;
 
   // The post the inline composer is replying to — the root post by default, or a
@@ -399,7 +415,16 @@ export function ThreadRoute(): JSX.Element {
           </button>
         ) : null}
 
-        {replies.length === 0 && !repliesQuery.isFetching ? (
+        {repliesQuery.isError ? (
+          <p className={styles['loadMore']} role="alert">
+            Couldn&apos;t load replies.{' '}
+            <button type="button" onClick={() => void repliesQuery.refetch()}>
+              Try again
+            </button>
+          </p>
+        ) : null}
+
+        {replies.length === 0 && !repliesQuery.isFetching && !repliesQuery.isError ? (
           <p className={styles['loadMore']}>No replies yet.</p>
         ) : null}
       </section>

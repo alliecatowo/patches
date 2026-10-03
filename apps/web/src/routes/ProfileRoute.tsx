@@ -25,6 +25,7 @@ import { PageBlocks } from '../components/PageBlocks.js';
 import { PinnedPosts } from '../components/PinnedPosts.js';
 import { PostTimeline } from '../components/PostTimeline.js';
 import { RichBody } from '../components/RichBody.js';
+import { SafeExternalLink } from '../components/SafeExternalLink.js';
 import { useIdentityCosmeticCaps } from '../hooks/useIdentityCosmeticCaps.js';
 import { useSession } from '../hooks/useSession.js';
 import { decodePageDocument } from '../lib/page.js';
@@ -234,10 +235,7 @@ export function ProfileRoute(): JSX.Element {
         ) : null}
         {actor.websiteUrl !== '' ? (
           <p className={styles['metaRow']}>
-            🔗{' '}
-            <a href={actor.websiteUrl} target="_blank" rel="noopener noreferrer ugc">
-              {actor.websiteUrl}
-            </a>
+            🔗 <SafeExternalLink href={actor.websiteUrl}>{actor.websiteUrl}</SafeExternalLink>
           </p>
         ) : null}
         <div className={styles['counts']}>
