@@ -111,6 +111,10 @@ export class SessionManager {
   private current: ActiveSession | undefined;
   private readonly eventListeners = new Set<SessionEventListener>();
   private pendingReauth: PendingReauth | undefined;
+  /** Single-flight guard: the server revokes the whole token family on refresh-token reuse. */
+  private refreshInFlight: Promise<ActiveSession> | undefined;
+  /** The latest rotated-token write, awaited by `refresh()` so the new token is durable. */
+  private persisting: Promise<void> = Promise.resolve();
 
   constructor(options: SessionManagerOptions) {
     this.api = options.api;
@@ -184,10 +188,22 @@ export class SessionManager {
     return refreshed.accessToken;
   }
 
-  private async refresh(): Promise<ActiveSession> {
+  private refresh(): Promise<ActiveSession> {
+    // Concurrent callers share one network refresh; a second call with the same
+    // (already rotated) refresh token would trip server-side reuse revocation.
+    this.refreshInFlight ??= this.doRefresh().finally(() => {
+      this.refreshInFlight = undefined;
+    });
+    return this.refreshInFlight;
+  }
+
+  private async doRefresh(): Promise<ActiveSession> {
     if (this.current === undefined) throw new SessionExpiredError();
-    const response = await this.api.refreshSession({ refreshToken: this.current.refreshToken });
-    return this.applySession(response.session, this.current.userId);
+    const { refreshToken, userId } = this.current;
+    const response = await this.api.refreshSession({ refreshToken });
+    const active = this.applySession(response.session, userId);
+    await this.persisting;
+    return active;
   }
 
   /**
@@ -322,7 +338,7 @@ export class SessionManager {
     // start has to log in again. `SessionManager` has no logger of its own
     // (spec §68/tui.md: no console.* in the render path), so this is silent by
     // design rather than an oversight.
-    this.store.set(stored).catch(() => undefined);
+    this.persisting = this.store.set(stored).catch(() => undefined);
 
     return active;
   }
