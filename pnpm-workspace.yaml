@@ -10,112 +10,112 @@ catalogMode: prefer
 catalog:
   # language & build
   typescript: ^5.9.3
-  '@types/node': ^26.2.0
-  tsx: ^4.23.12
+  '@types/node': ^26.6.4
+  tsx: ^4.23.15
   tsup: ^8.5.1
   # test
-  vitest: ^4.1.11
-  '@vitest/coverage-v8': ^4.1.11
-  '@swc/core': ^1.16.1
+  vitest: ^5.0.3
+  '@vitest/coverage-v8': ^5.0.3
+  '@swc/core': ^1.16.13
   '@swc/cli': ^0.8.1
-  unplugin-swc: ^1.5.11
+  unplugin-swc: ^2.0.0
   # nest
-  '@nestjs/common': ^11.2.1
-  '@nestjs/core': ^11.2.1
-  '@nestjs/microservices': ^11.2.1
-  '@nestjs/config': ^4.0.4
-  '@nestjs/typeorm': ^11.0.3
+  '@nestjs/common': ^12.1.2
+  '@nestjs/core': ^12.1.2
+  '@nestjs/microservices': ^12.1.2
+  '@nestjs/config': ^12.0.1
+  '@nestjs/typeorm': ^12.0.2
   '@nestjs/throttler': ^6.5.0
-  '@nestjs/testing': ^11.2.1
-  '@nestjs/platform-express': ^11.2.1
+  '@nestjs/testing': ^12.1.2
+  '@nestjs/platform-express': ^12.1.2
   reflect-metadata: ^0.2.2
   rxjs: ^7.8.2
   # grpc / proto
   '@grpc/grpc-js': ^1.14.5
   '@grpc/proto-loader': ^0.8.1
-  ts-proto: ^2.12.1
+  ts-proto: ^2.12.4
   # data
-  typeorm: ^1.1.0
-  pg: ^8.23.0
-  zod: ^4.4.3
+  typeorm: ^1.1.1
+  pg: ^8.23.1
+  zod: ^4.6.5
   # tui
   ink: ^7.1.1
   '@inkjs/ui': ^2.0.0
   ink-testing-library: ^4.0.0
-  react: ^19.2.8
-  '@types/react': ^19.2.18
+  react: ^19.3.0
+  '@types/react': ^19.3.0
   # media
-  sharp: ^0.35.3
-  turbo: ^2.10.11
-  eslint: ^10.9.0
+  sharp: ^0.35.5
+  turbo: ^2.11.6
+  eslint: ^10.11.0
   '@eslint/js': ^10.0.1
-  typescript-eslint: ^8.67.0
+  typescript-eslint: ^8.71.0
   eslint-config-prettier: ^10.1.8
   eslint-plugin-react-hooks: ^7.1.1
-  globals: ^17.11.0
-  prettier: ^3.9.6
+  globals: ^17.13.0
+  prettier: ^3.9.9
   '@types/pg': ^8.23.1
-  '@nestjs/cli': ^11.0.24
+  '@nestjs/cli': ^12.0.8
   grpc-health-check: ^2.1.0
-  '@node-rs/argon2': ^2.1.0
-  jose: ^6.2.10
-  nodemailer: ^9.0.5
-  resend: ^6.22.0
-  '@types/nodemailer': ^8.0.1
-  '@napi-rs/keyring': ^1.3.0
-  '@aws-sdk/client-s3': ^3.1116.0
-  '@aws-sdk/s3-request-presigner': ^3.1116.0
+  '@node-rs/argon2': ^2.2.1
+  jose: ^6.2.12
+  nodemailer: ^10.0.13
+  resend: ^6.32.0
+  '@types/nodemailer': ^8.0.2
+  '@napi-rs/keyring': ^2.1.0
+  '@aws-sdk/client-s3': ^3.1145.0
+  '@aws-sdk/s3-request-presigner': ^3.1145.0
   '@grpc/reflection': ^1.0.4
-  wrangler: ^4.125.0
+  wrangler: ^4.146.0
   vitepress: ^1.6.4
-  '@bufbuild/protobuf': ^2.14.0
-  '@bufbuild/protoc-gen-es': ^2.14.0
-  '@connectrpc/connect': ^2.1.2
-  '@connectrpc/connect-express': ^2.1.2
-  '@connectrpc/connect-node': ^2.1.2
-  '@connectrpc/connect-web': ^2.1.2
+  '@bufbuild/protobuf': ^2.16.0
+  '@bufbuild/protoc-gen-es': ^2.16.0
+  '@connectrpc/connect': ^2.2.0
+  '@connectrpc/connect-express': ^2.2.0
+  '@connectrpc/connect-node': ^2.2.0
+  '@connectrpc/connect-web': ^2.2.0
   '@types/express': ^5.0.6
   ink-spinner: ^5.0.0
-  react-dom: ^19.2.8
-  react-router-dom: ^7.18.2
-  '@tanstack/react-query': ^5.102.0
+  react-dom: ^19.3.0
+  react-router-dom: ^7.18.4
+  '@tanstack/react-query': ^5.104.0
   '@testing-library/jest-dom': ^7.0.1
-  '@testing-library/react': ^16.3.2
-  '@types/react-dom': ^19.2.4
-  '@vitejs/plugin-react': ^6.1.0
-  jsdom: ^30.0.1
-  vite: ^8.2.2
-  string-width: ^8.2.2
-  '@noble/curves': ^2.3.0
-  '@noble/ciphers': ^2.3.0
-  '@noble/hashes': ^2.3.0
-  slice-ansi: ^9.0.0
-  tar-stream: ^3.2.0
-  '@types/tar-stream': ^3.1.4
-  tldts: ^7.4.10
-  fast-check: ^4.9.0
-  '@simplewebauthn/server': ^13.3.2
-  '@simplewebauthn/browser': ^13.3.0
-  expo-image-picker: ~57.0.12
-  expo-file-system: ~57.0.5
+  '@testing-library/react': ^16.3.3
+  '@types/react-dom': ^19.3.0
+  '@vitejs/plugin-react': ^6.1.1
+  jsdom: ^30.1.1
+  vite: ^8.3.2
+  string-width: ^8.3.0
+  '@noble/curves': ^2.4.0
+  '@noble/ciphers': ^2.4.0
+  '@noble/hashes': ^2.4.0
+  slice-ansi: ^9.0.1
+  tar-stream: ^3.2.1
+  '@types/tar-stream': ^3.1.5
+  tldts: ^7.4.16
+  fast-check: ^4.10.2
+  '@simplewebauthn/server': ^14.0.3
+  '@simplewebauthn/browser': ^14.0.0
+  expo-image-picker: ~57.0.20
+  expo-file-system: ~57.0.7
   pino: ^10.3.1
-  nestjs-pino: ^4.6.1
+  nestjs-pino: ^5.2.1
   '@opentelemetry/api': ^1.9.1
-  '@opentelemetry/sdk-node': ^0.221.0
-  '@opentelemetry/auto-instrumentations-node': ^0.79.0
-  '@opentelemetry/exporter-trace-otlp-http': ^0.221.0
-  '@opentelemetry/exporter-trace-otlp-grpc': ^0.221.0
-  '@opentelemetry/exporter-prometheus': ^0.221.0
-  '@opentelemetry/resources': ^2.10.0
+  '@opentelemetry/sdk-node': ^0.222.0
+  '@opentelemetry/auto-instrumentations-node': ^0.80.0
+  '@opentelemetry/exporter-trace-otlp-http': ^0.222.0
+  '@opentelemetry/exporter-trace-otlp-grpc': ^0.222.0
+  '@opentelemetry/exporter-prometheus': ^0.222.0
+  '@opentelemetry/resources': ^2.11.0
   '@opentelemetry/semantic-conventions': ^1.43.0
-  '@opentelemetry/sdk-metrics': ^2.10.0
-  '@opentelemetry/sdk-trace-base': ^2.10.0
-  '@opentelemetry/instrumentation-pg': ^0.73.0
-  '@opentelemetry/instrumentation-nestjs-core': ^0.67.0
-  '@opentelemetry/instrumentation-grpc': ^0.221.0
-  '@opentelemetry/instrumentation-http': ^0.221.0
+  '@opentelemetry/sdk-metrics': ^2.11.0
+  '@opentelemetry/sdk-trace-base': ^2.11.0
+  '@opentelemetry/instrumentation-pg': ^0.74.0
+  '@opentelemetry/instrumentation-nestjs-core': ^0.68.0
+  '@opentelemetry/instrumentation-grpc': ^0.222.0
+  '@opentelemetry/instrumentation-http': ^0.222.0
   'prom-client': ^15.1.3
-  '@playwright/test': ^1.62.1
+  '@playwright/test': ^1.63.0
   vite-plugin-pwa: ^1.3.0
   workbox-core: ^7.4.1
   workbox-precaching: ^7.4.1
@@ -123,15 +123,21 @@ catalog:
   workbox-strategies: ^7.4.1
   rollup-plugin-visualizer: ^7.1.1
   sonner: ^2.0.8
-  '@tanstack/react-query-devtools': ^5.102.3
-  web-vitals: ^6.2.0
+  '@tanstack/react-query-devtools': ^5.104.0
+  web-vitals: ^6.2.2
   fake-indexeddb: ^6.2.5
-  storybook: 10.5.10
-  '@storybook/react-vite': 10.5.10
-  '@storybook/addon-vitest': 10.5.10
-  '@storybook/addon-a11y': 10.5.10
-  '@vitest/browser': 4.1.11
-  '@vitest/browser-playwright': 4.1.11
+  storybook: 10.6.1
+  '@storybook/react-vite': 10.6.1
+  '@storybook/addon-vitest': 10.6.1
+  '@storybook/addon-a11y': 10.6.1
+  '@vitest/browser': 5.0.3
+  '@vitest/browser-playwright': 5.0.3
+  babel-preset-expo: ~57.0.13
+  expo: 57.0.26
+  expo-crypto: ~57.0.3
+  expo-secure-store: ~57.0.4
+  expo-status-bar: ~57.0.1
+  react-native: 0.87.1
 
 # pnpm 11: postinstall/build scripts are blocked unless allowed here (reviewed native deps only).
 allowBuilds:
@@ -147,3 +153,9 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - expo-file-system@57.0.5
   - expo-image-picker@57.0.12
+
+# Transitive-only security floors (no direct dependency path to bump). Remove when upstream catches up.
+overrides:
+  'brace-expansion@<1.1.21': ^1.1.21 # minimatch@3 (eslint tooling)
+  'fast-uri@<3.1.7': ^3.1.7 # ajv@8
+  'vite@<6.4.3': ^6.4.3 # vitepress@1 (docs site build only)

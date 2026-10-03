@@ -35,7 +35,7 @@
     "@patches/observability": "workspace:*",
     "@patches/proto": "workspace:*",
     "@simplewebauthn/server": "catalog:",
-    "grpc-health-check": "^2.1.0",
+    "grpc-health-check": "catalog:",
     "jose": "catalog:",
     "nestjs-pino": "catalog:",
     "nodemailer": "catalog:",

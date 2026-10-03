@@ -31,7 +31,9 @@ async function readArchive(archive: Buffer): Promise<Map<string, Buffer>> {
   await new Promise<void>((resolve, reject) => {
     extract.on('entry', (header, stream, next) => {
       const chunks: Buffer[] = [];
-      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      stream.on('data', (chunk: unknown) => {
+        chunks.push(Buffer.from(chunk as Uint8Array));
+      });
       stream.on('end', () => {
         files.set(header.name, Buffer.concat(chunks));
         next();
