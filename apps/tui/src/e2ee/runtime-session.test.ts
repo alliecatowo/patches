@@ -375,3 +375,98 @@ describe('E2eeSessionRuntime — one-time prekey consumption on responder establ
     expect(enrollmentIndex).toBeGreaterThan(applyIndex);
   });
 });
+
+describe('E2eeSessionRuntime — send fan-out failure cleanup (audit H8)', () => {
+  async function setup(wrap: (vault: RatchetSessionVault) => RatchetSessionVault) {
+    const nowMs = Date.UTC(2026, 0, 3);
+    const now = () => nowMs;
+    const node = createFakeE2eeNode();
+    const alice = 'alice-h8';
+    const bob = 'bob-h8';
+    const conv = 'conv-h8';
+
+    const vaultA = await openVault();
+    await enrollThisDevice({
+      actorId: alice,
+      transport: fakeTransport({ actorId: alice, node }),
+      vault: vaultA,
+      nowMs: now,
+    });
+    const storedA = await loadStoredEnrollment(vaultA, nowMs);
+    if (storedA === undefined) throw new Error('test setup: A must be enrolled');
+    registerMessagingDevice(node, storedA.identity);
+
+    const vaultB = await openVault();
+    await enrollThisDevice({
+      actorId: bob,
+      transport: fakeTransport({ actorId: bob, node }),
+      vault: vaultB,
+      nowMs: now,
+    });
+    const storedB = await loadStoredEnrollment(vaultB, nowMs);
+    if (storedB === undefined) throw new Error('test setup: B must be enrolled');
+    registerMessagingDevice(node, storedB.identity);
+
+    const runtimeA = new E2eeSessionRuntime({
+      vault: wrap(vaultA),
+      identity: storedA.identity,
+      sendTransport: fakeMessagingSendTransport({
+        node,
+        actorId: alice,
+        deviceId: storedA.identity.deviceId,
+        participantActorIds: [alice, bob],
+        nowMs: now,
+      }),
+      mailboxTransport: fakeMessagingMailboxTransport({
+        node,
+        deviceId: storedA.identity.deviceId,
+        nowMs: now,
+      }),
+      nowMs: now,
+    });
+    return {
+      runtimeA,
+      vaultA,
+      sessionId: sessionIdFor(conv, bob, storedB.identity.deviceId),
+      conv,
+    };
+  }
+
+  it('deletes a freshly created session when staging throws, so the next send re-establishes', async () => {
+    const { runtimeA, vaultA, sessionId, conv } = await setup((vault) => ({
+      ...vault,
+      open: () => vault.open(),
+      listSessions: () => vault.listSessions(),
+      getSession: (id) => vault.getSession(id),
+      confirmSend: (id, successor) => vault.confirmSend(id, successor),
+      applyUpdate: (id, next) => vault.applyUpdate(id, next),
+      deleteSession: (id) => vault.deleteSession(id),
+      getOpaqueRecord: (key) => vault.getOpaqueRecord(key),
+      putOpaqueRecord: (key, value) => vault.putOpaqueRecord(key, value),
+      wipe: () => vault.wipe(),
+      close: () => vault.close(),
+      stageSend: () => Promise.reject(new Error('disk full')),
+    }));
+
+    await expect(runtimeA.send(conv, 'hello', 'req-h8-1')).rejects.toThrow('disk full');
+    expect(await vaultA.getSession(sessionId)).toBeUndefined();
+  });
+
+  it('does not fail a delivered send when a post-send confirm throws', async () => {
+    const { runtimeA, conv } = await setup((vault) => ({
+      open: () => vault.open(),
+      listSessions: () => vault.listSessions(),
+      getSession: (id) => vault.getSession(id),
+      stageSend: (id, next) => vault.stageSend(id, next),
+      confirmSend: () => Promise.reject(new Error('disk error')),
+      applyUpdate: (id, next) => vault.applyUpdate(id, next),
+      deleteSession: (id) => vault.deleteSession(id),
+      getOpaqueRecord: (key) => vault.getOpaqueRecord(key),
+      putOpaqueRecord: (key, value) => vault.putOpaqueRecord(key, value),
+      wipe: () => vault.wipe(),
+      close: () => vault.close(),
+    }));
+
+    await expect(runtimeA.send(conv, 'hello', 'req-h8-2')).resolves.toBeUndefined();
+  });
+});
