@@ -1,4 +1,4 @@
-import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
+import { type CanActivate, type ExecutionContext, Injectable, Logger } from '@nestjs/common';
 
 import { AppConfigService } from '../../config/app-config.service.js';
 import { AuthGuard } from '../../modules/auth/auth.guard.js';
@@ -54,8 +54,17 @@ const ALLOWED_WHEN_CLOSED: readonly RegExp[] = [
   /^NodeController\/getNodePolicy$/,
 ];
 
+/** Codes `AuthGuard` throws for a missing/invalid/expired credential — the only failures that
+ * mean "sign in" (everything else is infrastructure). */
+const AUTH_FAILURE_CODES: ReadonlySet<string> = new Set([
+  'AUTH_INVALID_CREDENTIALS',
+  'AUTH_SESSION_EXPIRED',
+]);
+
 @Injectable()
 export class PublicReadGuard implements CanActivate {
+  private readonly logger = new Logger(PublicReadGuard.name);
+
   constructor(
     private readonly config: AppConfigService,
     private readonly authGuard: AuthGuard,
@@ -72,7 +81,31 @@ export class PublicReadGuard implements CanActivate {
       return await this.authGuard.canActivate(context);
     } catch (error) {
       if (isAppError(error) && error.code === 'ACCOUNT_SUSPENDED') throw error;
-      throw new AppError('SIGN_IN_REQUIRED', 'This node requires sign-in to read.');
+      if (isAppError(error) && error.code === 'SERVICE_UNAVAILABLE') throw error;
+      if (isAppError(error) && AUTH_FAILURE_CODES.has(error.code)) {
+        throw new AppError('SIGN_IN_REQUIRED', 'This node requires sign-in to read.', {
+          cause: error,
+        });
+      }
+      // Anything else is an infrastructure fault (DB timeout, pool exhaustion, TypeORM error,
+      // a bug). Telling the client to sign in would make it burn a refresh and, worse, wipe a
+      // perfectly good session; report UNAVAILABLE and keep the real cause in the log (S-H2).
+      this.logger.warn(
+        JSON.stringify({
+          event: 'public_read_guard_failed',
+          rpc: path,
+          error: error instanceof Error ? error.name : typeof error,
+          message: error instanceof Error ? error.message : String(error),
+          code: isAppError(error) ? error.code : undefined,
+        }),
+      );
+      throw new AppError(
+        'SERVICE_UNAVAILABLE',
+        'The node is temporarily unavailable. Retry shortly.',
+        {
+          cause: error,
+        },
+      );
     }
   }
 }

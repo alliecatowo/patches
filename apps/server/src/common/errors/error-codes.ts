@@ -148,6 +148,10 @@ export const ERROR_CODES = [
    * this process is already running `RPC_WRITE_CONCURRENCY_LIMIT` write-class RPCs — the
    * request is shed immediately, before touching the database, so reads stay unaffected. */
   'NODE_OVERLOADED',
+  /** A dependency (database, pool) failed while the request was still being admitted — e.g.
+   * `PublicReadGuard`'s user lookup during a Neon wake. Maps to `UNAVAILABLE` so clients retry
+   * instead of treating it as a sign-out (audit S-H2). */
+  'SERVICE_UNAVAILABLE',
   /** `E2eeService` (P13-004, ADR 0020 §2): `GetIdentityRoot`/`EnrollDevice`/`RevokeDevice`/
    * `PublishDeviceRoster` on an actor with no published messaging identity root. */
   'E2EE_IDENTITY_ROOT_NOT_FOUND',
@@ -272,6 +276,7 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   PASSWORD_AUTH_DISABLED: GrpcStatus.FAILED_PRECONDITION,
   RPC_TIMEOUT: GrpcStatus.DEADLINE_EXCEEDED,
   NODE_OVERLOADED: GrpcStatus.UNAVAILABLE,
+  SERVICE_UNAVAILABLE: GrpcStatus.UNAVAILABLE,
   E2EE_IDENTITY_ROOT_NOT_FOUND: GrpcStatus.NOT_FOUND,
   E2EE_ROSTER_NOT_FOUND: GrpcStatus.NOT_FOUND,
   E2EE_DEVICE_NOT_FOUND: GrpcStatus.NOT_FOUND,
