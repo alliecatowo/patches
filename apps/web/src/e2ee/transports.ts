@@ -33,6 +33,7 @@ import {
   type SendEnvelopesRequestLike,
 } from './runtime.js';
 import type { EnrollmentCapability, EnrollmentTransport } from './enrollment.js';
+import { isUnverifiedReset, PeerIdentityResetError } from './peer-trust.js';
 
 /** The slice of the web app's API surface these seams bind (structural so tests can
  * supply a mock without constructing a real Connect client). */
@@ -93,15 +94,26 @@ async function loadVerifiedRoster(
     if (bytesEqual(wireRoot.rootBytes, pin.rootBytes)) {
       root = pinnedRoot;
     } else {
-      root = verifyMessagingRoot({
-        rootBytes: wireRoot.rootBytes,
-        selfSignature: wireRoot.selfSignature,
-        ...(wireRoot.previousRootSignature.length === 0
-          ? {}
-          : { previousRootSignature: wireRoot.previousRootSignature }),
-        previousRoot: pinnedRoot,
-        nowMs,
-      });
+      try {
+        root = verifyMessagingRoot({
+          rootBytes: wireRoot.rootBytes,
+          selfSignature: wireRoot.selfSignature,
+          ...(wireRoot.previousRootSignature.length === 0
+            ? {}
+            : { previousRootSignature: wireRoot.previousRootSignature }),
+          previousRoot: pinnedRoot,
+          nowMs,
+        });
+      } catch (error) {
+        // Not a countersigned successor. A self-signed reset at a higher generation is what an
+        // account that lost its old key publishes: surface it for an explicit, user-confirmed
+        // re-trust (`peer-trust.ts`) instead of failing opaquely. Never trusted silently.
+        if (isUnverifiedReset(pin, wireRoot, nowMs)) {
+          onPeerIdentityEvent?.({ kind: 'reset-unverified', actorId });
+          throw new PeerIdentityResetError(actorId);
+        }
+        throw error;
+      }
       // A rotation that passed the countersignature check is verified against the peer's
       // previous key — worth showing, not just trusting silently.
       onPeerIdentityEvent?.({ kind: 'rotated', actorId });
@@ -166,7 +178,10 @@ export interface CreateWebE2eeTransportsOptions {
 /** What the thread screen tells the user about a peer's pinned identity (C2). */
 export type PeerIdentityEvent =
   | { readonly kind: 'first-seen'; readonly actorId: string }
-  | { readonly kind: 'rotated'; readonly actorId: string };
+  | { readonly kind: 'rotated'; readonly actorId: string }
+  /** A root reset with no countersignature: sends and receives with this peer are paused until
+   * the user accepts the new identity (`peer-trust.ts`). */
+  | { readonly kind: 'reset-unverified'; readonly actorId: string };
 
 export function createWebE2eeTransports(
   options: CreateWebE2eeTransportsOptions,
@@ -197,7 +212,16 @@ export function createWebE2eeTransports(
       for (const actorId of request.actorIds) {
         const pin = await loadPeerIdentityPin(options.pinVault, actorId);
         if (pin === undefined) firstSeen.push(actorId);
-        rosterByActor.set(actorId, await loadVerifiedRoster(api, actorId, nowMs, options.pinVault));
+        rosterByActor.set(
+          actorId,
+          await loadVerifiedRoster(
+            api,
+            actorId,
+            nowMs,
+            options.pinVault,
+            options.onPeerIdentityEvent,
+          ),
+        );
       }
       for (const actorId of firstSeen) {
         options.onPeerIdentityEvent?.({ kind: 'first-seen', actorId });

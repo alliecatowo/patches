@@ -15,6 +15,8 @@ import {
   signMessagingRoot,
 } from '@patches/crypto';
 import { generateEnrollment } from './enrollment.js';
+import { acceptPeerIdentityReset, PeerIdentityResetError } from './peer-trust.js';
+import { isSafetyNumberVerified, setSafetyNumberVerified } from './vault.js';
 import {
   createWebE2eeTransports,
   createWebEnrollmentTransport,
@@ -469,5 +471,175 @@ describe('createWebE2eeTransports', () => {
 
     await expect(transports.loadPeerRoster('actor-peer')).resolves.toBeDefined();
     expect(events).toEqual([{ kind: 'rotated', actorId: 'actor-peer' }]);
+  });
+});
+
+describe('unverified peer identity reset (P2-H2)', () => {
+  const nowMs = Date.now();
+
+  function mint(generation: number): typeof peerIdentity {
+    const keys = generateSigningKeyPair();
+    return generateEnrollment({
+      actorId: 'actor-peer',
+      nowMs,
+      root: { ...keys, createdAtMs: nowMs - 1000, generation },
+    }).record.identity;
+  }
+
+  /** A node that serves `before` first (so the pin forms), then `after` ever after. */
+  function nodeServing(before: typeof peerIdentity, after: typeof peerIdentity) {
+    let served = before;
+    const getIdentityRoot = vi.fn(() => Promise.resolve(wireIdentityRoot(served)));
+    const getDeviceRoster = vi.fn(() => Promise.resolve(wireDeviceRoster(served)));
+    const claimPrekeyBundles = vi.fn(() => Promise.resolve(wireClaimResponse(served)));
+    return {
+      api: apiWith({ getIdentityRoot, getDeviceRoster, claimPrekeyBundles }),
+      claimPrekeyBundles,
+      reset: () => {
+        served = after;
+      },
+    };
+  }
+
+  function servedRoot(root: typeof peerIdentity): {
+    rootBytes: Uint8Array;
+    selfSignature: Uint8Array;
+  } {
+    const verified = root.ownRoster.root;
+    return { rootBytes: verified.rootBytes, selfSignature: verified.selfSignature };
+  }
+
+  it('fails closed with a typed error and an event, never touching the pin or claiming prekeys', async () => {
+    const before = mint(1);
+    const after = mint(2);
+    const node = nodeServing(before, after);
+    const events: { kind: string; actorId: string }[] = [];
+    const pinVault = memoryPinVault();
+    const transports = createWebE2eeTransports({
+      api: node.api,
+      identity,
+      pinVault,
+      onPeerIdentityEvent: (event) => events.push(event),
+    });
+    await transports.loadPeerRoster('actor-peer');
+    node.reset();
+
+    await expect(transports.loadPeerRoster('actor-peer')).rejects.toBeInstanceOf(
+      PeerIdentityResetError,
+    );
+    await expect(
+      transports.claimPrekeyBundles({ conversationId: 'c', actorIds: ['actor-peer'] }),
+    ).rejects.toBeInstanceOf(PeerIdentityResetError);
+    expect(node.claimPrekeyBundles).not.toHaveBeenCalled();
+    expect(events).toContainEqual({ kind: 'reset-unverified', actorId: 'actor-peer' });
+
+    // It keeps failing: nothing about retrying, or time passing, accepts the new root.
+    await expect(transports.loadPeerRoster('actor-peer')).rejects.toBeInstanceOf(
+      PeerIdentityResetError,
+    );
+  });
+
+  it('accepts only after an explicit acceptance, pinning exactly the root the user was shown', async () => {
+    const before = mint(1);
+    const after = mint(2);
+    const node = nodeServing(before, after);
+    const pinVault = memoryPinVault();
+    const transports = createWebE2eeTransports({ api: node.api, identity, pinVault });
+    await transports.loadPeerRoster('actor-peer');
+    await setSafetyNumberVerified(pinVault, 'actor-peer', true);
+    node.reset();
+    await expect(transports.loadPeerRoster('actor-peer')).rejects.toBeInstanceOf(
+      PeerIdentityResetError,
+    );
+
+    await acceptPeerIdentityReset({
+      vault: pinVault,
+      actorId: 'actor-peer',
+      root: servedRoot(after),
+      nowMs,
+    });
+
+    // The old safety-number mark described the old identity and is gone.
+    expect(await isSafetyNumberVerified(pinVault, 'actor-peer')).toBe(false);
+    const roster = await transports.loadPeerRoster('actor-peer');
+    expect(roster.root.generation).toBe(2);
+  });
+
+  it('does not let a different root than the one shown be accepted later', async () => {
+    const before = mint(1);
+    const shown = mint(2);
+    const swapped = mint(2);
+    const node = nodeServing(before, shown);
+    const pinVault = memoryPinVault();
+    const transports = createWebE2eeTransports({ api: node.api, identity, pinVault });
+    await transports.loadPeerRoster('actor-peer');
+
+    // The user accepts `shown`; the node then serves `swapped` instead.
+    await acceptPeerIdentityReset({
+      vault: pinVault,
+      actorId: 'actor-peer',
+      root: servedRoot(shown),
+      nowMs,
+    });
+    const swap = nodeServing(swapped, swapped);
+    const afterSwap = createWebE2eeTransports({ api: swap.api, identity, pinVault });
+    await expect(afterSwap.loadPeerRoster('actor-peer')).rejects.toThrow();
+  });
+
+  it('refuses to accept a rollback, an equal generation, another account, or a missing pin', async () => {
+    const before = mint(3);
+    const node = nodeServing(before, before);
+    const pinVault = memoryPinVault();
+    const transports = createWebE2eeTransports({ api: node.api, identity, pinVault });
+    await transports.loadPeerRoster('actor-peer');
+
+    for (const candidate of [mint(2), mint(3)]) {
+      await expect(
+        acceptPeerIdentityReset({
+          vault: pinVault,
+          actorId: 'actor-peer',
+          root: servedRoot(candidate),
+          nowMs,
+        }),
+      ).rejects.toThrow();
+    }
+    const otherActor = generateEnrollment({
+      actorId: 'actor-someone-else',
+      nowMs,
+      root: { ...generateSigningKeyPair(), createdAtMs: nowMs - 1000, generation: 9 },
+    }).record.identity;
+    await expect(
+      acceptPeerIdentityReset({
+        vault: pinVault,
+        actorId: 'actor-peer',
+        root: servedRoot(otherActor),
+        nowMs,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      acceptPeerIdentityReset({
+        vault: memoryPinVault(),
+        actorId: 'actor-peer',
+        root: servedRoot(mint(4)),
+        nowMs,
+      }),
+    ).rejects.toThrow('no pinned identity');
+  });
+
+  it('refuses a reset whose self-signature is forged', async () => {
+    const before = mint(1);
+    const forged = mint(2);
+    const pinVault = memoryPinVault();
+    const node = nodeServing(before, before);
+    const transports = createWebE2eeTransports({ api: node.api, identity, pinVault });
+    await transports.loadPeerRoster('actor-peer');
+    await expect(
+      acceptPeerIdentityReset({
+        vault: pinVault,
+        actorId: 'actor-peer',
+        root: { ...servedRoot(forged), selfSignature: new Uint8Array(64) },
+        nowMs,
+      }),
+    ).rejects.toThrow();
   });
 });
