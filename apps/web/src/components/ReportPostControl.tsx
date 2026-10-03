@@ -1,6 +1,6 @@
 import { ReportReason } from '@patches/proto/es';
 import { useMutation } from '@tanstack/react-query';
-import { useState, type JSX } from 'react';
+import { useState, type JSX, type SyntheticEvent } from 'react';
 
 import { api } from '../api/client.js';
 import { useErrorToast } from '../hooks/useErrorToast.js';
@@ -41,16 +41,28 @@ export function ReportPostControl({
   });
 
   if (session === null) return null;
-  if (sent) return <span role="status">Report sent.</span>;
+
+  // This control lives inside PostCard's "more options" dropdown, which closes itself on
+  // any click that bubbles up to it. Stop propagation here, otherwise tapping "report"
+  // unmounts the control before its form can ever appear (and so would using the form).
+  // `display: contents` keeps the wrapper out of the dropdown's layout.
+  const stop = (event: SyntheticEvent): void => event.stopPropagation();
+  const wrap = (node: JSX.Element): JSX.Element => (
+    <div style={{ display: 'contents' }} onClick={stop}>
+      {node}
+    </div>
+  );
+
+  if (sent) return wrap(<span role="status">Report sent.</span>);
   if (!open) {
-    return (
+    return wrap(
       <button type="button" className={className} onClick={() => setOpen(true)}>
         report
-      </button>
+      </button>,
     );
   }
 
-  return (
+  return wrap(
     <form
       aria-label="Report post"
       onSubmit={(event) => {
@@ -91,6 +103,6 @@ export function ReportPostControl({
       >
         Cancel
       </Button>
-    </form>
+    </form>,
   );
 }

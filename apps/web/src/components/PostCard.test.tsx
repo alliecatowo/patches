@@ -4,7 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+
+import { clearActorSession, setActorSession } from '../api/session.js';
 
 import { PostCard } from './PostCard.js';
 
@@ -24,6 +26,8 @@ function renderPostCard(post: Post, focused = false): ReturnType<typeof render> 
 }
 
 describe('PostCard', () => {
+  afterEach(() => clearActorSession());
+
   const mockPost: Post = {
     $typeName: 'patches.v1.Post',
     id: 'post-123',
@@ -65,6 +69,8 @@ describe('PostCard', () => {
   });
 
   it('updates aria-expanded attribute when options menu is toggled', () => {
+    // The menu is only offered to signed-in viewers (an empty one is useless to guests).
+    setActorSession({ id: 'actor-viewer', handle: 'viewer' } as never);
     renderPostCard(mockPost);
     const optionsBtn = screen.getByRole('button', { name: 'More options' });
     expect(optionsBtn).toHaveAttribute('aria-haspopup', 'menu');
@@ -215,6 +221,26 @@ describe('PostCard', () => {
       renderPostCard(quoting);
       expect(screen.getByText('A quoted local post')).toBeInTheDocument();
       expect(screen.getByText('@homebody')).toBeInTheDocument();
+    });
+  });
+
+  describe('more-options menu', () => {
+    it('lets a signed-in viewer open the report form from someone else’s post', () => {
+      setActorSession({ id: 'actor-viewer', handle: 'viewer' } as never);
+      renderPostCard(mockPost);
+
+      fireEvent.click(screen.getByRole('button', { name: /more options/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'report' }));
+
+      // Regression: the dropdown used to close on this click and unmount the form.
+      expect(screen.getByRole('form', { name: /report post/i })).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('Report details'), { target: { value: 'spam' } });
+      expect(screen.getByRole('form', { name: /report post/i })).toBeInTheDocument();
+    });
+
+    it('does not offer an empty options menu to signed-out viewers', () => {
+      renderPostCard(mockPost);
+      expect(screen.queryByRole('button', { name: /more options/i })).not.toBeInTheDocument();
     });
   });
 });
