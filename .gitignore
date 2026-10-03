@@ -53,3 +53,8 @@ tmp/
 
 # --- local logical database dumps (infra/scripts/db-dump.sh) ---
 backups/
+
+# --- agent local state ---
+.claude/agent-memory/
+.claude/settings.local.json
+.claude/worktrees/

@@ -28,6 +28,10 @@ runs:
       uses: bufbuild/buf-action@v1
       with:
         setup_only: true
+        # Pinned to mise.toml's `buf` (and the Dockerfile's BUF_VERSION). An unpinned
+        # install floated to the newest buf, whose bundled google/protobuf well-known
+        # types differ from the committed generated code and broke `proto` on main.
+        version: 1.72.0
 
     - name: Install dependencies
       shell: bash

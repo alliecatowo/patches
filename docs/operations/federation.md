@@ -127,7 +127,7 @@ TEST_DATABASE_URL=postgres://patches:patches@127.0.0.1:5432/patches_test_server 
 #### Verified run (2026-08-25, post-P18-011 fix)
 
 ```
- RUN  v4.1.11 /home/allie/develop/patches-agent-wt/1787722809-959882/apps/server
+ RUN  v4.1.11 <worktree>/apps/server
 
 
  Test Files  1 passed (1)

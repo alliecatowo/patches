@@ -214,7 +214,7 @@ idle_timeout = 600` (example value, seconds) — "Configure an idle-timeout for 
 Source: connectrpc.com/docs and github.com/connectrpc/connect-es cited above for the protocol
 facts; `fly.io/docs/reference/configuration` (fetched 2026-08-25, `[http_service.http_options]`
 section, `idle_timeout` and `h2_backend`/`services.ports.http_options.h2_backend` keys); local file
-`/home/allie/develop/wt-p19-011/infra/fly/fly.toml` (read directly); Fly community thread
+`<worktree>/infra/fly/fly.toml` (read directly); Fly community thread
 `community.fly.io/t/outgoing-request-timeouts-after-idle-time/21000` (**unofficial, flagged, not
 authoritative** — cited only to show what wasn't confirmable from official docs).
 
