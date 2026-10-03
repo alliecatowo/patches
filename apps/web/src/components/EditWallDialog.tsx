@@ -232,6 +232,7 @@ export function EditWallDialog({
                 <button
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'Text' ? styles['active'] : ''}`}
+                  aria-pressed={selectedType === 'Text'}
                   onClick={() => setSelectedType('Text')}
                 >
                   Text
@@ -239,6 +240,7 @@ export function EditWallDialog({
                 <button
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'NowPlaying' ? styles['active'] : ''}`}
+                  aria-pressed={selectedType === 'NowPlaying'}
                   onClick={() => setSelectedType('NowPlaying')}
                 >
                   Now Playing
@@ -246,6 +248,7 @@ export function EditWallDialog({
                 <button
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'Hero' ? styles['active'] : ''}`}
+                  aria-pressed={selectedType === 'Hero'}
                   onClick={() => setSelectedType('Hero')}
                 >
                   Hero
@@ -253,6 +256,7 @@ export function EditWallDialog({
                 <button
                   type="button"
                   className={`${styles['typeBtn']} ${selectedType === 'AsciiArt' ? styles['active'] : ''}`}
+                  aria-pressed={selectedType === 'AsciiArt'}
                   onClick={() => setSelectedType('AsciiArt')}
                 >
                   ASCII Art
@@ -263,12 +267,14 @@ export function EditWallDialog({
                 <>
                   <input
                     className={styles['formInput']}
+                    aria-label="Hero Headline"
                     placeholder="Hero Headline"
                     value={titleInput}
                     onChange={(e) => setTitleInput(e.target.value)}
                   />
                   <input
                     className={styles['formInput']}
+                    aria-label="Subtitle (optional)"
                     placeholder="Subtitle (optional)"
                     value={subtitleInput}
                     onChange={(e) => setSubtitleInput(e.target.value)}
@@ -277,6 +283,7 @@ export function EditWallDialog({
               ) : selectedType === 'NowPlaying' ? (
                 <input
                   className={styles['formInput']}
+                  aria-label="Song or Track Title"
                   placeholder="Song or Track Title (e.g. Daft Punk - Digital Love)"
                   value={bodyInput}
                   onChange={(e) => setBodyInput(e.target.value)}
@@ -284,6 +291,7 @@ export function EditWallDialog({
               ) : selectedType === 'AsciiArt' ? (
                 <textarea
                   className={styles['formTextarea']}
+                  aria-label="ASCII Art"
                   placeholder="Paste ASCII art..."
                   value={bodyInput}
                   onChange={(e) => setBodyInput(e.target.value)}
@@ -292,6 +300,7 @@ export function EditWallDialog({
               ) : (
                 <textarea
                   className={styles['formTextarea']}
+                  aria-label="Text or markdown content"
                   placeholder="Write text or markdown for your wall..."
                   value={bodyInput}
                   onChange={(e) => setBodyInput(e.target.value)}
