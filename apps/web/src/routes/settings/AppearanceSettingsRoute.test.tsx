@@ -250,7 +250,10 @@ describe('AppearanceSettingsRoute', () => {
       screen.getByText(/only affects|floating button on narrow screens|hidden/i),
     ).toBeInTheDocument();
 
-    const css = readFileSync(resolve(import.meta.dirname, '../../components/ThumbNavFab.module.css'), 'utf8');
+    const css = readFileSync(
+      resolve(import.meta.dirname, '../../components/ThumbNavFab.module.css'),
+      'utf8',
+    );
     expect(css).toMatch(
       /@media\s*\(min-width:\s*721px\)\s*\{\s*\.fabContainer\s*\{\s*display:\s*none/,
     );
