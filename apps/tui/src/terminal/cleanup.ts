@@ -3,6 +3,13 @@ const SHOW_CURSOR = '\u001B[?25h';
 
 let installed = false;
 
+/** One-line, stack-free description of an unexpected failure (spec: never show a stack trace). */
+export function describeCrash(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const firstLine = message.split('\n')[0]?.trim() ?? '';
+  return `patches: unexpected error${firstLine === '' ? '' : `: ${firstLine}`}. Run \`patches doctor\` or re-run with --debug if it persists.`;
+}
+
 /**
  * Guarantee the user's terminal is usable after Patches exits (spec §70).
  *
@@ -25,6 +32,13 @@ export function installTerminalCleanup(): () => void {
     // SIGTERM has no default Node handler that runs `exit` listeners, so it is
     // converted into a normal exit explicitly. SIGINT is left to Ink, which owns
     // Ctrl+C via `exitOnCtrlC`.
+    const crash = (error: unknown): void => {
+      restore();
+      process.stderr.write(`${describeCrash(error)}\n`);
+      process.exit(1);
+    };
+    process.on('uncaughtException', crash);
+    process.on('unhandledRejection', crash);
     process.on('SIGTERM', () => {
       restore();
       process.exit(0);

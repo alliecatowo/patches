@@ -1,6 +1,8 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+
+import { readJsonOr, writeFileAtomic } from '../fs/atomic-json.js';
 
 /**
  * An in-progress page-document edit (P45-006), persisted the same way
@@ -32,10 +34,6 @@ export function pageDraftFilePath(): string {
   return join(dataDir(), 'page-edit-draft.json');
 }
 
-function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && 'code' in error;
-}
-
 function isPageDraft(value: unknown): value is PageDraft {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Partial<PageDraft>;
@@ -50,20 +48,13 @@ export class FilePageDraftStore implements PageDraftStore {
   }
 
   async load(): Promise<PageDraft | undefined> {
-    let raw: string;
-    try {
-      raw = await readFile(this.path, 'utf8');
-    } catch (error) {
-      if (isErrnoException(error) && error.code === 'ENOENT') return undefined;
-      throw error;
-    }
-    const parsed: unknown = JSON.parse(raw);
+    // A truncated or corrupt draft file loads as "no draft" (and is moved aside).
+    const parsed = await readJsonOr<unknown>(this.path, undefined);
     return isPageDraft(parsed) ? parsed : undefined;
   }
 
   async save(draft: PageDraft): Promise<void> {
-    await mkdir(dirname(this.path), { recursive: true });
-    await writeFile(this.path, `${JSON.stringify(draft, null, 2)}\n`, 'utf8');
+    await writeFileAtomic(this.path, `${JSON.stringify(draft, null, 2)}\n`);
   }
 
   async clear(): Promise<void> {
