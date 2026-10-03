@@ -352,25 +352,37 @@ export class E2eeSessionRuntime {
         },
       });
     } catch (error) {
-      for (const sessionId of stagedSessions) {
+      // A session created by this send is dropped whether or not it reached `stageSend`: its
+      // X3DH-carrying first envelope never left, so keeping it would make the next send omit
+      // the initial framing and leave the peer unable to open anything (audit H8).
+      for (const sessionId of createdSessions) {
         try {
-          if (createdSessions.has(sessionId)) {
-            // The initial (X3DH) envelope never reached this peer: drop the session so
-            // the next send re-establishes from a fresh prekey claim.
-            await this.vault.deleteSession(sessionId);
-          } else {
-            // Pre-existing session: adopt the staged state (audit P1-1) so the ratchet
-            // stays ahead of anything sent and the next send flows normally.
-            await this.vault.confirmSend(sessionId);
-          }
+          await this.vault.deleteSession(sessionId);
+        } catch {
+          // Best-effort: a leftover session is re-established by the next claim.
+        }
+      }
+      for (const sessionId of stagedSessions) {
+        if (createdSessions.has(sessionId)) continue;
+        try {
+          // Pre-existing session: adopt the staged state (audit P1-1) so the ratchet
+          // stays ahead of anything sent and the next send flows normally.
+          await this.vault.confirmSend(sessionId);
         } catch {
           // Best-effort: the staged state also recovers via the next open's adoption.
         }
       }
       throw error;
     }
+    // The node already has the message: a local failure to confirm one session must not
+    // fail the send (the caller would retry and duplicate it) nor skip the remaining
+    // sessions, which would stay staged and wedge every later send to them.
     for (const sessionId of stagedSessions) {
-      await this.vault.confirmSend(sessionId);
+      try {
+        await this.vault.confirmSend(sessionId);
+      } catch {
+        // Recovered by the next open()'s adoption of the staged state.
+      }
     }
   }
 
