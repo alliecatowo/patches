@@ -14,6 +14,8 @@ import {
   type DeletePostResponse,
   type GetPostRequest,
   type GetPostResponse,
+  type ListPostEditsRequest,
+  type ListPostEditsResponse,
   type ListRepliesRequest,
   type ListRepliesResponse,
   type ModerationGrpcClient,
@@ -21,6 +23,7 @@ import {
   type SearchPostsRequest,
   type SearchPostsResponse,
 } from '@patches/proto';
+import { Follow } from '@patches/database';
 import { PostVisibility, QuotePolicy } from '@patches/proto/nest';
 import { createTestUser } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
@@ -183,6 +186,127 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
     });
 
     // ------------------------------------------------------------------ GetPost
+
+    // ------------------------------------------- FOLLOWERS visibility on by-id reads (S-H1)
+
+    describe('FOLLOWERS-only visibility on by-id reads (S-H1)', () => {
+      let follower: TestActor;
+      let stranger: TestActor;
+      let privatePostId: string;
+      let privateReplyId: string;
+      let publicQuoteId: string;
+
+      beforeAll(async () => {
+        follower = await registerTestActor(auth, dataSource, inviterUserId);
+        stranger = await registerTestActor(auth, dataSource, inviterUserId);
+        await dataSource.getRepository(Follow).save(
+          dataSource.getRepository(Follow).create({
+            followerActorId: follower.actorId,
+            followeeActorId: alice.actorId,
+            status: 'FOLLOWING',
+          }),
+        );
+
+        const parent = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: 'public parent for visibility' }),
+          { accessToken: bob.accessToken },
+        );
+        const reply = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({
+            body: 'followers-only reply',
+            inReplyToId: parent.post?.id ?? '',
+            visibility: PostVisibility.POST_VISIBILITY_FOLLOWERS,
+          }),
+          { accessToken: alice.accessToken },
+        );
+        privateReplyId = reply.post?.id ?? '';
+        replyParentId = parent.post?.id ?? '';
+
+        const secret = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({
+            body: 'followers-only secret',
+            visibility: PostVisibility.POST_VISIBILITY_FOLLOWERS,
+          }),
+          { accessToken: alice.accessToken },
+        );
+        privatePostId = secret.post?.id ?? '';
+
+        const quote = await callUnary<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({
+            body: 'public quote of a private post',
+            quotedPostId: privatePostId,
+          }),
+          { accessToken: alice.accessToken },
+        );
+        publicQuoteId = quote.post?.id ?? '';
+      }, 30_000);
+
+      let replyParentId = '';
+
+      const get = (id: string, token?: string) =>
+        callUnary<GetPostRequest, GetPostResponse>(
+          posts.getPost.bind(posts),
+          { id },
+          token === undefined ? undefined : { accessToken: token },
+        );
+
+      it('GetPost hides the post from strangers and anonymous callers, not the author or followers', async () => {
+        for (const token of [stranger.accessToken, undefined]) {
+          const error = await expectRejection<GetPostRequest, GetPostResponse>(
+            posts.getPost.bind(posts),
+            { id: privatePostId },
+            token === undefined ? undefined : { accessToken: token },
+          );
+          expect(error.code).toBe(GrpcStatus.NOT_FOUND);
+        }
+        expect((await get(privatePostId, alice.accessToken)).post?.id).toBe(privatePostId);
+        expect((await get(privatePostId, follower.accessToken)).post?.id).toBe(privatePostId);
+      });
+
+      it('ListReplies omits a FOLLOWERS-only reply for non-followers', async () => {
+        const list = async (token?: string) =>
+          (
+            await callUnary<ListRepliesRequest, ListRepliesResponse>(
+              posts.listReplies.bind(posts),
+              { postId: replyParentId, cursor: '', limit: 20, maxDepth: 1 },
+              token === undefined ? undefined : { accessToken: token },
+            )
+          ).posts.map((post) => post.id);
+        expect(await list(stranger.accessToken)).not.toContain(privateReplyId);
+        expect(await list()).not.toContain(privateReplyId);
+        expect(await list(follower.accessToken)).toContain(privateReplyId);
+        expect(await list(alice.accessToken)).toContain(privateReplyId);
+      });
+
+      it('ListPostEdits is NOT_FOUND for a non-follower', async () => {
+        const error = await expectRejection<ListPostEditsRequest, ListPostEditsResponse>(
+          posts.listPostEdits.bind(posts),
+          { postId: privatePostId, cursor: '', limit: 10 },
+          { accessToken: stranger.accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.NOT_FOUND);
+      });
+
+      it('a public quote does not embed the FOLLOWERS-only quoted post for a stranger', async () => {
+        const asStranger = await get(publicQuoteId, stranger.accessToken);
+        expect(asStranger.post?.quotedPost ?? null).toBeNull();
+        const asFollower = await get(publicQuoteId, follower.accessToken);
+        expect(asFollower.post?.quotedPost?.id).toBe(privatePostId);
+      });
+
+      it('replying to a post the caller cannot see is NOT_FOUND', async () => {
+        const error = await expectRejection<CreatePostRequest, CreatePostResponse>(
+          posts.createPost.bind(posts),
+          createPostRequest({ body: 'sneaky reply', inReplyToId: privatePostId }),
+          { accessToken: stranger.accessToken },
+        );
+        expect(error.code).toBe(GrpcStatus.NOT_FOUND);
+      });
+    });
 
     describe('GetPost', () => {
       it('is readable anonymously', async () => {
