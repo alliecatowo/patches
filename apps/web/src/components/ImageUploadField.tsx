@@ -85,20 +85,26 @@ export function ImageUploadField({
       <div
         className={`${styles['dropzone']} ${shapeClass ?? ''} ${dragActive ? (styles['dropzoneActive'] ?? '') : ''}`}
         role="button"
-        tabIndex={0}
-        onClick={() => inputRef.current?.click()}
+        tabIndex={status === 'uploading' ? -1 : 0}
+        aria-label={`Upload or drag ${label.toLowerCase()}`}
+        aria-disabled={status === 'uploading'}
+        onClick={() => {
+          if (status !== 'uploading') inputRef.current?.click();
+        }}
         onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') inputRef.current?.click();
+          if (status !== 'uploading' && (event.key === 'Enter' || event.key === ' ')) {
+            inputRef.current?.click();
+          }
         }}
         onDragOver={(event: DragEvent<HTMLDivElement>) => {
           event.preventDefault();
-          setDragActive(true);
+          if (status !== 'uploading') setDragActive(true);
         }}
         onDragLeave={() => setDragActive(false)}
         onDrop={(event: DragEvent<HTMLDivElement>) => {
           event.preventDefault();
           setDragActive(false);
-          handleFile(event.dataTransfer.files[0]);
+          if (status !== 'uploading') handleFile(event.dataTransfer.files[0]);
         }}
       >
         {pendingFile ? (
@@ -124,7 +130,14 @@ export function ImageUploadField({
         }}
       />
       {status === 'uploading' ? (
-        <div className={styles['progressRow']}>
+        <div
+          className={styles['progressRow']}
+          role="progressbar"
+          aria-label={`${label} upload progress`}
+          aria-valuenow={Math.round(progress * 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
           <div className={styles['progressTrack']}>
             <div
               className={styles['progressFill']}
@@ -134,7 +147,11 @@ export function ImageUploadField({
           <span>{Math.round(progress * 100)}%</span>
         </div>
       ) : null}
-      {status === 'error' ? <p className={styles['error']}>{error}</p> : null}
+      {status === 'error' ? (
+        <p className={styles['error']} role="alert">
+          {error}
+        </p>
+      ) : null}
       {currentMediaId !== '' && status !== 'uploading' ? (
         <button
           type="button"
