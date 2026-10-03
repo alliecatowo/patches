@@ -4,8 +4,10 @@ import { startRegistration } from '@simplewebauthn/browser';
 import type { PublicKeyCredentialCreationOptionsJSON } from '@simplewebauthn/browser';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type JSX } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
-import { api } from '../../api/client.js';
+import { api, signOut } from '../../api/client.js';
 import { GitHubLoginButton } from '../../components/GitHubLoginButton.js';
 import { OidcLoginButton } from '../../components/OidcLoginButton.js';
 import { humanizeEnumValue } from '../../lib/enumLabels.js';
@@ -26,6 +28,7 @@ import styles from '../AuthForm.module.css';
  */
 export function CredentialsRoute(): JSX.Element {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [label, setLabel] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -72,10 +75,17 @@ export function CredentialsRoute(): JSX.Element {
 
   const changePasswordMutation = useMutation({
     mutationFn: () => api.auth.changePassword({ currentPassword, newPassword }),
-    onSuccess: () => {
+    onSuccess: async () => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      // The server revokes EVERY session of this user on a password change, this one
+      // included, so the stored tokens are already dead. Sign out deliberately instead of
+      // letting the next request fail and look like an unexplained session expiry.
+      await signOut();
+      queryClient.clear();
+      toast.success('Password changed. Please sign in again.');
+      void navigate('/login');
     },
   });
 
@@ -118,11 +128,13 @@ export function CredentialsRoute(): JSX.Element {
 
       <section style={{ marginTop: '1.5rem' }}>
         <h2>Change password</h2>
-        <p>Enter your current password and choose a new one. Other sessions will be signed out.</p>
+        <p>
+          Enter your current password and choose a new one. You will be signed out everywhere,
+          including here, and need to sign in again.
+        </p>
         {changePasswordMutation.isError ? (
           <p className={styles['error']}>{describeError(changePasswordMutation.error).message}</p>
         ) : null}
-        {changePasswordMutation.isSuccess ? <p>Password changed successfully.</p> : null}
         <div className={styles['field']}>
           <label htmlFor="current-password">Current password</label>
           <input

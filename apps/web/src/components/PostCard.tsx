@@ -305,58 +305,63 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
             {post.editedAt ? ' · edited' : ''}
           </Link>
 
-          <div className={styles['moreMenuWrap']}>
-            <button
-              type="button"
-              className={styles['moreMenuButton']}
-              onClick={() => setMoreMenuOpen((v) => !v)}
-              aria-label="More options"
-              aria-haspopup="menu"
-              aria-expanded={moreMenuOpen}
-            >
-              <MoreHorizontalIcon size={16} />
-            </button>
-            {moreMenuOpen ? (
-              <div className={styles['moreDropdown']} onClick={() => setMoreMenuOpen(false)}>
-                {isOwn ? (
-                  <>
-                    <button type="button" onClick={() => void navigate(`/compose?edit=${post.id}`)}>
-                      <EditIcon size={14} />
-                      <span>Edit post</span>
-                    </button>
-                    <button type="button" onClick={() => void togglePin()}>
-                      <PinIcon size={14} />
-                      <span>{pinned ? 'Unpin from profile' : 'Pin to profile'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setHistoryOpen((v) => !v);
-                        if (!historyOpen) {
-                          void queryClient.invalidateQueries({
-                            queryKey: ['post-edits', post.id],
-                          });
-                        }
-                      }}
-                    >
-                      <HistoryIcon size={14} />
-                      <span>Edit history</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={styles['dangerAction']}
-                      onClick={() => void deletePost()}
-                    >
-                      <TrashIcon size={14} />
-                      <span>Delete post</span>
-                    </button>
-                  </>
-                ) : (
-                  <ReportPostControl postId={post.id} className={styles['dropdownReport']} />
-                )}
-              </div>
-            ) : null}
-          </div>
+          {session === null ? null : (
+            <div className={styles['moreMenuWrap']}>
+              <button
+                type="button"
+                className={styles['moreMenuButton']}
+                onClick={() => setMoreMenuOpen((v) => !v)}
+                aria-label="More options"
+                aria-haspopup="menu"
+                aria-expanded={moreMenuOpen}
+              >
+                <MoreHorizontalIcon size={16} />
+              </button>
+              {moreMenuOpen ? (
+                <div className={styles['moreDropdown']} onClick={() => setMoreMenuOpen(false)}>
+                  {isOwn ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => void navigate(`/compose?edit=${post.id}`)}
+                      >
+                        <EditIcon size={14} />
+                        <span>Edit post</span>
+                      </button>
+                      <button type="button" onClick={() => void togglePin()}>
+                        <PinIcon size={14} />
+                        <span>{pinned ? 'Unpin from profile' : 'Pin to profile'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistoryOpen((v) => !v);
+                          if (!historyOpen) {
+                            void queryClient.invalidateQueries({
+                              queryKey: ['post-edits', post.id],
+                            });
+                          }
+                        }}
+                      >
+                        <HistoryIcon size={14} />
+                        <span>Edit history</span>
+                      </button>
+                      <button
+                        type="button"
+                        className={styles['dangerAction']}
+                        onClick={() => void deletePost()}
+                      >
+                        <TrashIcon size={14} />
+                        <span>Delete post</span>
+                      </button>
+                    </>
+                  ) : (
+                    <ReportPostControl postId={post.id} className={styles['dropdownReport']} />
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
 
         {(post.labels?.length ?? 0) > 0 ? (
