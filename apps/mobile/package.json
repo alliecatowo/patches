@@ -26,18 +26,18 @@
     "@patches/client": "workspace:*",
     "@patches/domain": "workspace:*",
     "@patches/proto": "workspace:*",
-    "expo": "57.0.15",
-    "expo-crypto": "~57.0.1",
+    "expo": "catalog:",
+    "expo-crypto": "catalog:",
     "expo-file-system": "catalog:",
     "expo-image-picker": "catalog:",
-    "expo-secure-store": "~57.0.1",
-    "expo-status-bar": "~57.0.1",
-    "react": "19.2.8",
-    "react-native": "0.87.0"
+    "expo-secure-store": "catalog:",
+    "expo-status-bar": "catalog:",
+    "react": "catalog:",
+    "react-native": "catalog:"
   },
   "devDependencies": {
     "@types/react": "catalog:",
-    "babel-preset-expo": "~57.0.10",
+    "babel-preset-expo": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
