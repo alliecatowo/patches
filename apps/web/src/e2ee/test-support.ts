@@ -80,7 +80,10 @@ export function memoryVault(): RatchetSessionVault & { readonly records: Map<str
     stageSend: (): Promise<void> => unused(),
     confirmSend: (): Promise<void> => unused(),
     applyUpdate: (): Promise<void> => unused(),
-    deleteSession: (): Promise<void> => unused(),
+    deleteSession: (key) => {
+      records.delete(key);
+      return Promise.resolve();
+    },
     getOpaqueRecord: (key) => Promise.resolve(records.get(key)),
     putOpaqueRecord: (key, value) => {
       records.set(key, value.slice());

@@ -601,14 +601,29 @@ export function App({
     const sender = e2eeSenderFor(session);
     void sender
       .restoreEnrollment()
-      .then((identity) => {
+      .then(async (identity) => {
         if (!cancelled && identity !== undefined) setE2eeEnrolledDeviceId(identity.deviceId);
+        // P2-C1: an authority device replaces its device keys before (or after) the
+        // certificate lapses. Best effort and silent on failure: a still-valid identity keeps
+        // working and the next start retries; a lapsed linked device is offered the re-link
+        // flow from the Devices screen instead.
+        try {
+          const renewal = await sender.renewCertificate({
+            actorId: session.actor?.id ?? session.userId,
+            transport: createEnrollmentTransport({ api, accessToken: ensureAccessToken }),
+          });
+          if (!cancelled && renewal.status === 'renewed') {
+            setE2eeEnrolledDeviceId(renewal.record.identity.deviceId);
+          }
+        } catch {
+          // Nothing was changed by a failed renewal; see the comment above.
+        }
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [session, e2eeSenderFor]);
+  }, [session, e2eeSenderFor, api, ensureAccessToken]);
   /**
    * B-107: the Accounts/Devices entry point's action — runs device enrollment through
    * the sender's own vault and returns what the screen should tell the viewer.

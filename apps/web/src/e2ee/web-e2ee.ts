@@ -59,10 +59,17 @@ import {
   ENROLLMENT_PEER_WARNING_COPY,
   disposeStoredEnrollment,
   enrollThisDevice,
+  isSelfCertificateExpired,
   loadStoredEnrollment,
   type EnrollOutcome,
   type EnrollmentTransport,
+  type StoredEnrollment,
 } from './enrollment.js';
+import {
+  discardExpiredIdentityKeepingHistory,
+  isRenewalDue,
+  renewDeviceIdentity,
+} from './renewal.js';
 import {
   bindConversationCreate,
   createWebE2eeTransports,
@@ -82,6 +89,12 @@ export const WEB_E2EE_COPY = {
     'Messages are open in another tab or window of this browser. Close it (or switch to it) ' +
     'and reload this page — two windows sharing one set of encryption keys would corrupt them.',
   notEnrolled: 'This browser has no enrolled messaging device yet.',
+  /** The device certificate lapsed (P2-C1). History is kept; only this device's keys are replaced. */
+  certificateExpired:
+    'This device’s messaging certificate has expired, so it cannot send or receive until its ' +
+    'keys are renewed. Your message history on this browser is kept; renewing only replaces ' +
+    'this device’s keys, and conversations start fresh sessions with your contacts.',
+  renewFailed: 'Renewing this device did not complete. Nothing was changed.',
   enrollFailed: 'Enrolling this browser did not complete. Nothing was half-registered.',
   sendFailed: 'The message could not be delivered.',
   pollFailed: 'Could not fetch new encrypted messages.',
@@ -96,6 +109,12 @@ export type WebE2eeStatus =
   | { readonly kind: 'enrolling' }
   | { readonly kind: 'enrolled' }
   | { readonly kind: 'refused'; readonly copy: string }
+  /**
+   * The device certificate expired (or the device could not renew before it did). History and
+   * pins are intact; `canRenew` is true when this device holds the root key and can mint its own
+   * replacement, false when it must be re-linked from an authority device.
+   */
+  | { readonly kind: 'renewal-required'; readonly copy: string; readonly canRenew: boolean }
   /** Another tab holds the vault lock; this tab stays read-only and never opens the vault. */
   | { readonly kind: 'locked'; readonly copy: string }
   | { readonly kind: 'fault'; readonly copy: string };
@@ -302,12 +321,12 @@ class WebE2eeManager {
         return;
       }
       this.actorId = actor.id;
-      this.bind(vault, stored.identity);
-      // `bind` only needs `stored.identity` going forward; the account root private key
-      // this load pulled off disk has no further use in this manager and must not sit in
-      // memory unzeroized (ADR 0020 §4).
-      disposeStoredEnrollment(stored);
-      this.setStatus({ kind: 'enrolled' });
+      this.vault = vault;
+      const active = await this.renewIfDue(vault, actor.id, stored);
+      // Superseded while renewing: the newer `setActor` already released (and closed) this
+      // vault via `release()`, so there is nothing to close or set here.
+      if (seq !== this.setActorSeq) return;
+      this.activate(vault, active);
     } catch {
       if (seq !== this.setActorSeq) {
         // Superseded before or during the failure: don't clobber whatever the winning
@@ -319,6 +338,99 @@ class WebE2eeManager {
       this.release();
       this.setStatus({ kind: 'fault', copy: WEB_E2EE_COPY.vaultFault });
     }
+  }
+
+  private now(): number {
+    return (this.nowMs ?? Date.now)();
+  }
+
+  /**
+   * An authority device renews its own certificate inside the renewal window (and after a
+   * lapse). Any failure keeps the stored record: a not-yet-expired device keeps working and
+   * retries on the next open; an expired one lands in `renewal-required`.
+   */
+  private async renewIfDue(
+    vault: RatchetSessionVault,
+    actorId: string,
+    stored: StoredEnrollment,
+  ): Promise<StoredEnrollment> {
+    if (stored.rootPrivate === undefined || !isRenewalDue(stored, this.now())) return stored;
+    try {
+      const outcome = await renewDeviceIdentity({
+        actorId,
+        transport: createWebEnrollmentTransport({ api: this.api }),
+        vault,
+        nowMs: () => this.now(),
+      });
+      if (outcome.status === 'renewed') {
+        disposeStoredEnrollment(stored);
+        return outcome.record;
+      }
+    } catch {
+      // Transport/verification failures are retried on the next open; the stored identity is
+      // untouched (the replacement is only swapped in after the node accepted it).
+      this.#log.error('certificate renewal failed', { actorId });
+    }
+    return stored;
+  }
+
+  /** Binds a loaded record, or enters `renewal-required` when its certificate has lapsed. */
+  private activate(vault: RatchetSessionVault, stored: StoredEnrollment): void {
+    if (isSelfCertificateExpired(stored.identity, this.now())) {
+      const canRenew = stored.rootPrivate !== undefined;
+      disposeStoredEnrollment(stored);
+      this.identity = undefined;
+      this.runtime = undefined;
+      this.setStatus({
+        kind: 'renewal-required',
+        copy: WEB_E2EE_COPY.certificateExpired,
+        canRenew,
+      });
+      return;
+    }
+    this.bind(vault, stored.identity);
+    // `bind` only needs `stored.identity` going forward; the account root private key
+    // this load pulled off disk has no further use in this manager and must not sit in
+    // memory unzeroized (ADR 0020 §4).
+    disposeStoredEnrollment(stored);
+    this.setStatus({ kind: 'enrolled' });
+  }
+
+  /**
+   * Explicit user action from the `renewal-required` panel. Authority: mints a replacement
+   * device under the same root. Otherwise: drops the dead identity (history kept) so the
+   * ordinary link flow can run. Never wipes history.
+   */
+  renewExpiredDevice(): Promise<void> {
+    return this.enqueue(async () => {
+      const vault = this.vault;
+      const actorId = this.actorId;
+      if (this.status.kind !== 'renewal-required' || vault === undefined || actorId === undefined) {
+        throw new WebE2eeUnavailableError(WEB_E2EE_COPY.renewFailed);
+      }
+      try {
+        if (this.status.canRenew) {
+          const outcome = await renewDeviceIdentity({
+            actorId,
+            transport: createWebEnrollmentTransport({ api: this.api }),
+            vault,
+            nowMs: () => this.now(),
+            force: true,
+          });
+          if (outcome.status !== 'renewed')
+            throw new WebE2eeUnavailableError(WEB_E2EE_COPY.renewFailed);
+          this.activate(vault, outcome.record);
+        } else {
+          await discardExpiredIdentityKeepingHistory(vault, this.now());
+          this.identity = undefined;
+          this.runtime = undefined;
+          this.setStatus({ kind: 'not-enrolled' });
+        }
+      } catch (error) {
+        if (error instanceof WebE2eeUnavailableError) throw error;
+        throw new WebE2eeUnavailableError(WEB_E2EE_COPY.renewFailed);
+      }
+    });
   }
 
   private bind(vault: RatchetSessionVault, identity: LocalDeviceIdentity): void {
@@ -649,14 +761,12 @@ class WebE2eeManager {
   async reloadEnrollment(): Promise<void> {
     return this.enqueue(async () => {
       if (this.vault === undefined || this.actorId === undefined) return;
-      const stored = await loadStoredEnrollment(this.vault, Date.now());
+      const stored = await loadStoredEnrollment(this.vault, this.now());
       if (stored === undefined || !stored.submitted) {
         this.setStatus({ kind: 'not-enrolled' });
         return;
       }
-      this.bind(this.vault, stored.identity);
-      disposeStoredEnrollment(stored);
-      this.setStatus({ kind: 'enrolled' });
+      this.activate(this.vault, stored);
     });
   }
 

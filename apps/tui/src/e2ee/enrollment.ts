@@ -324,6 +324,15 @@ export function encodeStoredEnrollment(record: StoredEnrollment): Uint8Array {
   return writer.finish();
 }
 
+/** True once this device's own certificate has passed `expiresAtMs` (or is within `withinMs` of it). */
+export function isSelfCertificateExpired(
+  identity: { readonly selfDevice: { readonly expiresAtMs: number } },
+  nowMs: number,
+  withinMs = 0,
+): boolean {
+  return nowMs + withinMs >= identity.selfDevice.expiresAtMs;
+}
+
 /** Reconstructs a `StoredEnrollment`, re-verifying every transcript against `nowMs`
  * exactly as a peer receiving this device's published material would (ADR 0033 §3). */
 export function decodeStoredEnrollment(bytes: Uint8Array, nowMs: number): StoredEnrollment {
@@ -406,11 +415,15 @@ export function decodeStoredEnrollment(bytes: Uint8Array, nowMs: number): Stored
   reader.end();
 
   const root = verifyMessagingRoot({ rootBytes, selfSignature: rootSelfSignature, nowMs });
+  // Every signature and the root binding are still verified, but a lapsed own certificate
+  // must not make the record unreadable: that was an unrecoverable brick (P2-C1). Callers use
+  // `isSelfCertificateExpired` to enter the renewal state instead of sending.
   const selfDevice = verifyCertifiedDevice({
     certificateBytes,
     rootSignature: certificateRootSignature,
     root,
     nowMs,
+    allowExpired: true,
   });
   const ownRoster = verifyRosterSnapshot({
     rosterBytes,

@@ -137,6 +137,34 @@ describe('verifyActorChain — transcript/root-key and timestamp binding (M4)', 
     expect(chain.activeDevices.get('device-m4')?.signingPublicKey).toBeDefined();
   });
 
+  it('skips a lapsed device instead of failing the whole actor (P2-C1)', () => {
+    const fix = buildChain('actor-lapsed', 'device-lapsed', 'seed-lapsed');
+    const afterExpiry = new Date(EXPIRES.getTime() + 1);
+    const chain = verifyActorChain({
+      rootWire: fix.rootWire,
+      rosterWire: fix.rosterWire,
+      certificatesWire: fix.certificatesWire,
+      now: afterExpiry,
+    });
+    expect(chain.activeDevices.has('device-lapsed')).toBe(false);
+    expect(chain.expiredDevices.has('device-lapsed')).toBe(true);
+  });
+
+  it('still rejects a lapsed device whose certificate signature is forged', () => {
+    const fix = buildChain('actor-lapsed-forged', 'device-forged', 'seed-lapsed-forged');
+    const cert = fix.certificatesWire[0];
+    if (cert === undefined) throw new Error('fixture');
+    const forged = { ...cert, rootSignature: new Uint8Array(64) };
+    expect(() =>
+      verifyActorChain({
+        rootWire: fix.rootWire,
+        rosterWire: fix.rosterWire,
+        certificatesWire: [forged],
+        now: new Date(EXPIRES.getTime() + 1),
+      }),
+    ).toThrow();
+  });
+
   it('rejects a certificate whose transcript names a root other than the verifying root', () => {
     // Everything about this chain (root, roster, roster signature) is genuine and internally
     // consistent EXCEPT the device certificate itself, which is signed by a different root's

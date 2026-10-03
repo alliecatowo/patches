@@ -214,6 +214,11 @@ export interface VerifiedPeerChain {
     string,
     { readonly signingPublicKey: Bytes; readonly agreementPublicKey: Bytes }
   >;
+  /**
+   * Active roster entries whose certificate has passed `expiresAt`. They are not encryption
+   * targets, but one lapsed device must not make the whole actor unverifiable (P2-C1).
+   */
+  readonly expiredDevices: ReadonlySet<string>;
 }
 
 /**
@@ -244,6 +249,7 @@ export function verifyActorChain(input: {
     string,
     { readonly signingPublicKey: Bytes; readonly agreementPublicKey: Bytes }
   >();
+  const expiredDevices = new Set<string>();
   for (const entry of roster.entries) {
     if (!entry.active) continue;
     const wireCert = input.certificatesWire.find((candidate) =>
@@ -263,14 +269,22 @@ export function verifyActorChain(input: {
       );
     }
     const certificate = deviceCertificateFromWire(wireCert);
+    // A lapsed certificate is still fully verified (signature, root binding, transcript) as of
+    // the instant before it expired, then excluded from the targets instead of failing the
+    // whole actor. A not-yet-valid or forged one still throws.
+    const expired = certificate.expiresAt.getTime() <= input.now.getTime();
     verifyDeviceCertificate(certificate, root, {
       verifier: strictVerifier,
       digest: sha256Digest,
-      now: input.now,
+      now: expired ? new Date(certificate.expiresAt.getTime() - 1) : input.now,
       decodedMatchesTranscript: true,
     });
     if (certificate.deviceId !== entry.deviceId) {
       throw new E2eeContractError('Verified certificate does not match its roster entry.');
+    }
+    if (expired) {
+      expiredDevices.add(certificate.deviceId);
+      continue;
     }
     assertDeviceUsableForSend(certificate);
     activeDevices.set(certificate.deviceId, {
@@ -278,5 +292,5 @@ export function verifyActorChain(input: {
       agreementPublicKey: certificate.agreementPublicKey,
     });
   }
-  return { root, roster, activeDevices };
+  return { root, roster, activeDevices, expiredDevices };
 }

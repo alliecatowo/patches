@@ -269,6 +269,13 @@ export interface VerifyCertifiedDeviceInput {
   readonly rootSignature: Uint8Array;
   readonly root: VerifiedMessagingRoot;
   readonly nowMs: number;
+  /**
+   * Skips ONLY the `expiresAtMs` upper bound (signature, root binding and `createdAtMs` are
+   * still enforced). For loading this device's own stored record and for roster snapshots, so
+   * one lapsed certificate cannot make a whole record or actor unverifiable. Every handshake
+   * (`initiateX3dh`/`respondX3dh`/`verifyPreKeyBundle`) re-checks the window itself.
+   */
+  readonly allowExpired?: boolean;
 }
 
 export function verifyCertifiedDevice(input: VerifyCertifiedDeviceInput): VerifiedCertifiedDevice {
@@ -284,7 +291,10 @@ export function verifyCertifiedDevice(input: VerifyCertifiedDeviceInput): Verifi
   ) {
     throw new CertificateError('Device certificate does not bind the verified messaging root.');
   }
-  if (input.nowMs < fields.createdAtMs || input.nowMs >= fields.expiresAtMs) {
+  if (
+    input.nowMs < fields.createdAtMs ||
+    (input.allowExpired !== true && input.nowMs >= fields.expiresAtMs)
+  ) {
     throw new CertificateError('Device certificate is not currently valid.');
   }
   return brandCertifiedDevice({
@@ -313,6 +323,12 @@ export interface VerifyRosterSnapshotInput {
   readonly nowMs: number;
 }
 
+/**
+ * Expired certificates are accepted here (signature, root binding and digest matching are still
+ * enforced): a lapsed device must not make its whole actor unverifiable. It stays in `devices`
+ * but can never be used — `initiateX3dh`, `respondX3dh` and `verifyPreKeyBundle` re-check the
+ * validity window against the clock.
+ */
 export function verifyRosterSnapshot(input: VerifyRosterSnapshotInput): VerifiedRosterSnapshot {
   const fields = decodeDeviceRosterTranscript(input.rosterBytes);
   requireSignatureBytes(input.rootSignature, 'Roster root signature');
@@ -341,6 +357,7 @@ export function verifyRosterSnapshot(input: VerifyRosterSnapshotInput): Verified
       rootSignature: supplied.rootSignature,
       root: input.root,
       nowMs: input.nowMs,
+      allowExpired: true,
     });
     const key = toHex(device.certificateDigest);
     if (suppliedDigests.has(key)) {

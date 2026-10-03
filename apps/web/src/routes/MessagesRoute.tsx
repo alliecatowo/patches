@@ -101,6 +101,19 @@ export function MessagesRoute(): JSX.Element {
     }
   }
 
+  async function handleRenew(): Promise<void> {
+    setEnrolling(true);
+    try {
+      await webE2ee().renewExpiredDevice();
+    } catch (error) {
+      toast.error(
+        error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.renewFailed,
+      );
+    } finally {
+      setEnrolling(false);
+    }
+  }
+
   async function handleNeedsAuthorityResolved(resolution: 'enrolled' | 'cancelled'): Promise<void> {
     setNeedsAuthority(false);
     if (resolution !== 'enrolled' || actorId === undefined) return;
@@ -153,6 +166,7 @@ export function MessagesRoute(): JSX.Element {
     e2eeStatus.kind === 'not-enrolled' ||
     e2eeStatus.kind === 'refused' ||
     e2eeStatus.kind === 'fault' ||
+    e2eeStatus.kind === 'renewal-required' ||
     e2eeStatus.kind === 'locked' ||
     e2eeStatus.kind === 'enrolling';
   const mobilePane =
@@ -212,6 +226,7 @@ export function MessagesRoute(): JSX.Element {
             status={e2eeStatus}
             enrolling={enrolling}
             onEnroll={() => void handleEnroll()}
+            onRenew={() => void handleRenew()}
             onWipe={() => void webE2ee().wipe()}
           />
         )
@@ -228,11 +243,13 @@ export function E2eePanel({
   status,
   enrolling,
   onEnroll,
+  onRenew,
   onWipe,
 }: {
   status: ReturnType<typeof useE2ee>;
   enrolling: boolean;
   onEnroll: () => void;
+  onRenew: () => void;
   onWipe: () => void;
 }): JSX.Element | null {
   if (status.kind === 'locked') {
@@ -249,6 +266,30 @@ export function E2eePanel({
           </Button>
         }
       />
+    );
+  }
+
+  if (status.kind === 'renewal-required') {
+    return (
+      <Panel
+        centered
+        tone="alert"
+        role="alert"
+        title="This device’s keys have expired"
+        description={status.copy}
+        footer={
+          <Button variant="primary" fullWidth loading={enrolling} onClick={onRenew}>
+            {status.canRenew ? 'Renew this device’s keys' : 'Replace this device’s keys'}
+          </Button>
+        }
+      >
+        {status.canRenew ? null : (
+          <p>
+            This browser does not hold your messaging key. After replacing its keys you will link it
+            again from a device that does. Your history here is kept.
+          </p>
+        )}
+      </Panel>
     );
   }
 
