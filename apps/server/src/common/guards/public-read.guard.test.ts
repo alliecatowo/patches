@@ -1,4 +1,4 @@
-import { type ExecutionContext } from '@nestjs/common';
+import { Logger, type ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { AppConfigService } from '../../config/app-config.service.js';
@@ -125,5 +125,36 @@ describe('PublicReadGuard (owner decision 2026-08-19, PUBLIC_READ)', () => {
 
     expect(error).toBeInstanceOf(AppError);
     expect((error as AppError).code).toBe('ACCOUNT_SUSPENDED');
+  });
+  it('surfaces an infrastructure failure as SERVICE_UNAVAILABLE with the cause kept (S-H2)', async () => {
+    const dbError = new Error('Connection terminated due to connection timeout');
+    const { guard: authGuard } = authGuardResolving(dbError);
+    const guard = new PublicReadGuard(configWithPublicRead(false), authGuard);
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    const error: unknown = await guard
+      .canActivate(fakeContext({ path: 'patches.v1.FeedService/ListHomeFeed' }))
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(AppError);
+    expect((error as AppError).code).toBe('SERVICE_UNAVAILABLE');
+    expect((error as AppError).cause).toBe(dbError);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(String(warn.mock.calls[0]?.[0])).toContain('patches.v1.FeedService/ListHomeFeed');
+    expect(String(warn.mock.calls[0]?.[0])).toContain('connection timeout');
+    warn.mockRestore();
+  });
+
+  it('keeps the original auth error as the cause of SIGN_IN_REQUIRED', async () => {
+    const original = new AppError('AUTH_INVALID_CREDENTIALS', 'Invalid access token.');
+    const guard = new PublicReadGuard(
+      configWithPublicRead(false),
+      authGuardResolving(original).guard,
+    );
+    const error: unknown = await guard
+      .canActivate(fakeContext({ path: 'patches.v1.FeedService/ListLocalFeed' }))
+      .catch((caught: unknown) => caught);
+    expect((error as AppError).code).toBe('SIGN_IN_REQUIRED');
+    expect((error as AppError).cause).toBe(original);
   });
 });
