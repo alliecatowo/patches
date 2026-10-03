@@ -411,7 +411,9 @@ describe('SessionManager.restore with an unreadable store', () => {
     store.get = () => Promise.reject(new SyntaxError('Unexpected end of JSON input'));
     const manager = new SessionManager({ api: fakeApi(), store, nodeOrigin: NODE });
     await expect(manager.restore()).resolves.toBeUndefined();
-||||||| 9706ac36
+  });
+});
+
 describe('SessionManager refresh single-flight', () => {
   it('shares one refresh call between concurrent ensureAccessToken callers', async () => {
     const store = new MemoryCredentialStore();
