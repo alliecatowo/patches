@@ -194,6 +194,12 @@ export interface VaultE2eeSender {
     conversationId?: string,
     opts?: { readonly reading?: boolean },
   ): Promise<E2eeSessionRuntimePollResult>;
+  /**
+   * "Reset secure session" (audit P2-H1): drops this device's sessions for the conversation
+   * so the next send runs a fresh handshake that the peer adopts. History is untouched.
+   * Requires an enrolled identity; the screen binding for it is tracked separately.
+   */
+  resetSession(conversationId: string): Promise<number>;
   /** This device's durable unread count for `conversationId` (issue #383); `undefined`
    * when this device has not yet set a read point here, in which case the caller falls
    * back to the server-managed `unreadCount`. Requires an open vault. */
@@ -464,6 +470,10 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
       } as const;
       await recordOwnMessage(store, conversationId, record);
       return ownMessageRow(record);
+    },
+    async resetSession(conversationId: string): Promise<number> {
+      const active = await ensureRuntime();
+      return active.resetSessions(conversationId);
     },
     async pollMailbox(
       conversationId?: string,

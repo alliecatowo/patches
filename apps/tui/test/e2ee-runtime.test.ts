@@ -17,7 +17,7 @@ import { TypedRatchetVault } from '../src/e2ee/ratchet-vault.js';
 import { MemoryVaultStore } from '../src/e2ee/vault-store.js';
 import { buildHistoryTransfer } from '../src/e2ee/history-transfer.js';
 import type { LocalDeviceIdentity } from '../src/e2ee/local-identity.js';
-import { testLocalIdentity } from '../src/e2ee/test-support.js';
+import { primarySessionKey, testLocalIdentity } from '../src/e2ee/test-support.js';
 
 // ---------------------------------------------------------------------------
 // Both sides are built from `@patches/crypto` primitives via the shared test helper, so
@@ -206,7 +206,7 @@ describe('E2EE runtime (B-101)', () => {
     expect(node.acknowledgedIds).toEqual(['env-actor-alice-0']);
     expect(node.mailboxes.get('device-bob') ?? []).toHaveLength(0);
     const bobSession = await bob.vault.getSession(
-      sessionIdFor(CONV, 'actor-alice', 'device-alice'),
+      await primarySessionKey(bob.vault, sessionIdFor(CONV, 'actor-alice', 'device-alice')),
     );
     expect(bobSession).toBeDefined();
   });
@@ -391,7 +391,9 @@ describe('E2EE runtime (B-101)', () => {
     });
 
     // Alice's sending ratchet toward Bob's device, as the live pipeline left it.
-    const aliceState = await alice.vault.getSession(sessionIdFor(CONV, 'actor-bob', 'device-bob'));
+    const aliceState = await alice.vault.getSession(
+      await primarySessionKey(alice.vault, sessionIdFor(CONV, 'actor-bob', 'device-bob')),
+    );
     expect(aliceState).toBeDefined();
     if (aliceState === undefined) return;
 
@@ -450,10 +452,12 @@ describe('E2EE runtime (B-101)', () => {
     await alice.runtime.send(CONV, 'x', 'req-d1');
     await bob.runtime.pollMailbox({ conversationId: CONV });
     const encoded = await alice.vault.listSessions();
-    expect(encoded).toContain(sessionIdFor(CONV, 'actor-bob', 'device-bob'));
-    const state: DoubleRatchetState | undefined = await alice.vault.getSession(
+    const sessionKey = await primarySessionKey(
+      alice.vault,
       sessionIdFor(CONV, 'actor-bob', 'device-bob'),
     );
+    expect(encoded).toContain(sessionKey);
+    const state: DoubleRatchetState | undefined = await alice.vault.getSession(sessionKey);
     expect(state?.protocol).toBe('patches-e2ee-v1');
   });
 });

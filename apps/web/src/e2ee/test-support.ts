@@ -6,6 +6,7 @@
  *
  * This module is test-only: it is never imported by production code.
  */
+import { loadSessionIndex } from './session-index.js';
 import { create } from '@bufbuild/protobuf';
 import {
   E2eeIdentityRootSchema,
@@ -554,4 +555,14 @@ export function fakeMessagingMailboxTransport(options: {
     },
     loadPeerRoster: (actorId) => Promise.resolve(verifiedServedRoster(node, actorId, nowMs())),
   };
+}
+
+/** The vault key of the session that currently sends for one device pair (`session-index.ts`). */
+export async function primarySessionKey(
+  vault: RatchetSessionVault,
+  baseId: string,
+): Promise<string> {
+  const key = (await loadSessionIndex(vault)).get(baseId)?.primaryKey;
+  if (key === undefined || key === '') throw new Error('test setup: no primary session indexed');
+  return key;
 }
