@@ -1,19 +1,291 @@
 /**
- * Dark-first, purple-ish accent (P9-001 brief). VitePress's own dark-mode variables cover
- * most of the surface; this overrides the brand color and a couple of home-page accents.
+ * Catppuccin: Latte in the light theme, Mocha in the dark one. Mauve is the brand colour,
+ * pink the secondary. Terminal captures stay Mocha in both themes, like a real terminal.
  */
 :root {
-  --vp-c-brand-1: #a78bfa;
-  --vp-c-brand-2: #8b5cf6;
-  --vp-c-brand-3: #7c3aed;
-  --vp-c-brand-soft: rgba(139, 92, 246, 0.16);
+  --ctp-base: #eff1f5;
+  --ctp-mantle: #e6e9ef;
+  --ctp-crust: #dce0e8;
+  --ctp-surface0: #ccd0da;
+  --ctp-surface1: #bcc0cc;
+  --ctp-text: #4c4f69;
+  --ctp-sub: #6c6f85;
+  --ctp-mauve: #8839ef;
+  --ctp-pink: #ea76cb;
+  --ctp-green: #40a02b;
 
-  --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: linear-gradient(120deg, #a78bfa, #ec4899);
+  --vp-c-bg: var(--ctp-base);
+  --vp-c-bg-alt: var(--ctp-mantle);
+  --vp-c-bg-elv: var(--ctp-mantle);
+  --vp-c-bg-soft: var(--ctp-mantle);
+  --vp-c-text-1: var(--ctp-text);
+  --vp-c-text-2: var(--ctp-sub);
+  --vp-c-text-3: #7c7f93;
+  --vp-c-divider: var(--ctp-surface0);
+  --vp-c-gutter: var(--ctp-surface0);
+  --vp-c-default-soft: var(--ctp-mantle);
+  --vp-c-brand-1: #8839ef;
+  --vp-c-brand-2: #7a2fdc;
+  --vp-c-brand-3: #8839ef;
+  --vp-c-brand-soft: rgba(136, 57, 239, 0.12);
+  --vp-button-brand-bg: #8839ef;
+  --vp-button-brand-hover-bg: #7a2fdc;
+  --vp-button-brand-text: #eff1f5;
+  --vp-font-family-mono:
+    'JetBrains Mono', 'Fira Code', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 .dark {
-  --vp-c-brand-1: #c4b5fd;
-  --vp-c-brand-2: #a78bfa;
-  --vp-c-brand-3: #8b5cf6;
+  --ctp-base: #1e1e2e;
+  --ctp-mantle: #181825;
+  --ctp-crust: #11111b;
+  --ctp-surface0: #313244;
+  --ctp-surface1: #45475a;
+  --ctp-text: #cdd6f4;
+  --ctp-sub: #a6adc8;
+  --ctp-mauve: #cba6f7;
+  --ctp-pink: #f5c2e7;
+  --ctp-green: #a6e3a1;
+
+  --vp-c-text-3: #7f849c;
+  --vp-c-brand-1: #cba6f7;
+  --vp-c-brand-2: #d5b8f9;
+  --vp-c-brand-3: #cba6f7;
+  --vp-c-brand-soft: rgba(203, 166, 247, 0.14);
+  --vp-button-brand-bg: #cba6f7;
+  --vp-button-brand-hover-bg: #d5b8f9;
+  --vp-button-brand-text: #1e1e2e;
+}
+
+.vp-doc a {
+  text-decoration-color: color-mix(in srgb, var(--vp-c-brand-1) 45%, transparent);
+}
+.vp-doc h1,
+.vp-doc h2 {
+  font-family: var(--vp-font-family-mono);
+  letter-spacing: -0.01em;
+}
+.vp-doc h2 {
+  border-top: 0;
+  padding-top: 0;
+}
+.VPNavBarTitle .title {
+  font-family: var(--vp-font-family-mono);
+  font-weight: 600;
+}
+
+/* ---- home ---- */
+.pt-home-page .VPPage {
+  box-sizing: border-box;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 56px 24px 24px;
+}
+.pt-home-page .VPPage h1 {
+  font-family: var(--vp-font-family-mono);
+  font-size: clamp(2rem, 5.2vw, 3.1rem);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin: 0 0 16px;
+  color: var(--vp-c-text-1);
+}
+.pt-home-page .VPPage h1 .pt-prompt {
+  color: var(--vp-c-brand-1);
+}
+.pt-lede {
+  font-size: 1.1rem;
+  color: var(--vp-c-text-2);
+  max-width: 36em;
+  margin: 0 0 24px;
+  line-height: 1.6;
+}
+.pt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 40px;
+}
+.pt-actions a {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.9rem;
+  padding: 8px 16px;
+  border-radius: 4px;
+  border: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-1);
+  text-decoration: none;
+}
+.pt-actions a:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+.pt-actions a.pt-primary {
+  background: var(--vp-button-brand-bg);
+  border-color: var(--vp-button-brand-bg);
+  color: var(--vp-button-brand-text);
+}
+.pt-actions a.pt-primary:hover {
+  background: var(--vp-button-brand-hover-bg);
+  color: var(--vp-button-brand-text);
+}
+
+.pt-term {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  overflow: hidden;
+}
+.pt-term-bar {
+  background: #181825;
+  color: #7f849c;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  border-bottom: 1px solid #313244;
+}
+.pt-term pre {
+  margin: 0;
+  padding: 16px 18px;
+  overflow-x: auto;
+  white-space: pre;
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+.pt-term .m {
+  color: #7f849c;
+}
+.pt-term .u {
+  color: #f5c2e7;
+  font-weight: 600;
+}
+.pt-term .g {
+  color: #a6e3a1;
+}
+.pt-term .p {
+  color: #cba6f7;
+}
+.pt-term-status {
+  border-top: 1px solid #45475a;
+  padding: 8px 18px 10px;
+  color: #7f849c;
+  font-size: 0.78rem;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.pt-home-page .VPPage h2 {
+  font-family: var(--vp-font-family-mono);
+  font-size: 1.15rem;
+  margin: 56px 0 16px;
+  border: 0;
+  padding: 0;
+  color: var(--vp-c-text-1);
+}
+.pt-home-page .VPPage h2::before {
+  content: '## ';
+  color: var(--vp-c-brand-1);
+}
+
+.pt-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0;
+  border-top: 1px solid var(--vp-c-divider);
+}
+.pt-facts dt,
+.pt-facts dd {
+  margin: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.pt-facts dt {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.9rem;
+  color: var(--vp-c-brand-1);
+  padding-right: 32px;
+}
+.pt-facts dd {
+  color: var(--vp-c-text-2);
+  line-height: 1.55;
+}
+@media (max-width: 640px) {
+  .pt-facts {
+    grid-template-columns: 1fr;
+  }
+  .pt-facts dt {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+}
+
+.pt-shots {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+@media (max-width: 640px) {
+  .pt-shots {
+    grid-template-columns: 1fr;
+  }
+}
+.pt-shots figure {
+  margin: 0;
+}
+.pt-shots img {
+  width: 100%;
+  display: block;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+}
+.pt-shots figcaption {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.8rem;
+  color: var(--vp-c-text-2);
+  margin-top: 6px;
+}
+
+.pt-home-page .VPPage div[class*='language-'] {
+  margin: 12px 0;
+}
+.pt-home-page .VPPage .pt-lede {
+  margin-top: 0;
+}
+.pt-home-page .VPPage p {
+  line-height: 1.7;
+  margin: 14px 0;
+}
+.pt-home-page .VPPage {
+  overflow-x: hidden;
+}
+@media (max-width: 640px) {
+  .pt-home-page .VPPage {
+    padding-top: 32px;
+  }
+}
+.pt-home-page .VPPage div[class*='language-'] {
+  background: var(--vp-c-bg-alt);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  padding: 12px 18px;
+  overflow-x: auto;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.85rem;
+}
+.pt-home-page .VPPage div[class*='language-'] .lang,
+.pt-home-page .VPPage div[class*='language-'] .copy {
+  display: none;
+}
+.pt-home-page .VPPage div[class*='language-'] pre {
+  margin: 0;
+  background: none;
+}
+.pt-home-page .VPPage .custom-block {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border-radius: 6px;
+  background: var(--vp-c-brand-soft);
 }
