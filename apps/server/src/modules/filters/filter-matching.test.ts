@@ -244,4 +244,47 @@ describe('filter-matching (spec §198.2, §198.3)', () => {
   it('returns null when no rule matches', () => {
     expect(evaluateCandidate([rule()], candidate({ body: 'nothing to see here' }))).toBeNull();
   });
+
+  describe('large rule sets (audit S-H4)', () => {
+    it('evaluates thousands of rules over a page of posts without per-rule text folding', () => {
+      const rules: EffectiveFilterRule[] = [];
+      for (let i = 0; i < 2000; i += 1) {
+        rules.push(
+          rule({
+            kind: i % 2 === 0 ? 'SUBSTRING' : 'WORD',
+            value: `needle-${String(i)}`,
+            action: 'WARN',
+          }),
+        );
+      }
+      rules.push(rule({ kind: 'WORD', value: 'unicorn', action: 'HIDE' }));
+      rules.push(rule({ kind: 'SUBSTRING', value: 'never-seen-after-hide', action: 'WARN' }));
+
+      const body = 'Lorem ipsum café '.repeat(300);
+      const posts = Array.from({ length: 121 }, (_, i) =>
+        candidate({ id: `p-${String(i)}`, body: i === 60 ? `${body} unicorn` : body }),
+      );
+      const started = performance.now();
+      const results = posts.map((post) => evaluateCandidate(rules, post));
+      const elapsedMs = performance.now() - started;
+
+      expect(results.filter((match) => match?.action === 'HIDE')).toHaveLength(1);
+      expect(results[60]?.action).toBe('HIDE');
+      expect(results[0]).toBeNull();
+      // Generous bound: the old per-rule NFKC refold took multiple seconds at this size.
+      expect(elapsedMs).toBeLessThan(1500);
+    });
+
+    it('still reports the strongest action when a weaker rule matches first', () => {
+      const match = evaluateCandidate(
+        [
+          rule({ kind: 'SUBSTRING', value: 'alpha', action: 'WARN', name: 'weak' }),
+          rule({ kind: 'SUBSTRING', value: 'alpha', action: 'HIDE', name: 'strong' }),
+          rule({ kind: 'SUBSTRING', value: 'alpha', action: 'COLLAPSE', name: 'later' }),
+        ],
+        candidate({ body: 'alpha' }),
+      );
+      expect(match?.name).toBe('strong');
+    });
+  });
 });
