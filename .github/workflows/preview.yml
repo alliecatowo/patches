@@ -54,6 +54,10 @@
 #                      in the runbook before relying on that default.
 #   FLY_PREVIEW_ORG    Fly org for preview apps (default: personal)
 #
+# Previews are OPT-IN: add the `preview` label to a PR (or run this workflow by hand with
+# action=deploy). Closed PRs are pruned by the teardown job below and by the daily
+# preview-sweep.yml.
+#
 # Fork PRs are skipped by the deploy job's `if:` — GitHub never exposes these
 # secrets to `pull_request` runs from forks, so a deploy there can only fail. The
 # teardown job skips forks and bot-authored PRs for the same reason: no secrets
@@ -67,7 +71,7 @@ name: Preview
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, closed]
+    types: [opened, synchronize, reopened, closed, labeled]
     branches: [main, swarm/e2ee-federation-niceties]
   workflow_dispatch:
     inputs:
@@ -97,9 +101,16 @@ jobs:
     # the first Neon/flyctl call with "Cannot run interactive auth in CI" (observed
     # 2026-08-25, PR #80). workflow_dispatch: allowed for action=deploy (the
     # default); the resolve step below fails fast on a missing or closed PR.
+    # OPT-IN ONLY: a pull_request run deploys only while the PR carries the `preview`
+    # label (and, on a `labeled` event, only when that label is the one just added, so
+    # other labels never trigger a deploy). Plain PR CI (ci.yml) builds and tests with
+    # local emulation and never touches Fly or Neon. Dependabot runs get no secrets, so
+    # they are excluded even if labeled.
     if: >-
       (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy') ||
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
+       contains(github.event.pull_request.labels.*.name, 'preview') &&
+       (github.event.action != 'labeled' || github.event.label.name == 'preview') &&
        github.event.pull_request.head.repo.fork == false &&
        github.event.pull_request.user.type != 'Bot')
     runs-on: ubuntu-latest

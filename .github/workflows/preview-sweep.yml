@@ -1,0 +1,93 @@
+# Daily backstop for preview pruning: destroys the Fly app `patches-pr-<N>` and the Neon
+# branch `pr-<N>` for every pull request that is no longer open. The per-PR teardown in
+# preview.yml handles the normal case at close time; this sweep catches lost close events,
+# bot-closed PRs and anything that predates the opt-in `preview` label. Only touches names
+# matching exactly patches-pr-<digits> / pr-<digits>; open PRs are never touched.
+#
+# workflow_dispatch with dry_run=true lists what would be destroyed without deleting.
+
+name: Preview sweep
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List what would be destroyed without deleting anything
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: preview-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: sweep (closed-PR Fly apps + Neon branches)
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+      DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+    steps:
+      - name: Install Neon CLI
+        run: |
+          npm install -g neon@3.6.0
+          echo "$(npm prefix -g)/bin" >> "$GITHUB_PATH"
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
+
+      - name: Sweep
+        run: |
+          set -uo pipefail
+          errors=0
+          is_closed() { case "$(gh pr view "$1" --json state --jq .state 2>/dev/null)" in CLOSED|MERGED) return 0 ;; *) return 1 ;; esac; }
+
+          echo "## Preview sweep (dry_run=${DRY_RUN})" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "${FLY_API_TOKEN:-}" ]; then
+            apps="$(flyctl apps list --json | jq -r '.[] | (.Name // .ID) | select(test("^patches-pr-[0-9]+$"))')" || { echo "flyctl apps list failed" >&2; errors=1; apps=""; }
+            for app in $apps; do
+              n="${app#patches-pr-}"
+              if is_closed "$n"; then
+                if [ "$DRY_RUN" = "true" ]; then
+                  echo "- would destroy Fly app \`$app\` (PR #$n closed)" >> "$GITHUB_STEP_SUMMARY"
+                elif flyctl apps destroy "$app" --yes; then
+                  echo "- destroyed Fly app \`$app\` (PR #$n closed)" >> "$GITHUB_STEP_SUMMARY"
+                else
+                  echo "- FAILED to destroy Fly app \`$app\`" >> "$GITHUB_STEP_SUMMARY"; errors=1
+                fi
+              fi
+            done
+          else
+            echo "- Fly: FLY_API_TOKEN not set, skipped" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -n "${NEON_API_KEY:-}" ] && [ -n "${NEON_PROJECT_ID:-}" ]; then
+            branches="$(neon branches list --project-id "$NEON_PROJECT_ID" --output json --no-color | jq -r '(if type=="array" then . else .branches end)[] | .name | select(test("^pr-[0-9]+$"))')" || { echo "neon branches list failed" >&2; errors=1; branches=""; }
+            for br in $branches; do
+              n="${br#pr-}"
+              if is_closed "$n"; then
+                if [ "$DRY_RUN" = "true" ]; then
+                  echo "- would delete Neon branch \`$br\` (PR #$n closed)" >> "$GITHUB_STEP_SUMMARY"
+                elif neon branches delete "$br" --project-id "$NEON_PROJECT_ID" --output json --no-color >/dev/null; then
+                  echo "- deleted Neon branch \`$br\` (PR #$n closed)" >> "$GITHUB_STEP_SUMMARY"
+                else
+                  echo "- FAILED to delete Neon branch \`$br\`" >> "$GITHUB_STEP_SUMMARY"; errors=1
+                fi
+              fi
+            done
+          else
+            echo "- Neon: NEON_API_KEY/NEON_PROJECT_ID not set, skipped" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$errors"
