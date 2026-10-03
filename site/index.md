@@ -1,64 +1,65 @@
 ---
-layout: home
-
-hero:
-  name: Patches
-  text: Terminal-native social media
-  tagline: chronological, open-source, yours
-  image:
-    src: /media/hero.gif
-    alt: Patches TUI in action
-  actions:
-    - theme: brand
-      text: Try it in the browser
-      link: https://patches-web.pages.dev
-    - theme: alt
-      text: Read the guide
-      link: /docs/guide/
-    - theme: alt
-      text: GitHub
-      link: https://github.com/alliecatowo/patches
-
-features:
-  - icon: 🕰️
-    title: No ranking algorithm
-    details: Home and local timelines are strictly chronological — no engagement-optimized feed, ever.
-  - icon: ⌨️
-    title: Terminal-first
-    details: A real Ink/React TUI with Kitty inline images, keyboard-first navigation, and a clean non-Kitty fallback.
-  - icon: 🌐
-    title: Open source & self-hostable
-    details: MIT-licensed. Run your own node against Postgres, or use the flagship hosted node.
-  - icon: 🗂️
-    title: Patches Pages
-    details: Every account gets a small, structured mini-site of its own — no HTML/CSS required.
-  - icon: 🔗
-    title: Federation-ready
-    details: An ActivityPub gateway lab, built as a seam from day one — not bolted on later.
-  - icon: 🔒
-    title: Privacy & moderation first
-    details: Invite-only bootstrapping, domain blocks, and ingestion hardening are part of the core, not an afterthought.
+layout: page
+title: Patches
+pageClass: pt-home-page
 ---
 
-## See it
-
-<!--
-  `:src` (a bound expression) rather than a static `src` attribute — Vue's SFC compiler
-  (via @vitejs/plugin-vue's transformAssetUrls) treats a static `src="/media/..."` as an
-  asset it must resolve at build time, which fails the whole site build if that file isn't
-  present yet under public/media/ (populated separately by P9-002). A bound expression is
-  left as a runtime string, so the build never depends on the file existing.
--->
-<div class="patches-see-it">
-  <img :src="'/media/hero.gif'" alt="Patches TUI hero demo" />
-  <div class="patches-see-it-grid">
-    <img :src="'/media/home.png'" alt="Home timeline" />
-    <img :src="'/media/profile.png'" alt="Profile view" />
-    <img :src="'/media/thread.png'" alt="Thread view" />
-  </div>
+<h1><span class="pt-prompt">$</span> patches</h1>
+<p class="pt-lede">Terminal-native social media. Chronological, open-source, yours. A real Ink/React TUI against a self-hostable node.</p>
+<div class="pt-actions">
+  <a class="pt-primary" href="https://patches-web.pages.dev">try it in the browser</a>
+  <a href="/docs/guide/">read the guide</a>
+  <a href="https://github.com/alliecatowo/patches">github</a>
 </div>
 
-## Quickstart
+<div class="pt-term">
+<div class="pt-term-bar">patches: Home</div>
+<pre><span class="p">Home</span>
+<span class="m"> </span>
+<span class="u">@allie</span> <span class="m">· just now</span>
+hello from the terminal
+<span class="m">♡ 0 · 0 replies</span>
+<span class="m"> </span>
+@juan <span class="m">· 1 hour ago</span>
+welcome to patches, allie — replying from my terminal
+<span class="m">♡ 0 · 0 replies</span>
+<span class="m"> </span>
+@allie <span class="m">· 1 hour ago</span>
+hello from production! posted from the terminal via patches-social.fly.dev
+<span class="u">♥ 1 · 1 reply</span>
+<span class="m"> </span>
+<span class="m">— end of the timeline —</span></pre>
+<div class="pt-term-status"><span class="g">connected</span> · patches-social.fly.dev:443 · @juan
+j/k move   Enter thread   p author   r reply   l like   b bookmark   o open media   ! report   g h/l/p go   ? help</div>
+</div>
+
+## what it does
+
+<dl class="pt-facts">
+  <dt>no ranking</dt>
+  <dd>Home and local timelines are strictly chronological. No engagement-optimized feed.</dd>
+  <dt>terminal-first</dt>
+  <dd>Keyboard-first Ink/React TUI with Kitty inline images and a plain fallback for other terminals.</dd>
+  <dt>self-hostable</dt>
+  <dd>MIT-licensed. Run your own node against Postgres, or use the flagship hosted node.</dd>
+  <dt>patches pages</dt>
+  <dd>Every account gets a small structured mini-site, no HTML or CSS required.</dd>
+  <dt>federation seam</dt>
+  <dd>An ActivityPub gateway lab, built as a seam from day one.</dd>
+  <dt>moderation</dt>
+  <dd>Invite-only bootstrapping, domain blocks and ingestion hardening are part of the core.</dd>
+</dl>
+
+## more of the TUI
+
+<div class="pt-shots">
+  <figure><img :src="'/media/profile.png'" alt="Profile view in the Patches TUI" /><figcaption>profile</figcaption></figure>
+  <figure><img :src="'/media/thread.png'" alt="Thread view in the Patches TUI" /><figcaption>thread</figcaption></figure>
+  <figure><img :src="'/media/notifications.png'" alt="Notifications view in the Patches TUI" /><figcaption>notifications</figcaption></figure>
+  <figure><img :src="'/media/help.png'" alt="Keybinding help overlay in the Patches TUI" /><figcaption>help</figcaption></figure>
+</div>
+
+## quickstart
 
 Run your own node locally:
 
@@ -76,13 +77,7 @@ node apps/tui/dist/cli.js
 ```
 
 ::: tip Coming soon
-`npm i -g patches-social` — a single self-contained global install ([tracked](https://github.com/alliecatowo/patches) as P9-003).
+`npm i -g patches-social`, a single self-contained global install ([tracked](https://github.com/alliecatowo/patches) as P9-003).
 :::
 
 See the [guide](/docs/guide/) for the full walkthrough, or the [architecture overview](/docs/architecture/overview) for how a node is put together.
-
-<style>
-.patches-see-it { display: flex; flex-direction: column; gap: 1rem; margin: 2rem 0; }
-.patches-see-it img { border-radius: 8px; border: 1px solid var(--vp-c-divider); width: 100%; }
-.patches-see-it-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
-</style>

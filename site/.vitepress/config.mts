@@ -40,7 +40,7 @@ export default defineConfig({
   base,
   cleanUrls: true,
   lastUpdated: false,
-  appearance: 'dark',
+  appearance: true,
 
   // The synced docs (see sync-docs.mjs) are a curated subset of docs/** — cross-links to
   // sibling docs that aren't part of that subset (ADRs, architecture/api, etc.) are expected
