@@ -204,16 +204,16 @@ describe('client-side chain verification (B-101)', () => {
     ).toThrow();
   });
 
-  it("rejects an expired active device's certificate", () => {
+  it('excludes an expired active device from the targets instead of failing the actor (P2-C1)', () => {
     const fix = buildChain('actor-x', 'device-x', 'seed-four');
-    expect(() =>
-      verifyActorChain({
-        rootWire: fix.rootWire,
-        rosterWire: fix.rosterWire,
-        certificatesWire: fix.certificatesWire,
-        now: EXPIRES,
-      }),
-    ).toThrow();
+    const chain = verifyActorChain({
+      rootWire: fix.rootWire,
+      rosterWire: fix.rosterWire,
+      certificatesWire: fix.certificatesWire,
+      now: EXPIRES,
+    });
+    expect(chain.activeDevices.has('device-x')).toBe(false);
+    expect(chain.expiredDevices.has('device-x')).toBe(true);
   });
 
   it('identity roots fail closed without proof of possession', () => {

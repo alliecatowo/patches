@@ -141,7 +141,11 @@ export async function refreshOwnRoster(
     now: new Date(nowMs),
   });
   assertRosterNotRolledBack(BigInt(stored.identity.ownRoster.sequence), chain.roster);
-  const selfActive = chain.activeDevices.has(stored.identity.deviceId);
+  // A lapsed own certificate is still an ACTIVE roster entry: the caller checks the clock
+  // (`isSelfCertificateExpired`) and enters the renewal state, not the revoked one.
+  const selfActive =
+    chain.activeDevices.has(stored.identity.deviceId) ||
+    chain.expiredDevices.has(stored.identity.deviceId);
 
   const cryptoRoot = verifyMessagingRoot({
     rootBytes: rootWire.rootBytes,
@@ -175,6 +179,7 @@ export async function refreshOwnRoster(
           rootSignature: selfCertificateWire.rootSignature,
           root: cryptoRoot,
           nowMs,
+          allowExpired: true,
         });
 
   const updated: StoredEnrollment = {

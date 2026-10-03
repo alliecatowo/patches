@@ -438,3 +438,100 @@ describe('WebE2eeManager — cross-tab vault ownership (F-H7)', () => {
     expect(tabB.getStatus().kind).toBe('not-enrolled');
   });
 });
+
+describe('WebE2eeManager — expired device certificate (P2-C1)', () => {
+  const DAY = 24 * 60 * 60 * 1_000;
+
+  /** Seeds a real IndexedDB vault with an enrollment made `ageMs` ago, then closes it. */
+  async function seedEnrolledVault(
+    actorId: string,
+    options: { readonly linked: boolean; readonly ageMs: number },
+  ): Promise<void> {
+    const { enrollThisDevice } = await import('./enrollment.js');
+    const { beginDeviceLinkOffer, approveLinkOffer, pollLinkedEnrollment } =
+      await import('./device-link.js');
+    const { createFakeE2eeNode, fakeTransport, memoryVault } = await import('./test-support.js');
+    const { createRatchetSessionVault } = await import('./vault.js');
+    const enrolledAt = Date.now() - options.ageMs;
+    const now = () => enrolledAt;
+    const node = createFakeE2eeNode();
+    const account = { origin: location.origin, actorId };
+    const authorityTransport = fakeTransport({ actorId, node });
+    const authorityVault = options.linked
+      ? memoryVault()
+      : await createRatchetSessionVault({ account });
+    await enrollThisDevice({
+      actorId,
+      transport: authorityTransport,
+      vault: authorityVault,
+      nowMs: now,
+    });
+    let target = authorityVault;
+    if (options.linked) {
+      target = await createRatchetSessionVault({ account });
+      const linkedTransport = fakeTransport({ actorId, node });
+      const begin = await beginDeviceLinkOffer({
+        actorId,
+        transport: linkedTransport,
+        vault: target,
+        nowMs: now,
+      });
+      await approveLinkOffer({
+        actorId,
+        linkId: begin.linkId,
+        transport: authorityTransport,
+        vault: authorityVault,
+        nowMs: now,
+      });
+      await pollLinkedEnrollment({
+        actorId,
+        transport: linkedTransport,
+        vault: target,
+        nowMs: now,
+      });
+    }
+    await target.putOpaqueRecord('\0history-fixture', new Uint8Array([4, 2]));
+    await target.putOpaqueRecord('conversation:peer:device', new Uint8Array([1]));
+    target.close();
+  }
+
+  it('an expired authority device that cannot reach the node lands in renewal-required, not fault or not-enrolled', async () => {
+    const actor = { id: freshActorId() };
+    await seedEnrolledVault(actor.id, { linked: false, ageMs: 40 * DAY });
+    const manager = createWebE2eeManager({ api: fakeApi });
+    await manager.setActor(actor);
+    expect(manager.getStatus()).toEqual({
+      kind: 'renewal-required',
+      copy: WEB_E2EE_COPY.certificateExpired,
+      canRenew: true,
+    });
+    // No send path is bound to the lapsed identity.
+    await expect(manager.send('c', 'hi')).rejects.toThrow(E2eeNotEnrolledError);
+    // Nothing was wiped.
+    expect(await openedVaultOf(manager).getOpaqueRecord('\0history-fixture')).toEqual(
+      new Uint8Array([4, 2]),
+    );
+  });
+
+  it('an expired linked device offers a history-keeping reset that returns it to not-enrolled', async () => {
+    const actor = { id: freshActorId() };
+    await seedEnrolledVault(actor.id, { linked: true, ageMs: 40 * DAY });
+    const manager = createWebE2eeManager({ api: fakeApi });
+    await manager.setActor(actor);
+    expect(manager.getStatus()).toMatchObject({ kind: 'renewal-required', canRenew: false });
+
+    await manager.renewExpiredDevice();
+    expect(manager.getStatus()).toEqual({ kind: 'not-enrolled' });
+    const vault = openedVaultOf(manager);
+    expect(await vault.getOpaqueRecord('\0history-fixture')).toEqual(new Uint8Array([4, 2]));
+    expect(await vault.getOpaqueRecord('conversation:peer:device')).toBeUndefined();
+  });
+
+  it('a live device is unaffected', async () => {
+    const actor = { id: freshActorId() };
+    await seedEnrolledVault(actor.id, { linked: false, ageMs: DAY });
+    const manager = createWebE2eeManager({ api: fakeApi });
+    await manager.setActor(actor);
+    expect(manager.getStatus()).toEqual({ kind: 'enrolled' });
+  });
+});

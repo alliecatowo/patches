@@ -947,6 +947,33 @@ describe('createVaultE2eeSender binding', () => {
     second.close();
   });
 
+  it('does not bind an identity whose certificate has expired (P2-C1)', async () => {
+    const shared = new Map<string, Uint8Array>();
+    const DAY = 24 * 60 * 60 * 1_000;
+    let clock = Date.now();
+    const makeSender = (): ReturnType<typeof createVaultE2eeSender> =>
+      createVaultE2eeSender({
+        account: { nodeOrigin: 'patches.test', userId: ACTOR_ID },
+        allowInsecureKeyFile: false,
+        vault: sharedMapVault(shared),
+        nowMs: () => clock,
+        buildTransports: stubTransports,
+      });
+    const harness = fakeTransport(sharedMapVault(shared));
+    const first = makeSender();
+    await first.enroll({ actorId: ACTOR_ID, transport: harness.transport });
+    const firstDevice = (await first.restoreEnrollment())?.deviceId;
+    first.close();
+
+    clock += 31 * DAY;
+    const second = makeSender();
+    expect(await second.restoreEnrollment()).toBeUndefined();
+    expect(second.enrolled()).toBe(false);
+    expect(second.certificateExpired()).toBe(true);
+    second.close();
+    expect(firstDevice).toBeDefined();
+  });
+
   it('unbinds on wipe so a wiped account starts over', async () => {
     const vault = new TypedRatchetVault(new MemoryVaultStore());
     const { transport } = fakeTransport(vault);

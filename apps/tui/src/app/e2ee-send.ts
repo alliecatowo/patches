@@ -44,10 +44,16 @@ import { VaultCorruptionError, VaultRollbackError } from '../e2ee/vault-errors.j
 import type { VaultAccount } from '../e2ee/vault-key-providers.js';
 import {
   enrollThisDevice,
+  isSelfCertificateExpired,
   loadStoredEnrollment,
   type EnrollOutcome,
   type EnrollmentTransport,
 } from '../e2ee/enrollment.js';
+import {
+  discardExpiredIdentityKeepingHistory,
+  renewDeviceIdentity,
+  type RenewalOutcome,
+} from '../e2ee/renewal.js';
 import {
   approveLinkOffer,
   beginDeviceLinkOffer,
@@ -152,6 +158,19 @@ export interface VaultE2eeSender {
   /** Whether an enrolled messaging identity is bound (gates send and mailbox polling). */
   enrolled(): boolean;
   /**
+   * True when this vault holds a submitted enrollment whose device certificate has expired
+   * (P2-C1). Nothing is bound in that state; `renewCertificate()` replaces the device keys
+   * (history kept) when this device holds the root key, and `enroll()` runs the
+   * history-keeping reset otherwise so the ordinary link flow can proceed.
+   */
+  certificateExpired(): boolean;
+  /**
+   * Renews this device's certificate when it is expired or inside the renewal window and
+   * this device holds the root key (device replacement under the same root, ADR 0038).
+   * `needs-relink` means a linked device that must go through the link flow instead.
+   */
+  renewCertificate(input: EnrollThroughVaultInput): Promise<RenewalOutcome>;
+  /**
    * Sends `body` and durably records it as this device's own message (issue #332),
    * resolving the row the thread should render for it. A failed send is recorded too,
    * marked undelivered, so the viewer's text survives the failure.
@@ -226,6 +245,7 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
   // lazily below; injected stores arrive unopened and are opened here exactly once,
   // so their open-time faults surface through the same sticky-fault path).
   const openedStores = new WeakSet<object>();
+  let expiredCertificate = false;
 
   function noteFault(error: unknown): void {
     if (error instanceof VaultCorruptionError) fault = 'corrupt';
@@ -283,6 +303,13 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
     const store = await ensureOpen();
     const record = await loadStoredEnrollment(store, (options.nowMs ?? Date.now)());
     if (record?.submitted !== true) return undefined;
+    if (isSelfCertificateExpired(record.identity, (options.nowMs ?? Date.now)())) {
+      // A lapsed certificate can neither send nor be received to (P2-C1): stay unbound and
+      // let the caller renew or re-link, instead of binding an identity every peer rejects.
+      expiredCertificate = true;
+      return undefined;
+    }
+    expiredCertificate = false;
     binding = {
       identity: record.identity,
       transports: options.buildTransports(record.identity, store),
@@ -294,6 +321,23 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
   return {
     fault: () => fault,
     enrolled: () => binding !== undefined,
+    certificateExpired: () => expiredCertificate,
+    async renewCertificate(input): Promise<RenewalOutcome> {
+      const store = await ensureOpen();
+      const outcome = await renewDeviceIdentity({
+        actorId: input.actorId,
+        transport: input.transport,
+        vault: store,
+        nowMs: options.nowMs ?? Date.now,
+      });
+      if (outcome.status === 'renewed') {
+        // The old identity's ratchets are gone and the runtime is bound to the old device.
+        binding = undefined;
+        runtime = undefined;
+        await bindSubmitted();
+      }
+      return outcome;
+    },
     async restoreEnrollment(): Promise<LocalDeviceIdentity | undefined> {
       try {
         return await bindSubmitted();
@@ -304,6 +348,26 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
     },
     async enroll(input): Promise<EnrollOutcome> {
       const store = await ensureOpen();
+      if (expiredCertificate) {
+        const nowMs = options.nowMs ?? Date.now;
+        // An authority device replaces its own lapsed keys; a linked one gets the
+        // history-keeping reset so enrollment resumes as not-enrolled -> needs-authority.
+        const renewal = await renewDeviceIdentity({
+          actorId: input.actorId,
+          transport: input.transport,
+          vault: store,
+          nowMs,
+        });
+        binding = undefined;
+        runtime = undefined;
+        if (renewal.status === 'renewed') {
+          const identity = await bindSubmitted();
+          if (identity !== undefined) return { status: 'already-enrolled', identity };
+        } else {
+          await discardExpiredIdentityKeepingHistory(store, nowMs());
+          expiredCertificate = false;
+        }
+      }
       const outcome = await enrollThisDevice({
         actorId: input.actorId,
         transport: input.transport,

@@ -218,6 +218,119 @@ describe('verifyCertifiedDevice', () => {
   });
 });
 
+describe('lapsed certificates (P2-C1)', () => {
+  const root = (): VerifiedMessagingRoot => verifyMessagingRoot({ ...mintRoot(), nowMs: NOW });
+
+  it('skips only the expiry bound when allowExpired is set', () => {
+    const expired = mintCertificate('device-a', { expiresAtMs: 5 });
+    const verified = verifyCertifiedDevice({
+      certificateBytes: expired.certificateBytes,
+      rootSignature: expired.rootSignature,
+      root: root(),
+      nowMs: NOW,
+      allowExpired: true,
+    });
+    expect(verified.expiresAtMs).toBe(5);
+
+    // Signature, root binding and not-yet-valid still hold with the flag on.
+    expect(() =>
+      verifyCertifiedDevice({
+        certificateBytes: expired.certificateBytes,
+        rootSignature: new Uint8Array(64),
+        root: root(),
+        nowMs: NOW,
+        allowExpired: true,
+      }),
+    ).toThrow('signature is invalid');
+    const foreign = mintCertificate('device-a', {
+      expiresAtMs: 5,
+      rootPublicKey: otherRootKeys.publicKey,
+    });
+    expect(() =>
+      verifyCertifiedDevice({
+        certificateBytes: foreign.certificateBytes,
+        rootSignature: foreign.rootSignature,
+        root: root(),
+        nowMs: NOW,
+        allowExpired: true,
+      }),
+    ).toThrow('does not bind the verified messaging root');
+    expect(() =>
+      verifyCertifiedDevice({
+        certificateBytes: expired.certificateBytes,
+        rootSignature: expired.rootSignature,
+        root: root(),
+        nowMs: 0,
+        allowExpired: true,
+      }),
+    ).toThrow('not currently valid');
+  });
+
+  it('verifies a roster that lists a lapsed active device, without letting it be used', () => {
+    const lapsed = mintCertificate('device-old', { expiresAtMs: 5 });
+    const fresh = mintCertificate('device-new');
+    const roster = signDeviceRoster(rootKeys.privateKey, {
+      actorId: 'actor-a',
+      rootGeneration: 1,
+      rootPublicKey: rootKeys.publicKey,
+      sequence: 1,
+      previousDigest: new Uint8Array(32),
+      createdAtMs: 1,
+      entries: [
+        {
+          deviceId: 'device-new',
+          certificateDigest: fresh.certificateDigest,
+          active: true,
+          addedAtMs: 1,
+        },
+        {
+          deviceId: 'device-old',
+          certificateDigest: lapsed.certificateDigest,
+          active: true,
+          addedAtMs: 1,
+        },
+      ],
+    });
+    const verified = verifyRosterSnapshot({
+      rosterBytes: roster.rosterBytes,
+      rootSignature: roster.rootSignature,
+      root: root(),
+      certificates: [lapsed, fresh],
+      nowMs: NOW,
+    });
+    expect(verified.devices.map((device) => device.deviceId).sort()).toEqual([
+      'device-new',
+      'device-old',
+    ]);
+    // A forged certificate in the same roster still fails closed.
+    expect(() =>
+      verifyRosterSnapshot({
+        rosterBytes: roster.rosterBytes,
+        rootSignature: roster.rootSignature,
+        root: root(),
+        certificates: [{ ...lapsed, rootSignature: new Uint8Array(64) }, fresh],
+        nowMs: NOW,
+      }),
+    ).toThrow('signature is invalid');
+  });
+
+  it('still refuses a prekey bundle whose certificate has lapsed', () => {
+    const user = userFixture('alice', 1);
+    const { bundle } = bundleFixture(user, 21);
+    expect(bundle.deviceId).toBe('alice-device');
+    expect(() =>
+      verifyPreKeyBundle({
+        bundleBytes: bundle.bundleBytes,
+        deviceSignature: bundle.deviceSignature,
+        certificateBytes: user.device.certificateBytes,
+        certificateRootSignature: user.device.rootSignature,
+        roster: user.roster,
+        nowMs: user.device.expiresAtMs + 1,
+      }),
+    ).toThrow(/not currently valid/);
+  });
+});
+
 describe('verifyRosterSnapshot', () => {
   function mintRoster(
     entries: readonly {
