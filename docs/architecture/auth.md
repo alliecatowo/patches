@@ -400,10 +400,9 @@ credential-guessing/email-sending surfaces the spec calls out.
 **Sweep.** `rate_limit_buckets` has no TTL of its own; `DbRateLimitStore.increment` lazily
 deletes rows past their `expires_at` with low probability (1-in-50) on every call, rather
 than a dedicated worker job. Chosen over a scheduled `apps/worker` job because nothing in
-this codebase currently schedules a _recurring_ job on a timer at all (`CLEAN_EXPIRED_TOKENS`
-has the same gap — its handler exists but nothing enqueues it periodically yet); adding that
-scheduling primitive is out of scope for this task and the lazy sweep needs none of it. Revisit
-if/when a real cron-style scheduler lands in `apps/worker`.
+this codebase scheduled a _recurring_ job at the time; `apps/worker`'s `ensureRecurringJobs`
+(`docs/architecture/jobs.md`) now enqueues `CLEAN_EXPIRED_TOKENS` daily, but the lazy sweep
+needs none of it and stays.
 
 ## 10. Node password-auth policy (P15-002)
 

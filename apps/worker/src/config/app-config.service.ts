@@ -170,6 +170,10 @@ export class AppConfigService {
     return this.get('WORKER_QUEUE_DEPTH_INTERVAL_MS');
   }
 
+  get e2eeRetentionScheduleEnabled(): boolean {
+    return this.get('E2EE_RETENTION_SCHEDULE_ENABLED') === 'true';
+  }
+
   get notificationTtlDays(): number {
     return this.get('NOTIFICATION_TTL_DAYS');
   }

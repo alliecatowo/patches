@@ -124,7 +124,14 @@ Concretely:
   re-running overwrites the same derivatives rather than creating duplicates; only
   transitions `media.state` forward.
 - `CLEAN_EXPIRED_UPLOADS` / `CLEAN_EXPIRED_TOKENS`: naturally idempotent — deleting
-  an already-deleted/expired row is a no-op.
+  an already-deleted/expired row is a no-op. Scheduling: `JobRunner` calls
+  `ensureRecurringJobs` (`apps/worker/src/jobs/recurring-jobs.ts`) on its first pass after boot
+  and once per UTC day thereafter. It inserts `CLEAN_EXPIRED_TOKENS`,
+  `CLEAN_EXPIRED_UPLOADS` and `CLEAN_EXPIRED_NOTIFICATIONS` due immediately under the key
+  `<TYPE>:<UTC date>`, and seeds the self-perpetuating `E2EE_RETENTION_SWEEP` chain when no
+  live job exists (disable with `E2EE_RETENTION_SCHEDULE_ENABLED=false`). Because it keys off
+  boot rather than wall-clock windows, the scale-to-zero machine's daily wake
+  (`.github/workflows/daily-wake.yml`) is enough to run them.
 - Future `FEDERATION_DELIVER`: must deduplicate deliveries at the remote-activity
   level, since federation explicitly requires duplicate-delivery safety (§108 F2,
   §160).
