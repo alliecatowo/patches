@@ -1,5 +1,7 @@
 import type { PageTheme } from '@patches/domain';
 
+import { safeInkColor } from '../../format/safe-color.js';
+
 /** Ink `Box.borderStyle` values a `PageTheme.border` can select — mirrors
  * `packages/domain`'s own `PAGE_BORDER_STYLES` vocabulary 1:1 (`single`/`double`/
  * `round`/`ascii`/`none`), so there is nothing left to validate here. */
@@ -28,7 +30,7 @@ export interface ResolvedPageTheme {
 export function resolvePageTheme(theme: PageTheme | undefined, plain: boolean): ResolvedPageTheme {
   if (plain || theme === undefined) return { accent: undefined, border: undefined };
   return {
-    accent: theme.accent === '' ? undefined : theme.accent,
+    accent: safeInkColor(theme.accent),
     border: borderStyleFor(theme.border),
   };
 }

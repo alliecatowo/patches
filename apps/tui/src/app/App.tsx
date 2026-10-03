@@ -31,6 +31,7 @@ import { ENROLLMENT_PEER_WARNING_COPY } from '../e2ee/enrollment.js';
 import type { LocalDeviceIdentity } from '../e2ee/local-identity.js';
 import { FileDraftStore, type ComposeDraft, type DraftStore } from '../compose/draft-store.js';
 import type { PageDraftStore } from '../pages/draft-store.js';
+import { ErrorBoundary } from '../components/ErrorBoundary.js';
 import type { PostRowActions } from '../components/PostList.js';
 import { HintLine, StatusBar } from '../components/StatusBar.js';
 import { LinearModeProvider } from '../hooks/useLinearMode.js';
@@ -2209,6 +2210,11 @@ export function App({
    * on the left, the detail on top on the right — and neither may be a second,
    * drifting copy of the other's wiring.
    */
+  /** Remount (and so clear a tripped boundary) whenever the viewer navigates. */
+  function boundaryKey(target: NavEntry): string {
+    return `${String(stack.length)}:${target.screen}`;
+  }
+
   function renderEntry(target: NavEntry, active: boolean): ReactNode {
     const listActive = active && listIsActive;
     switch (target.screen) {
@@ -2682,18 +2688,24 @@ export function App({
         secondaryTitle={SCREEN_TITLES[presentation.secondary.screen]}
         primary={
           <ContentSizeProvider size={{ rows: paneRows, columns: layoutPlan.leftWidth }}>
-            {renderEntry(presentation.primary, focusedPane === 'primary' && screenIsActive)}
+            <ErrorBoundary key={boundaryKey(presentation.primary)}>
+              {renderEntry(presentation.primary, focusedPane === 'primary' && screenIsActive)}
+            </ErrorBoundary>
           </ContentSizeProvider>
         }
         secondary={
           <ContentSizeProvider size={{ rows: paneRows, columns: layoutPlan.rightWidth }}>
-            {renderEntry(presentation.secondary, focusedPane === 'secondary' && screenIsActive)}
+            <ErrorBoundary key={boundaryKey(presentation.secondary)}>
+              {renderEntry(presentation.secondary, focusedPane === 'secondary' && screenIsActive)}
+            </ErrorBoundary>
           </ContentSizeProvider>
         }
       />
     ) : (
       <ContentSizeProvider size={{ rows: regionRows, columns: contentColumns }}>
-        {renderEntry(presentation.primary, screenIsActive)}
+        <ErrorBoundary key={boundaryKey(presentation.primary)}>
+          {renderEntry(presentation.primary, screenIsActive)}
+        </ErrorBoundary>
       </ContentSizeProvider>
     );
 
