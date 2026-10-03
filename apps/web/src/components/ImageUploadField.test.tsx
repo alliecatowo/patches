@@ -63,9 +63,43 @@ describe('ImageUploadField', () => {
     Object.defineProperty(input, 'files', { value: [oversized] });
     input.dispatchEvent(new Event('change', { bubbles: true }));
 
-    expect(await screen.findByText(/too large/i)).toBeInTheDocument();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/too large/i);
     expect(mockUploadMedia).not.toHaveBeenCalled();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('renders progressbar with ARIA attributes during upload', async () => {
+    const cropped = new File(['cropped'], 'photo.png', { type: 'image/png' });
+    mockCropImageToAspect.mockResolvedValue(cropped);
+    mockUploadMedia.mockImplementation((_file: File, onProgress: (progress: number) => void) => {
+      onProgress(0.5);
+      return new Promise(() => {}); // never resolves to stay in uploading status
+    });
+
+    render(
+      <ImageUploadField
+        aspect={1}
+        shape="avatar"
+        label="Avatar"
+        currentMediaId=""
+        onChange={vi.fn()}
+      />,
+    );
+
+    const dropzone = screen.getByRole('button', { name: /upload or drag avatar/i });
+    expect(dropzone).toHaveAttribute('aria-disabled', 'false');
+
+    const input: HTMLInputElement = screen.getByLabelText('Avatar', { selector: 'input' });
+    const original = new File(['source'], 'photo.jpg', { type: 'image/jpeg' });
+    Object.defineProperty(input, 'files', { value: [original] });
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const progressbar = await screen.findByRole('progressbar', { name: /avatar upload progress/i });
+    expect(progressbar).toHaveAttribute('aria-valuenow', '50');
+    expect(progressbar).toHaveAttribute('aria-valuemin', '0');
+    expect(progressbar).toHaveAttribute('aria-valuemax', '100');
+    expect(dropzone).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('shows a remove button once a media id is set, and clears it on click', async () => {

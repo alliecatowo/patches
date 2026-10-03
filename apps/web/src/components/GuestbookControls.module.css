@@ -5,10 +5,23 @@
   margin-bottom: 0.75rem;
 }
 
-.signInput {
+.inputWrap {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.signInput {
+  width: 100%;
   resize: vertical;
+}
+
+.charCounter {
+  align-self: flex-end;
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  margin-top: 0.2rem;
 }
 
 .signButton {
