@@ -68,6 +68,11 @@ describe('PublicReadGuard (owner decision 2026-08-19, PUBLIC_READ)', () => {
     'patches.v1.AuthService/Login',
     'patches.v1.NodeService/GetNodeInfo',
     'patches.v1.NodeService/GetNodePolicy',
+    // S-M2: suspended users must reach notices and appeals; their own guard authenticates.
+    'patches.v1.AppealService/CreateAppeal',
+    'patches.v1.AppealService/GetAppeal',
+    'patches.v1.AppealService/ListMyAppeals',
+    'patches.v1.ModerationService/ListMyModerationNotices',
   ])('allows %s unauthenticated even when PUBLIC_READ is false', async (path) => {
     const { guard: authGuard, spy } = authGuardResolving(
       new AppError('AUTH_INVALID_CREDENTIALS', 'nope'),
@@ -76,6 +81,13 @@ describe('PublicReadGuard (owner decision 2026-08-19, PUBLIC_READ)', () => {
 
     await expect(guard.canActivate(fakeContext({ path }))).resolves.toBe(true);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('still gates other ModerationService RPCs behind sign-in', async () => {
+    const { guard: authGuard, spy } = authGuardResolving(true);
+    const guard = new PublicReadGuard(configWithPublicRead(false), authGuard);
+    await guard.canActivate(fakeContext({ path: 'patches.v1.ModerationService/BlockActor' }));
+    expect(spy).toHaveBeenCalledOnce();
   });
 
   it('falls back to controller/handler names when the call has no getPath()', async () => {

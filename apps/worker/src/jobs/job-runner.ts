@@ -99,26 +99,42 @@ export class JobRunner {
     const { workerId, concurrency, pollMs, idleBackoffMaxMs } = this.config;
     let idleDelayMs = pollMs;
 
+    let errorDelayMs = pollMs;
     while (!this.stopping) {
-      await this.sweepStaleLeasesIfDue();
-      this.logFederationMetricsIfDue();
-      await this.logBacklogIfDue();
-      await this.pushQueueDepthIfDue();
-      await this.ensureRecurringJobsIfDue();
+      try {
+        await this.sweepStaleLeasesIfDue();
+        this.logFederationMetricsIfDue();
+        await this.logBacklogIfDue();
+        await this.pushQueueDepthIfDue();
+        await this.ensureRecurringJobsIfDue();
 
-      const excludeTypes = this.circuitBreaker.excludedTypes();
-      const claimed = await this.dataSource.transaction((manager) =>
-        claimOutboxJobs(manager, { workerId, limit: concurrency, excludeTypes }),
-      );
+        const excludeTypes = this.circuitBreaker.excludedTypes();
+        const claimed = await this.dataSource.transaction((manager) =>
+          claimOutboxJobs(manager, { workerId, limit: concurrency, excludeTypes }),
+        );
 
-      if (claimed.length === 0) {
-        await this.sleep(idleDelayMs);
-        idleDelayMs = nextIdleDelayMs(idleDelayMs, idleBackoffMaxMs);
-        continue;
+        errorDelayMs = pollMs;
+        if (claimed.length === 0) {
+          await this.sleep(idleDelayMs);
+          idleDelayMs = nextIdleDelayMs(idleDelayMs, idleBackoffMaxMs);
+          continue;
+        }
+
+        idleDelayMs = pollMs;
+        await Promise.all(claimed.map((job) => this.processJob(job)));
+      } catch (error) {
+        // Audit S-M11: one reset connection (a Neon wake mid-claim) used to reject `run()` and
+        // end the worker. Log the error class only (never message or payload); retry with backoff.
+        this.logger.warn(
+          JSON.stringify({
+            event: 'worker_loop_error',
+            error: error instanceof Error ? error.name : typeof error,
+            retryInMs: errorDelayMs,
+          }),
+        );
+        await this.sleep(errorDelayMs);
+        errorDelayMs = nextIdleDelayMs(errorDelayMs, Math.max(idleBackoffMaxMs, 30_000));
       }
-
-      idleDelayMs = pollMs;
-      await Promise.all(claimed.map((job) => this.processJob(job)));
     }
   }
 
@@ -283,6 +299,8 @@ export class JobRunner {
           latencyMs: Date.now() - start,
           outcome,
           error: failure.code,
+          // S-M11: persisted text stays generic; the error class (never message/payload) tells why.
+          errorClass: error instanceof Error ? error.name : typeof error,
         }),
       );
     }

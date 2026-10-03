@@ -5,7 +5,7 @@ import { User } from '@patches/database';
 import { DataSource, IsNull } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
-import { setSessionClaims } from './session-context.js';
+import { getSessionClaims, setSessionClaims } from './session-context.js';
 import { TokenService } from './token.service.js';
 
 const AUTHORIZATION_METADATA_KEY = 'authorization';
@@ -33,6 +33,10 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const call = context.switchToRpc().getContext<Metadata>();
+    // Audit S-M4: on a PUBLIC_READ=false node the global `PublicReadGuard` already ran this
+    // exact check for this call (JWT verify + `users` lookup). Claims are only ever stored
+    // after a full pass, so a hit means there is nothing left to verify.
+    if (getSessionClaims(call) !== undefined) return true;
     const claims = await this.tokens.verifyAccessToken(requireBearerToken(call));
 
     const user = await this.dataSource.getRepository(User).findOne({

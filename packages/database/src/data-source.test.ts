@@ -7,6 +7,13 @@ import { ALL_MIGRATIONS } from './migrations/index.js';
 
 const url = 'postgres://patches:patches@127.0.0.1:5432/patches';
 
+/** Audit S-M3: a saturated pool must fail fast instead of waiting forever. */
+const POOL_TIMEOUTS = {
+  connectionTimeoutMillis: 10_000,
+  idleTimeoutMillis: 30_000,
+  keepAlive: true,
+};
+
 describe('createDataSourceOptions', () => {
   it('hard-codes synchronize and migrationsRun to false, regardless of input', () => {
     const options = createDataSourceOptions({ url });
@@ -27,23 +34,25 @@ describe('createDataSourceOptions', () => {
     const options = createDataSourceOptions({ url });
     expect(options.ssl).toBe(false);
     // ms number, never a unit string — pg would read '10s' as 10ms (see data-source.ts)
-    expect(options.extra).toEqual({ max: 10, statement_timeout: 10_000 });
+    expect(options.extra).toEqual({ ...POOL_TIMEOUTS, max: 10, statement_timeout: 10_000 });
     expect(options.logging).toBe(false);
   });
 
   it('maps ssl/poolMax/logging inputs through', () => {
     const options = createDataSourceOptions({ url, ssl: true, poolMax: 25, logging: true });
     expect(options.ssl).toEqual({ rejectUnauthorized: true });
-    expect(options.extra).toEqual({ max: 25, statement_timeout: 10_000 });
+    expect(options.extra).toEqual({ ...POOL_TIMEOUTS, max: 25, statement_timeout: 10_000 });
     expect(options.logging).toBe(true);
   });
 
   it('coerces unit-suffixed statement timeouts to milliseconds', () => {
     expect(createDataSourceOptions({ url, statementTimeout: '5s' }).extra).toEqual({
+      ...POOL_TIMEOUTS,
       max: 10,
       statement_timeout: 5_000,
     });
     expect(createDataSourceOptions({ url, statementTimeout: '250ms' }).extra).toEqual({
+      ...POOL_TIMEOUTS,
       max: 10,
       statement_timeout: 250,
     });
