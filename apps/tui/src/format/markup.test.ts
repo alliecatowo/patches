@@ -216,6 +216,22 @@ describe('parseMarkup — hostile input', () => {
   });
 });
 
+describe('layoutMarkup wrap termination', () => {
+  it('terminates on deeply nested quotes followed by a CJK word', () => {
+    const source = `${'>'.repeat(45)} 世界`;
+    for (const width of [1, 2, 3, 40, 56, 80]) {
+      const lines = layoutMarkup(parseMarkup(source), width);
+      expect(lines.length).toBeLessThan(200);
+    }
+  });
+
+  it('makes progress on wide characters in a one-cell column', () => {
+    const lines = layoutMarkup(parseMarkup('世界🎉'), 1);
+    expect(lines.map(lineText).join('')).toContain('世');
+    expect(lines.length).toBeLessThan(20);
+  });
+});
+
 describe('layoutMarkup', () => {
   it('never emits a line wider than the budget, including emoji and CJK', () => {
     const source = 'family 👨‍👩‍👧‍👦 emoji 🎉🎉🎉 and 日本語のテキストがここにあります plus a long tail';
