@@ -51,7 +51,7 @@ describe('HomeRoute (B-044)', () => {
     renderHome();
 
     expect(await screen.findByText(/this server is invite-only/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /everyone here/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /everyone here/i })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /sign in/i })).toHaveAttribute('href', '/login');
     expect(mockListLocalFeed).not.toHaveBeenCalled();
   });
@@ -62,7 +62,11 @@ describe('HomeRoute (B-044)', () => {
 
     renderHome();
 
-    expect(await screen.findByRole('button', { name: /everyone here/i })).toBeInTheDocument();
+    const localTab = await screen.findByRole('tab', { name: /everyone here/i });
+    expect(localTab).toBeInTheDocument();
+    expect(localTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tablist', { name: /timeline feeds/i })).toBeInTheDocument();
+    expect(screen.getByRole('tabpanel')).toBeInTheDocument();
     expect(screen.getByText(/every public post on this server/i)).toBeInTheDocument();
     expect(screen.queryByText(/invite-only/i)).not.toBeInTheDocument();
   });
@@ -74,7 +78,7 @@ describe('HomeRoute (B-044)', () => {
     const { container } = renderHome();
 
     expect(screen.getByRole('status')).toBeInTheDocument(); // not blank while pending
-    expect(await screen.findByRole('button', { name: /everyone here/i })).toBeInTheDocument();
+    expect(await screen.findByRole('tab', { name: /everyone here/i })).toBeInTheDocument();
     expect(mockListLocalFeed).toHaveBeenCalled();
     expect(container).not.toBeEmptyDOMElement();
   });
