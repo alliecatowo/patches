@@ -43,9 +43,13 @@ export function SearchRoute(): JSX.Element {
           setParams(event.target.value ? { q: event.target.value } : {}, { replace: true });
         }}
       />
-      <div className={styles['tabs']}>
+      <div className={styles['tabs']} role="tablist" aria-label="Search categories">
         <button
           type="button"
+          id="search-tab-people"
+          role="tab"
+          aria-selected={tab === 'people'}
+          aria-controls="search-tabpanel"
           className={`${styles['tab']} ${tab === 'people' ? styles['active'] : ''}`}
           onClick={() => setTab('people')}
         >
@@ -53,61 +57,71 @@ export function SearchRoute(): JSX.Element {
         </button>
         <button
           type="button"
+          id="search-tab-posts"
+          role="tab"
+          aria-selected={tab === 'posts'}
+          aria-controls="search-tabpanel"
           className={`${styles['tab']} ${tab === 'posts' ? styles['active'] : ''}`}
           onClick={() => setTab('posts')}
         >
           Posts
         </button>
       </div>
-      {debouncedQuery === '' ? (
-        <p style={{ color: 'var(--fg-muted)' }}>Type to search.</p>
-      ) : tab === 'people' ? (
-        <div>
-          {actorsQuery.isPending ? <p>Searching…</p> : null}
-          {actorsQuery.data?.actors.length === 0 ? <p>No people found.</p> : null}
-          {actorsQuery.data?.actors.map((actor) => (
-            <Link key={actor.id} to={`/@${actor.handle}`} className={styles['actorRow']}>
-              <img
-                className={styles['actorAvatar']}
-                src={actor.avatar?.url ?? ''}
-                alt=""
-                aria-hidden="true"
-              />
-              <span>
-                <strong>
-                  <CosmeticText nameplate={actor.nameplate}>
-                    {actor.displayName || actor.handle}
-                  </CosmeticText>
-                </strong>{' '}
-                <Nameplate handle={actor.handle} nameplate={actor.nameplate} />
-              </span>
-            </Link>
-          ))}
-        </div>
-      ) : (
-        <PostTimeline
-          queryKey={['search', 'posts', debouncedQuery]}
-          fetchPage={async (cursor) => {
-            const page = await api.posts.searchPosts({
-              query: parsed.text,
-              cursor,
-              limit: 20,
-              authorHandle: parsed.authorHandle,
-              includeReplies: false,
-            });
-            if (parsed.sinceMs === undefined) return page;
-            const sinceMs = parsed.sinceMs;
-            return {
-              ...page,
-              posts: page.posts.filter((post) => {
-                const created = toDate(post.createdAt);
-                return created !== null && created.getTime() >= sinceMs;
-              }),
-            };
-          }}
-          emptyMessage="No posts found."
-        />
-      )}
+      <div
+        id="search-tabpanel"
+        role="tabpanel"
+        aria-labelledby={tab === 'people' ? 'search-tab-people' : 'search-tab-posts'}
+      >
+        {debouncedQuery === '' ? (
+          <p style={{ color: 'var(--fg-muted)' }}>Type to search.</p>
+        ) : tab === 'people' ? (
+          <div>
+            {actorsQuery.isPending ? <p>Searching…</p> : null}
+            {actorsQuery.data?.actors.length === 0 ? <p>No people found.</p> : null}
+            {actorsQuery.data?.actors.map((actor) => (
+              <Link key={actor.id} to={`/@${actor.handle}`} className={styles['actorRow']}>
+                <img
+                  className={styles['actorAvatar']}
+                  src={actor.avatar?.url ?? ''}
+                  alt=""
+                  aria-hidden="true"
+                />
+                <span>
+                  <strong>
+                    <CosmeticText nameplate={actor.nameplate}>
+                      {actor.displayName || actor.handle}
+                    </CosmeticText>
+                  </strong>{' '}
+                  <Nameplate handle={actor.handle} nameplate={actor.nameplate} />
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <PostTimeline
+            queryKey={['search', 'posts', debouncedQuery]}
+            fetchPage={async (cursor) => {
+              const page = await api.posts.searchPosts({
+                query: parsed.text,
+                cursor,
+                limit: 20,
+                authorHandle: parsed.authorHandle,
+                includeReplies: false,
+              });
+              if (parsed.sinceMs === undefined) return page;
+              const sinceMs = parsed.sinceMs;
+              return {
+                ...page,
+                posts: page.posts.filter((post) => {
+                  const created = toDate(post.createdAt);
+                  return created !== null && created.getTime() >= sinceMs;
+                }),
+              };
+            }}
+            emptyMessage="No posts found."
+          />
+        )}
+      </div>
     </div>
   );
 }
