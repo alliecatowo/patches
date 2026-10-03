@@ -4,8 +4,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Actor,
+  ActorPrivacyPrefs,
   Block,
   Follow,
+  FollowRequest,
   InboxActivity,
   Like,
   Mute,
@@ -297,11 +299,43 @@ export class InboxService {
       .findOne({ where: { handleNormalized: handle } });
     if (followee === null || !followee.isLocal) return undefined;
 
+    // S-H5: a remote Follow gets the same gates a local FollowActor does. A block in either
+    // direction is a silent no-op (no Accept, no row); a locked account queues a request for
+    // its owner instead of auto-accepting.
+    const blocks = manager.getRepository(Block);
+    const blocked =
+      (await blocks.findOne({
+        where: { blockerActorId: followee.id, blockedActorId: sender.id },
+      })) !== null ||
+      (await blocks.findOne({
+        where: { blockerActorId: sender.id, blockedActorId: followee.id },
+      })) !== null;
+    if (blocked) return undefined;
+
     const follows = manager.getRepository(Follow);
     const existing = await follows.findOne({
       where: { followerActorId: sender.id, followeeActorId: followee.id },
     });
     if (existing === null) {
+      const prefs = await manager
+        .getRepository(ActorPrivacyPrefs)
+        .findOne({ where: { actorId: followee.id } });
+      if (prefs?.locked === true) {
+        const requests = manager.getRepository(FollowRequest);
+        const pending = await requests.findOne({
+          where: { requesterActorId: sender.id, targetActorId: followee.id },
+        });
+        if (pending === null) {
+          try {
+            await requests.save(
+              requests.create({ requesterActorId: sender.id, targetActorId: followee.id }),
+            );
+          } catch (error) {
+            if (!isUniqueViolation(error)) throw error;
+          }
+        }
+        return undefined;
+      }
       try {
         await follows.save(
           follows.create({
@@ -424,6 +458,10 @@ export class InboxService {
       return undefined;
     }
 
+    // S-H5: derive visibility from the audience; direct (unaddressed) notes are never ingested.
+    const visibility = inboundVisibility(note, sender);
+    if (visibility === null) return undefined;
+
     const origin = this.config.publicOrigin;
     const inReplyToRaw = note.inReplyTo;
     let inReplyToId: string | null = null;
@@ -454,7 +492,7 @@ export class InboxService {
           authorActorId: sender.id,
           body: sanitizeNoteContent(content),
           postType: 'NOTE',
-          visibility: 'PUBLIC',
+          visibility,
           inReplyToId,
           rootPostId: rootPostId ?? id,
           isLocal: false,
@@ -598,6 +636,9 @@ export class InboxService {
       return null;
     }
 
+    const quotedVisibility = inboundVisibility(document, authorActor);
+    if (quotedVisibility !== 'PUBLIC' && quotedVisibility !== 'UNLISTED') return null;
+
     const quotePolicy = quotePolicyFromNoteDocument(document, attributedTo);
     // A declared-but-unrecognized interaction policy is an unverifiable grant (§180.2):
     // ingest the quote as a plain post rather than guessing.
@@ -611,7 +652,7 @@ export class InboxService {
           authorActorId: authorActor.id,
           body: sanitizeNoteContent(content),
           postType: 'NOTE',
-          visibility: 'PUBLIC',
+          visibility: quotedVisibility,
           inReplyToId: null,
           rootPostId: id,
           isLocal: false,
@@ -924,6 +965,10 @@ export class InboxService {
     const authorActor = await this.remoteActors.getOrFetchByUri(manager, attributedTo);
     if (authorActor === null) return null;
 
+    // S-H5: an anonymously fetched object is only ever ingested when it is publicly addressed.
+    const fetchedVisibility = inboundVisibility(activityDoc, authorActor);
+    if (fetchedVisibility !== 'PUBLIC' && fetchedVisibility !== 'UNLISTED') return null;
+
     const inReplyToRaw = activityDoc.inReplyTo;
     let inReplyToId: string | null = null;
     let rootPostId: string | undefined;
@@ -947,7 +992,7 @@ export class InboxService {
           authorActorId: authorActor.id,
           body: sanitizeNoteContent(content),
           postType: 'NOTE',
-          visibility: 'PUBLIC',
+          visibility: fetchedVisibility,
           inReplyToId,
           rootPostId: rootPostId ?? id,
           isLocal: false,
@@ -1089,6 +1134,33 @@ function objectUriOf(value: unknown): string | undefined {
     if (typeof id === 'string') return id;
   }
   return undefined;
+}
+
+const AS_PUBLIC = new Set(['https://www.w3.org/ns/activitystreams#Public', 'as:Public', 'Public']);
+
+function audienceOf(value: unknown): string[] {
+  const items = Array.isArray(value) ? value : [value];
+  return items.filter((item): item is string => typeof item === 'string');
+}
+
+/**
+ * Maps an inbound object's `to`/`cc` onto a local visibility (audit S-H5): `as:Public` in `to`
+ * is PUBLIC, in `cc` UNLISTED, the sender's own followers collection is FOLLOWERS, and anything
+ * else (direct, mentioned-only, or no audience at all) is `null` — never ingested.
+ */
+export function inboundVisibility(
+  object: Record<string, unknown>,
+  sender: Pick<Actor, 'canonicalUri'>,
+): 'PUBLIC' | 'UNLISTED' | 'FOLLOWERS' | null {
+  const to = audienceOf(object.to);
+  const cc = audienceOf(object.cc);
+  if (to.some((uri) => AS_PUBLIC.has(uri))) return 'PUBLIC';
+  if (cc.some((uri) => AS_PUBLIC.has(uri))) return 'UNLISTED';
+  const senderUri = sender.canonicalUri;
+  const followersLike = [...to, ...cc].some(
+    (uri) => uri.endsWith('/followers') && senderUri !== null && sameOrigin(uri, senderUri),
+  );
+  return followersLike ? 'FOLLOWERS' : null;
 }
 
 function isUniqueViolation(error: unknown): boolean {
