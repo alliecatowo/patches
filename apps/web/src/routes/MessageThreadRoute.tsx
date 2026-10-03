@@ -193,6 +193,17 @@ export function MessageThreadRoute(): JSX.Element {
     }
   }
 
+  async function handleResetSession(): Promise<void> {
+    try {
+      await webE2ee().resetSecureSession(conversationId);
+      toast.success('Secure session reset. Your next message starts a fresh one.');
+    } catch (error) {
+      toast.error(
+        error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.resetFailed,
+      );
+    }
+  }
+
   const peer = otherMembers[0]?.actor;
   const peerHandle = peer?.handle;
   const peerName =
@@ -271,6 +282,15 @@ export function MessageThreadRoute(): JSX.Element {
           e2eeStatus.kind === 'renewal-required' ? (
             <ThreadNotice tone="alert" role="alert">
               {e2eeStatus.copy}
+            </ThreadNotice>
+          ) : null}
+          {enrolled && rows.some((row) => row.kind === 'unverifiable') ? (
+            <ThreadNotice tone="warning" role="status">
+              Some messages in this conversation could not be verified. If new messages keep
+              failing, reset the secure session; your next message then starts a fresh one.{' '}
+              <Button variant="secondary" onClick={() => void handleResetSession()}>
+                Reset secure session
+              </Button>
             </ThreadNotice>
           ) : null}
           {notice === null ? null : (

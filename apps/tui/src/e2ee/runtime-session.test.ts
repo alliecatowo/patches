@@ -18,6 +18,8 @@ import { ENROLLMENT_RECORD_KEY, enrollThisDevice, loadStoredEnrollment } from '.
 import { selfPrekeyBundle, type LocalDeviceIdentity } from './local-identity.js';
 import { E2eeSessionRuntime } from './runtime-session.js';
 import { encodeChatPlaintext, sessionIdFor, type E2eeMailboxEnvelopeLike } from './runtime.js';
+import { loadSessionIndex } from './session-index.js';
+import { primarySessionKey } from './test-support.js';
 import { TypedRatchetVault, type RatchetSessionVault } from './ratchet-vault.js';
 import { establishInitiatorSession, withInitialFraming } from './session-setup.js';
 import {
@@ -368,7 +370,10 @@ describe('E2eeSessionRuntime — one-time prekey consumption on responder establ
     const polled = await runtimeB.pollMailbox({ conversationId: conv });
     expect(polled.error).toBeUndefined();
 
-    const sessionId = sessionIdFor(conv, alice, storedA.identity.deviceId);
+    const sessionId = await primarySessionKey(
+      spiedVaultB,
+      sessionIdFor(conv, alice, storedA.identity.deviceId),
+    );
     const applyIndex = order.indexOf(`applyUpdate:${sessionId}`);
     const enrollmentIndex = order.indexOf(`putOpaqueRecord:${ENROLLMENT_RECORD_KEY}`);
     expect(applyIndex).toBeGreaterThanOrEqual(0);
@@ -432,7 +437,8 @@ describe('E2eeSessionRuntime — send fan-out failure cleanup (audit H8)', () =>
     };
   }
 
-  it('deletes a freshly created session when staging throws, so the next send re-establishes', async () => {
+  it('keeps a freshly created session when staging throws, and the retry still carries its setup block', async () => {
+    let failStage = true;
     const { runtimeA, vaultA, sessionId, conv } = await setup((vault) => ({
       ...vault,
       open: () => vault.open(),
@@ -445,11 +451,22 @@ describe('E2eeSessionRuntime — send fan-out failure cleanup (audit H8)', () =>
       putOpaqueRecord: (key, value) => vault.putOpaqueRecord(key, value),
       wipe: () => vault.wipe(),
       close: () => vault.close(),
-      stageSend: () => Promise.reject(new Error('disk full')),
+      stageSend: (id, next) =>
+        failStage ? Promise.reject(new Error('disk full')) : vault.stageSend(id, next),
     }));
 
     await expect(runtimeA.send(conv, 'hello', 'req-h8-1')).rejects.toThrow('disk full');
-    expect(await vaultA.getSession(sessionId)).toBeUndefined();
+    // The session is kept as an UNANSWERED initiator (audit P2-H1): until the peer replies in
+    // it, every envelope carries the setup block, so the retry cannot leave the peer unable
+    // to open anything (the failure mode audit H8 originally guarded against by deleting it).
+    const entry = (await loadSessionIndex(vaultA)).get(sessionId)?.entries[0];
+    expect(entry?.role).toBe('initiator');
+    expect(entry?.confirmed).toBe(false);
+    expect(entry?.setupPrefix.length).toBeGreaterThan(0);
+
+    failStage = false;
+    await expect(runtimeA.send(conv, 'hello again', 'req-h8-1b')).resolves.toBeUndefined();
+    expect((await loadSessionIndex(vaultA)).get(sessionId)?.entries).toHaveLength(1);
   });
 
   it('does not fail a delivered send when a post-send confirm throws', async () => {
