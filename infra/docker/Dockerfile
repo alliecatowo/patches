@@ -89,7 +89,7 @@ COPY . .
 RUN --mount=type=cache,id=patches-pnpm-store,target=/pnpm-store \
     --mount=type=cache,id=patches-pnpm-meta,target=/root/.cache/pnpm \
     pnpm config set store-dir /pnpm-store && \
-    pnpm install --frozen-lockfile --offline
+    pnpm install --frozen-lockfile --prefer-offline
 
 RUN pnpm turbo run build --filter=@patches/server --filter=@patches/worker
 
