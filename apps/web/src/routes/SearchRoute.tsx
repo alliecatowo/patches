@@ -36,6 +36,7 @@ export function SearchRoute(): JSX.Element {
         className={styles['input']}
         type="search"
         placeholder="Search people or posts… (try from:handle, since:2026-01-01)"
+        aria-label="Search people or posts"
         value={query}
         autoFocus
         onChange={(event) => {
