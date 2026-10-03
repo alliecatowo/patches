@@ -9,6 +9,7 @@ import { FEDERATION_GATEWAY, type FederationGateway } from '../federation/federa
 import { clampLimit, decodeCursor, pageInfoFor } from '../feeds/pagination.js';
 import { toPostViews } from '../feeds/post-batch.js';
 import { NotificationsService } from '../notifications/notification.service.js';
+import { applyPostVisibilityPredicate } from '../posts/post-visibility.js';
 import { uuidInputSchema, parseInput } from '../posts/validation.js';
 import { type PostView } from '../posts/post.dto.js';
 import { PostService } from '../posts/post.service.js';
@@ -241,6 +242,8 @@ export class ReactionsService {
       .orderBy('bookmark.createdAt', 'DESC')
       .addOrderBy('bookmark.postId', 'DESC')
       .take(take + 1);
+    // S-H1: a bookmark must not keep exposing a post the caller can no longer see.
+    applyPostVisibilityPredicate(qb, actorId, 'post', 'bookmarkVis');
 
     if (cursor !== undefined) {
       qb.andWhere('(bookmark.createdAt, bookmark.postId) < (:cursorCreatedAt, :cursorId)', {

@@ -2,6 +2,7 @@ import { Bookmark, Like, Post, PostMedia, Repost } from '@patches/database';
 import { In, type EntityManager } from 'typeorm';
 
 import { labelsForPosts } from '../labels/label-lookup.js';
+import { filterVisiblePosts } from '../posts/post-visibility.js';
 import { communitySummariesFor } from '../posts/community-summary.js';
 import {
   toPostView,
@@ -173,6 +174,8 @@ async function loadQuotedPosts(
     where: { id: In(ids) },
     relations: { authorActor: true },
   });
-  const views = await buildPostViews(manager, rows, viewerActorId, false);
+  // S-H1: a quote embed must not reveal a FOLLOWERS-only post to a non-follower.
+  const visible = await filterVisiblePosts(manager, rows, viewerActorId);
+  const views = await buildPostViews(manager, visible, viewerActorId, false);
   return new Map(views.map((view) => [view.id, view]));
 }

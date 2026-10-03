@@ -48,6 +48,11 @@ import { labelsForPosts } from '../labels/label-lookup.js';
 import { NotificationsService } from '../notifications/notification.service.js';
 import { applyIndexableFilter } from '../privacy/discoverability.js';
 import { TagExtractionService, parseTags } from '../tags/tag-extraction.service.js';
+import {
+  applyPostVisibilityPredicate,
+  filterVisiblePosts,
+  isPostVisibleTo,
+} from './post-visibility.js';
 import { communitySummaryOf } from './community-summary.js';
 import { toPostView, type PostEditView, type PostMediaSummary, type PostView } from './post.dto.js';
 import {
@@ -210,6 +215,7 @@ export class PostService {
       if (parsed.inReplyToId !== undefined) {
         const parent = await posts.findOne({ where: { id: parsed.inReplyToId } });
         if (parent === null || parent.deletedAt !== null) throw postNotFound();
+        if (!(await isPostVisibleTo(manager, parent, input.authorActorId))) throw postNotFound();
         if (await this.blockedEitherDirection(manager, input.authorActorId, parent.authorActorId)) {
           throw postNotFound();
         }
@@ -239,6 +245,7 @@ export class PostService {
           relations: { authorActor: true },
         });
         if (quoted === null || quoted.deletedAt !== null) throw postNotFound();
+        if (!(await isPostVisibleTo(manager, quoted, input.authorActorId))) throw postNotFound();
         if (await this.blockedEitherDirection(manager, input.authorActorId, quoted.authorActorId)) {
           throw postNotFound();
         }
@@ -396,6 +403,10 @@ export class PostService {
         post.authorActorId,
       ))
     ) {
+      throw postNotFound();
+    }
+    // S-H1: FOLLOWERS-only posts are invisible (not-found) to non-followers.
+    if (!(await isPostVisibleTo(this.dataSource.manager, post, viewerActorId))) {
       throw postNotFound();
     }
     return this.viewOf(this.dataSource.manager, post, viewerActorId);
@@ -618,7 +629,9 @@ export class PostService {
     const post = await this.dataSource
       .getRepository(Post)
       .findOne({ where: { id: postId }, relations: { authorActor: true } });
-    if (post === null) throw postNotFound();
+    if (post === null || !(await isPostVisibleTo(this.dataSource.manager, post, actorId))) {
+      throw postNotFound();
+    }
 
     await this.dataSource.getRepository(PinnedPost).delete({ actorId, postId });
     return this.viewOf(this.dataSource.manager, post, actorId);
@@ -665,6 +678,7 @@ export class PostService {
         .orderBy('post.createdAt', 'ASC')
         .take(MAX_THREAD_NODES - collected.length);
       if (viewerActorId !== undefined) applyBlockFilter(qb, viewerActorId);
+      applyPostVisibilityPredicate(qb, viewerActorId, 'post', 'replyVis');
 
       const children = await qb.getMany();
       collected.push(...children);
@@ -870,6 +884,7 @@ export class PostService {
       .getRepository(Post)
       .findOne({ where: { id: quotedPostId }, relations: { authorActor: true } });
     if (quoted === null) return null;
+    if ((await filterVisiblePosts(manager, [quoted], viewerActorId)).length === 0) return null;
 
     const media = quoted.deletedAt !== null ? [] : await this.mediaFor(manager, quoted.id);
     const { counts, viewerState } = await this.countsAndViewerState(
