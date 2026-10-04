@@ -134,6 +134,12 @@ export interface MessagesScreenProps {
   /** Opens the safety number screen for a conversation's peer. */
   onOpenSafetyNumber?: ((actorId: string) => void) | undefined;
   /**
+   * Session reset (audit P2-H1) for an E2EE conversation: drops this device's sessions
+   * so the next send starts a fresh handshake the peer adopts. History is untouched. Bound to
+   * `R` on the list, armed by a first press and run by a second.
+   */
+  onResetSession?: ((conversationId: string) => Promise<void>) | undefined;
+  /**
    * Peers whose safety number the viewer has compared and confirmed in this session
    * (`v` on the safety-number screen). Session-scoped by design: this client keeps no
    * persistent verified-state database yet, so it renders what it actually knows.
@@ -486,6 +492,7 @@ export function MessagesScreen({
   glyphSet = 'unicode',
   dmRetentionDays,
   onOpenSafetyNumber,
+  onResetSession,
   verifiedPeers,
   sendE2ee,
   e2eeVaultFault,
@@ -504,6 +511,8 @@ export function MessagesScreen({
   const [selectedConversation, setSelectedConversation] = useState<Conversation | undefined>();
   const [conversationId, setConversationId] = useState(initialConversationId ?? '');
   const [selectedListRow, setSelectedListRow] = useState(0);
+  const [resetArmed, setResetArmed] = useState<string | undefined>(undefined);
+  const [resetNote, setResetNote] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState('');
   const [pendingMessages, setPendingMessages] = useState<readonly PendingMessage[]>([]);
   const [sending, setSending] = useState(false);
@@ -1005,6 +1014,22 @@ export function MessagesScreen({
         });
         if (moved !== undefined) {
           setSelectedListRow(moved);
+          setResetArmed(undefined);
+          return;
+        }
+        if (input === 'R' && onResetSession !== undefined) {
+          const conversation = conversations.items[effectiveListRow];
+          if (conversation === undefined || !isE2eeConversation(conversation)) return;
+          if (resetArmed !== conversation.id) {
+            setResetArmed(conversation.id);
+            setResetNote(undefined);
+            return;
+          }
+          setResetArmed(undefined);
+          void onResetSession(conversation.id).then(
+            () => setResetNote('Session reset. Your next message starts a fresh one.'),
+            () => setResetNote('The session could not be reset.'),
+          );
           return;
         }
         if (input === 's') {
@@ -1114,8 +1139,15 @@ export function MessagesScreen({
             );
           })}
           {conversations.loadingMore ? <Loading label="Loading more" /> : null}
+          {resetArmed !== undefined ? (
+            <Text color={theme.warn} wrap="wrap">
+              Press R again to reset the session with this conversation, or move to cancel.
+            </Text>
+          ) : null}
+          {resetNote === undefined ? null : <Text color={theme.muted}>{resetNote}</Text>}
           <Text color={theme.muted}>
-            Enter open · n / space more · s safety number · G membership · Esc back
+            Enter open · n / space more · s safety number · G membership
+            {onResetSession === undefined ? '' : ' · R reset session'} · Esc back
           </Text>
         </Box>
       ) : null}
