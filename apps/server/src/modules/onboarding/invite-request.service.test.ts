@@ -33,10 +33,10 @@ async function codeOf(promise: Promise<unknown>): Promise<string | undefined> {
 
 describe('cleanMessage', () => {
   it('drops control, bidi and zero-width characters and flattens whitespace', () => {
-    expect(cleanMessage('hi\u001b[31m there‮\nline​2')).toBe('hi[31m there line2');
+    expect(cleanMessage('hi\u001b[31m there\u202e\nline\u200b2')).toBe('hi[31m there line2');
   });
   it('is null when nothing is left and caps at 500 characters', () => {
-    expect(cleanMessage('  ​ \n')).toBeNull();
+    expect(cleanMessage('  \u200b \n')).toBeNull();
     expect(cleanMessage('x'.repeat(900))?.length).toBe(500);
   });
 });

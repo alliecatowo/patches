@@ -23,8 +23,9 @@ const contactSchema = z.string().trim().max(254).pipe(z.email());
 
 /** Control characters (C0/C1, DEL), bidi overrides and zero-width characters: nothing an
  * operator reading this in a terminal should have to trust. Newlines and tabs survive as spaces. */
-// eslint-disable-next-line no-control-regex -- stripping control characters is the point
-const UNSAFE_TEXT = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g;
+ 
+const UNSAFE_TEXT =
+  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
 
 export function cleanMessage(raw: string): string | null {
   const cleaned = raw

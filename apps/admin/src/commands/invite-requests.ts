@@ -8,7 +8,7 @@ import { type AdminContext, requireOperatorUserId } from '../context.js';
 /** Strips anything a terminal could interpret (ESC sequences, bidi overrides) from text a
  * stranger typed into the landing page. */
 // eslint-disable-next-line no-control-regex -- stripping control characters is the point
-const UNSAFE = /[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g;
+const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
 
 /** `invite-requests list|handle` (ADR 0044): the landing-page invite request queue. */
 export async function runInviteRequestsCommand(
