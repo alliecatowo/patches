@@ -197,12 +197,6 @@
   gap: 1.5rem;
 }
 
-@media (min-width: 52rem) {
-  .shots {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
 .page h2 {
   margin: 0 0 0.75rem;
   font-family: var(--font-mono);

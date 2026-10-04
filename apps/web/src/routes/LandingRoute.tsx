@@ -51,8 +51,8 @@ export function LandingRoute(): JSX.Element {
           <figure className={styles['patch']}>
             <img
               src="/landing/home.webp"
-              width="1200"
-              height="750"
+              width="1536"
+              height="655"
               alt="The Patches home timeline in the browser: a chronological list of posts from three people, with a sidebar of Home, Search, Notifications and Messages."
               loading="eager"
               decoding="async"
@@ -62,8 +62,8 @@ export function LandingRoute(): JSX.Element {
           <figure className={styles['patch']}>
             <img
               src="/landing/dm.webp"
-              width="1200"
-              height="750"
+              width="1536"
+              height="655"
               alt="An encrypted direct message thread in Patches with a banner that says this node cannot read the messages but can see who you message and when."
               loading="lazy"
               decoding="async"
