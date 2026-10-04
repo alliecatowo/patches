@@ -1,3 +1,4 @@
+import type { EntityManager } from 'typeorm';
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import {
@@ -20,7 +21,12 @@ import {
   E2EE_FRANKING_PROFILE_V1,
   verifyIdentityRoot,
 } from '@patches/domain';
-import { createTestFollow, createTestUser } from '@patches/testkit';
+import {
+  createTestFollow,
+  createTestUser,
+  createTestConversation,
+  createTestConversationMember,
+} from '@patches/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
 
@@ -41,6 +47,25 @@ import { E2eePrekeyService } from '../src/modules/e2ee/prekey.service.js';
 import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js';
 import { createServerTestDataSource } from './support/database.js';
 import { E2eeGroupChangeKind } from '@patches/proto/nest';
+
+/** A conversation both actors belong to: one-time prekeys are only handed to a caller who shares
+ * the named conversation with the target (audit P2-H4). */
+async function sharedConversation(
+  dataSource: { manager: EntityManager },
+  firstActorId: string,
+  secondActorId: string,
+): Promise<string> {
+  const conversation = await createTestConversation(dataSource.manager, {
+    createdByActorId: firstActorId,
+  });
+  for (const actorId of [firstActorId, secondActorId]) {
+    await createTestConversationMember(dataSource.manager, {
+      conversationId: conversation.id,
+      actorId,
+    });
+  }
+  return conversation.id;
+}
 
 /** A fixed test-only franking key so `SendEnvelopes`/`CreateE2eeConversation` can actually issue
  * an acceptance tag. Distinct from the production `DatabaseNodeFrankingKeyRing` (P13-015),
@@ -628,7 +653,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       // 3. Prekey bundle: claimed by the *second* actor straight off the wire and verified
       // against the roster and the certificate carried inside the bundle itself.
       const { bundles } = await prekeys.claimPrekeyBundles(claimant.actorId, {
-        conversationId: '',
+        conversationId: await sharedConversation(dataSource, claimant.actorId, peer.actorId),
         actorIds: [peer.actorId],
         deviceIds: [],
       });
@@ -789,7 +814,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       const { device } = await enrollFirstDevice(target, 1);
 
       const first = await prekeys.claimPrekeyBundles(claimant.actorId, {
-        conversationId: '',
+        conversationId: await sharedConversation(dataSource, claimant.actorId, target.actorId),
         actorIds: [target.actorId],
         deviceIds: [],
       });
@@ -800,12 +825,47 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       expect(first.bundles[0]?.oneTimePrekey?.keyId).toBe('1');
 
       const second = await prekeys.claimPrekeyBundles(claimant.actorId, {
-        conversationId: '',
+        conversationId: await sharedConversation(dataSource, claimant.actorId, target.actorId),
         actorIds: [target.actorId],
         deviceIds: [],
       });
       expect(second.bundles[0]?.oneTimePrekeyExhausted).toBe(true);
       expect(second.bundles[0]?.oneTimePrekey).toBeUndefined();
+    });
+
+    it('serves an outsider only the signed prekey and leaves the one-time inventory untouched (P2-H4)', async () => {
+      const outsider = await newActor();
+      const target = await newActor();
+      const { device } = await enrollFirstDevice(target, 1);
+
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const claimed = await prekeys.claimPrekeyBundles(outsider.actorId, {
+          conversationId: '',
+          actorIds: [target.actorId],
+          deviceIds: [],
+        });
+        expect(claimed.bundles).toHaveLength(1);
+        expect(claimed.bundles[0]?.deviceId).toBe(device.deviceId);
+        expect(claimed.bundles[0]?.signedPrekey).toBeDefined();
+        expect(claimed.bundles[0]?.oneTimePrekey).toBeUndefined();
+      }
+      // A conversation the outsider is not in does not help either.
+      const others = await newActor();
+      const foreign = await sharedConversation(dataSource, others.actorId, target.actorId);
+      const viaForeign = await prekeys.claimPrekeyBundles(outsider.actorId, {
+        conversationId: foreign,
+        actorIds: [target.actorId],
+        deviceIds: [],
+      });
+      expect(viaForeign.bundles[0]?.oneTimePrekey).toBeUndefined();
+
+      const rows = await dataSource.query<Array<{ count: number }>>(
+        `SELECT count(*)::int AS count FROM e2ee_one_time_prekeys
+         WHERE device_identity_id = (SELECT id FROM e2ee_device_identities WHERE actor_id = $1 AND device_id = $2)
+           AND consumed_at IS NULL`,
+        [target.actorId, device.deviceId],
+      );
+      expect(rows[0]?.count).toBe(1);
     });
 
     it('keeps a claimed-and-public-row-deleted key id permanently rejected by the issued ledger', async () => {
@@ -814,7 +874,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       const { device } = await enrollFirstDevice(target, 1);
 
       const claimed = await prekeys.claimPrekeyBundles(claimant.actorId, {
-        conversationId: '',
+        conversationId: await sharedConversation(dataSource, claimant.actorId, target.actorId),
         actorIds: [target.actorId],
         deviceIds: [],
       });
@@ -857,12 +917,12 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
       const [resultA, resultB] = await Promise.all([
         prekeys.claimPrekeyBundles(claimantA.actorId, {
-          conversationId: '',
+          conversationId: await sharedConversation(dataSource, claimantA.actorId, target.actorId),
           actorIds: [target.actorId],
           deviceIds: [],
         }),
         prekeys.claimPrekeyBundles(claimantB.actorId, {
-          conversationId: '',
+          conversationId: await sharedConversation(dataSource, claimantB.actorId, target.actorId),
           actorIds: [target.actorId],
           deviceIds: [],
         }),

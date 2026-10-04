@@ -1,3 +1,4 @@
+import type { EntityManager } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -30,7 +31,12 @@ import {
 import { canonicalFanoutTranscript, E2EE_FRANKING_PROFILE_V1 } from '@patches/domain';
 import { E2eeDeviceStatus } from '@patches/proto/nest';
 import type { DbRateLimitStore } from '../src/modules/auth/db-rate-limit-store.service.js';
-import { createTestFollow, createTestUser } from '@patches/testkit';
+import {
+  createTestFollow,
+  createTestUser,
+  createTestConversation,
+  createTestConversationMember,
+} from '@patches/testkit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { DataSource } from 'typeorm';
 
@@ -42,6 +48,25 @@ import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.servi
 import { E2eePrekeyService } from '../src/modules/e2ee/prekey.service.js';
 import { type NodeFrankingKeyRing } from '../src/modules/e2ee/report-evidence.js';
 import { createServerTestDataSource } from './support/database.js';
+
+/** A conversation both actors belong to: one-time prekeys are only handed to a caller who shares
+ * the named conversation with the target (audit P2-H4). */
+async function sharedConversation(
+  dataSource: { manager: EntityManager },
+  firstActorId: string,
+  secondActorId: string,
+): Promise<string> {
+  const conversation = await createTestConversation(dataSource.manager, {
+    createdByActorId: firstActorId,
+  });
+  for (const actorId of [firstActorId, secondActorId]) {
+    await createTestConversationMember(dataSource.manager, {
+      conversationId: conversation.id,
+      actorId,
+    });
+  }
+  return conversation.id;
+}
 
 /**
  * ADR 0033 §7's definition of done: two distinct, real, `EnrollDevice`-enrolled devices
@@ -422,7 +447,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       // ClaimPrekeyBundles -> verifyPreKeyBundle: the real client-side claim + verify
       // sequence (`apps/web/src/e2ee/transports.ts`'s `claimPrekeyBundles`).
       const claimed = await prekeys.claimPrekeyBundles(alice.actorId, {
-        conversationId: '',
+        conversationId: await sharedConversation(dataSource, alice.actorId, bob.actorId),
         actorIds: [bob.actorId],
         deviceIds: [],
       });
