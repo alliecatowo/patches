@@ -1,3 +1,4 @@
+import type { EntityManager } from 'typeorm';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -12,7 +13,11 @@ import {
 } from '@patches/crypto';
 import { E2eeDeviceIdentity, E2eeOneTimePrekey, E2eeOneTimePrekeyKeyId } from '@patches/database';
 import { E2eeDeviceStatus } from '@patches/proto/nest';
-import { createTestUser } from '@patches/testkit';
+import {
+  createTestUser,
+  createTestConversation,
+  createTestConversationMember,
+} from '@patches/testkit';
 import { IsNull, type DataSource } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -22,6 +27,25 @@ import { E2eeRateLimitService } from '../src/modules/e2ee/e2ee-rate-limit.servic
 import { E2eeIdentityRootService } from '../src/modules/e2ee/identity-root.service.js';
 import { E2eePrekeyService } from '../src/modules/e2ee/prekey.service.js';
 import { createServerTestDataSource } from './support/database.js';
+
+/** A conversation both actors belong to: one-time prekeys are only handed to a caller who shares
+ * the named conversation with the target (audit P2-H4). */
+async function sharedConversation(
+  dataSource: { manager: EntityManager },
+  firstActorId: string,
+  secondActorId: string,
+): Promise<string> {
+  const conversation = await createTestConversation(dataSource.manager, {
+    createdByActorId: firstActorId,
+  });
+  for (const actorId of [firstActorId, secondActorId]) {
+    await createTestConversationMember(dataSource.manager, {
+      conversationId: conversation.id,
+      actorId,
+    });
+  }
+  return conversation.id;
+}
 
 /**
  * Issue #273(c): a genuinely-concurrent `ClaimPrekeyBundles` race against one real device,
@@ -275,9 +299,9 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       const claimants = await Promise.all(Array.from({ length: claimantCount }, () => newActor()));
 
       const responses = await Promise.all(
-        claimants.map((claimant) =>
+        claimants.map(async (claimant) =>
           prekeys.claimPrekeyBundles(claimant.actorId, {
-            conversationId: '',
+            conversationId: await sharedConversation(dataSource, claimant.actorId, target.actorId),
             actorIds: [target.actorId],
             deviceIds: [],
           }),
@@ -348,7 +372,7 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       const results: boolean[] = [];
       for (let i = 0; i < poolSize; i += 1) {
         const response = await prekeys.claimPrekeyBundles(claimant.actorId, {
-          conversationId: '',
+          conversationId: await sharedConversation(dataSource, claimant.actorId, target.actorId),
           actorIds: [target.actorId],
           deviceIds: [],
         });

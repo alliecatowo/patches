@@ -1,6 +1,7 @@
 import {
   Actor as ActorEntity,
   Block,
+  ConversationMember,
   E2eeDeviceIdentity as E2eeDeviceIdentityEntity,
   E2eeIdentityRoot as E2eeIdentityRootEntity,
   E2eeOneTimePrekey as E2eeOneTimePrekeyEntity,
@@ -20,6 +21,7 @@ import { E2eePrekeyService } from './prekey.service.js';
 // callable without a real `DbRateLimitStore`.
 const noopRateLimits = {
   consumeIdentityWrite: vi.fn().mockResolvedValue(undefined),
+  allowOneTimePrekeyClaim: vi.fn().mockResolvedValue(true),
 } as unknown as E2eeRateLimitService;
 
 vi.mock('./roster-chain.js', () => ({
@@ -143,7 +145,10 @@ describe('UploadPrekeys inventory-capacity rejection (audit P2)', () => {
 });
 
 describe('E2eePrekeyService.claimPrekeyBundles hardening (audit P1/P2)', () => {
-  function setup(options: { readonly targetDeletedAt: Date | null }): {
+  function setup(options: {
+    readonly targetDeletedAt: Date | null;
+    readonly members?: readonly string[];
+  }): {
     readonly dataSource: unknown;
     readonly manager: EntityManager;
     readonly queryMock: ReturnType<typeof vi.fn>;
@@ -162,49 +167,57 @@ describe('E2eePrekeyService.claimPrekeyBundles hardening (audit P1/P2)', () => {
                   .fn()
                   .mockResolvedValue([{ id: 'target', deletedAt: options.targetDeletedAt }]),
               }
-            : entity === Block
-              ? { find: vi.fn().mockResolvedValue([]) }
-              : entity === E2eeIdentityRootEntity
-                ? {
-                    findOne: vi.fn().mockResolvedValue({
-                      id: 'root-1',
-                      generation: 2,
-                      publicKey: Buffer.alloc(32),
-                      rotatedAt: null,
-                      createdAt: new Date(0),
-                    }),
-                  }
-                : entity === E2eeDeviceIdentityEntity
+            : entity === ConversationMember
+              ? {
+                  find: vi
+                    .fn()
+                    .mockResolvedValue(
+                      (options.members ?? ['caller', 'target']).map((actorId) => ({ actorId })),
+                    ),
+                }
+              : entity === Block
+                ? { find: vi.fn().mockResolvedValue([]) }
+                : entity === E2eeIdentityRootEntity
                   ? {
-                      find: vi.fn().mockResolvedValue([
-                        {
-                          id: 'device-row-1',
-                          actorId: 'target',
-                          deviceId: 'device-1',
-                          generation: 2,
-                          signingPublicKey: Buffer.alloc(32, 1),
-                          agreementPublicKey: Buffer.alloc(32, 2),
-                          certificateBytes: certificateBytes(),
-                          rootSignature: Buffer.alloc(64),
-                          certificateCreatedAt: new Date(0),
-                          expiresAt: new Date(Date.now() + 86_400_000),
-                          revokedAt: null,
-                        },
-                      ]),
+                      findOne: vi.fn().mockResolvedValue({
+                        id: 'root-1',
+                        generation: 2,
+                        publicKey: Buffer.alloc(32),
+                        rotatedAt: null,
+                        createdAt: new Date(0),
+                      }),
                     }
-                  : entity === E2eeSignedPrekeyEntity
+                  : entity === E2eeDeviceIdentityEntity
                     ? {
-                        findOne: vi.fn().mockResolvedValue({
-                          deviceIdentityId: 'device-row-1',
-                          keyId: '4',
-                          publicKey: Buffer.alloc(32),
-                          signature: Buffer.alloc(64),
-                          createdAt: new Date(0),
-                          expiresAt: new Date(86_400_000),
-                          retiredAt: null,
-                        }),
+                        find: vi.fn().mockResolvedValue([
+                          {
+                            id: 'device-row-1',
+                            actorId: 'target',
+                            deviceId: 'device-1',
+                            generation: 2,
+                            signingPublicKey: Buffer.alloc(32, 1),
+                            agreementPublicKey: Buffer.alloc(32, 2),
+                            certificateBytes: certificateBytes(),
+                            rootSignature: Buffer.alloc(64),
+                            certificateCreatedAt: new Date(0),
+                            expiresAt: new Date(Date.now() + 86_400_000),
+                            revokedAt: null,
+                          },
+                        ]),
                       }
-                    : {};
+                    : entity === E2eeSignedPrekeyEntity
+                      ? {
+                          findOne: vi.fn().mockResolvedValue({
+                            deviceIdentityId: 'device-row-1',
+                            keyId: '4',
+                            publicKey: Buffer.alloc(32),
+                            signature: Buffer.alloc(64),
+                            createdAt: new Date(0),
+                            expiresAt: new Date(86_400_000),
+                            retiredAt: null,
+                          }),
+                        }
+                      : {};
         return repo;
       },
       query: queryMock,
@@ -223,7 +236,7 @@ describe('E2eePrekeyService.claimPrekeyBundles hardening (audit P1/P2)', () => {
     await new E2eePrekeyService(dataSource as DataSource, noopRateLimits).claimPrekeyBundles(
       'caller',
       {
-        conversationId: '',
+        conversationId: 'conv-1',
         actorIds: ['target'],
         deviceIds: [],
       },
@@ -237,7 +250,11 @@ describe('E2eePrekeyService.claimPrekeyBundles hardening (audit P1/P2)', () => {
     const response = await new E2eePrekeyService(
       dataSource as DataSource,
       noopRateLimits,
-    ).claimPrekeyBundles('caller', { conversationId: '', actorIds: ['target'], deviceIds: [] });
+    ).claimPrekeyBundles('caller', {
+      conversationId: 'conv-1',
+      actorIds: ['target'],
+      deviceIds: [],
+    });
     expect(response.bundles).toEqual([]);
     expect(response.rosters).toEqual([]);
     // The drain/consume SQL must never have run for a deleted actor.
@@ -249,7 +266,7 @@ describe('E2eePrekeyService.claimPrekeyBundles hardening (audit P1/P2)', () => {
     await new E2eePrekeyService(dataSource as DataSource, noopRateLimits).claimPrekeyBundles(
       'caller',
       {
-        conversationId: '',
+        conversationId: 'conv-1',
         actorIds: ['target'],
         deviceIds: [],
       },
@@ -261,5 +278,61 @@ describe('E2eePrekeyService.claimPrekeyBundles hardening (audit P1/P2)', () => {
     expect(sqls.findIndex((sql) => sql.includes('count(*)'))).toBeLessThan(
       sqls.findIndex((sql) => sql.includes('SKIP LOCKED')),
     );
+  });
+
+  async function claim(
+    members: readonly string[],
+    conversationId: string,
+    allow = true,
+  ): Promise<{ consumed: boolean; bundles: number; allowCalls: number }> {
+    const { dataSource, queryMock } = setup({ targetDeletedAt: null, members });
+    const allowMock = vi.fn().mockResolvedValue(allow);
+    const response = await new E2eePrekeyService(
+      dataSource as DataSource,
+      {
+        ...noopRateLimits,
+        allowOneTimePrekeyClaim: allowMock,
+      } as unknown as E2eeRateLimitService,
+    ).claimPrekeyBundles('caller', {
+      conversationId,
+      actorIds: ['target'],
+      deviceIds: [],
+    });
+    const sqls = queryMock.mock.calls.map((call: unknown[]) => String(call[0]));
+    return {
+      consumed: sqls.some((sql) => sql.includes('SKIP LOCKED')),
+      bundles: response.bundles.length,
+      allowCalls: allowMock.mock.calls.length,
+    };
+  }
+
+  it('spends a one-time prekey for a conversation member inside the budget', async () => {
+    expect(await claim(['caller', 'target'], 'conv-1')).toMatchObject({
+      consumed: true,
+      bundles: 1,
+    });
+  });
+
+  it('serves the signed prekey only, consuming nothing, when over budget', async () => {
+    expect(await claim(['caller', 'target'], 'conv-1', false)).toMatchObject({
+      consumed: false,
+      bundles: 1,
+    });
+  });
+
+  it('never lets a caller outside the conversation spend a one-time prekey, nor burns budget', async () => {
+    expect(await claim(['target'], 'conv-1')).toMatchObject({
+      consumed: false,
+      bundles: 1,
+      allowCalls: 0,
+    });
+  });
+
+  it('serves no one-time prekey when the target is not in the conversation', async () => {
+    expect(await claim(['caller'], 'conv-1')).toMatchObject({ consumed: false, bundles: 1 });
+  });
+
+  it('serves no one-time prekey with no conversation named', async () => {
+    expect(await claim(['caller', 'target'], '')).toMatchObject({ consumed: false, bundles: 1 });
   });
 });
