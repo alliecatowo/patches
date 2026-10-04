@@ -112,10 +112,18 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       expect(demo.session?.actor?.handle).toMatch(/^you_[0-9a-f]{6}$/);
       expect(demo.friends).toHaveLength(3);
       // The node mints its own franking era (it runs no worker), which is what turns E2EE on.
+      // The test server does not fire the bootstrap lifecycle hook, so run it as boot would.
+      await server.app.get(DemoSandboxService).ensureFrankingKey();
       const eras = await dataSource.query<Array<{ n: string }>>(
         'SELECT COUNT(*) AS n FROM e2ee_node_franking_keys',
       );
-      expect(Number(eras[0]?.n)).toBeGreaterThanOrEqual(1);
+      expect(Number(eras[0]?.n)).toBe(1);
+      // Idempotent: a second boot finds the era and mints nothing.
+      await server.app.get(DemoSandboxService).ensureFrankingKey();
+      const again = await dataSource.query<Array<{ n: string }>>(
+        'SELECT COUNT(*) AS n FROM e2ee_node_franking_keys',
+      );
+      expect(Number(again[0]?.n)).toBe(1);
       expect(demo.expiresAt).toBeDefined();
       const accessToken = demo.session?.accessToken ?? '';
 
