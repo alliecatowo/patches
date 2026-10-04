@@ -5,6 +5,7 @@ import { User } from '@patches/database';
 import { DataSource, IsNull } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
+import { assertSandboxNotExpired } from './sandbox-expiry.js';
 import { getSessionClaims, setSessionClaims } from './session-context.js';
 import { TokenService } from './token.service.js';
 
@@ -41,7 +42,7 @@ export class AuthGuard implements CanActivate {
 
     const user = await this.dataSource.getRepository(User).findOne({
       where: { id: claims.userId, deletedAt: IsNull() },
-      select: { id: true, status: true },
+      select: { id: true, status: true, sandboxExpiresAt: true },
     });
     if (user === null) {
       throw new AppError(
@@ -49,6 +50,7 @@ export class AuthGuard implements CanActivate {
         'Your session is no longer valid. Please sign in again.',
       );
     }
+    assertSandboxNotExpired(user);
     if (user.status === 'SUSPENDED') {
       throw new AppError('ACCOUNT_SUSPENDED', 'This account has been suspended.');
     }

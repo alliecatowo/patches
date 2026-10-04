@@ -32,7 +32,7 @@ describe('proto files', () => {
   it('resolves the proto directory lazily (A-010) and lists every schema file', () => {
     expect(getProtoDir()).toMatch(/proto$/);
     const files = getProtoFiles();
-    expect(files.length).toBe(22);
+    expect(files.length).toBe(23);
     for (const file of files) {
       expect(file.startsWith(getProtoDir())).toBe(true);
     }
@@ -58,6 +58,7 @@ describe('proto files', () => {
         SERVICE_NAMES.label,
         SERVICE_NAMES.appeal,
         SERVICE_NAMES.privacy,
+        SERVICE_NAMES.onboarding,
         SERVICE_NAMES.e2ee,
         'PageInfo',
       ]),
@@ -243,6 +244,9 @@ describe('proto files', () => {
         'CancelAccountDeletion',
         'GetDeletionStatus',
       ].sort(),
+    );
+    expect(serviceMethodNames(pkg, SERVICE_NAMES.onboarding)).toEqual(
+      ['StartDemo', 'RequestInvite'].sort(),
     );
     // `E2eeService`'s full surface (ADR 0020, P13-001 onward): this list is the wire
     // contract every node implementation has to satisfy.

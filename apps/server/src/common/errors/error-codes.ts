@@ -47,6 +47,12 @@ export const ERROR_CODES = [
    */
   'NOT_IMPLEMENTED',
   /**
+   * ADR 0044: `OnboardingService.StartDemo` on a node that is not the dedicated demo node
+   * (`DEMO_MODE=false`, which includes production). Its own code so the landing page can say
+   * "the demo is not available here" instead of a generic failure.
+   */
+  'DEMO_DISABLED',
+  /**
    * Not in §57's starter list: `PageService` (Phase 4.5, P45-003) uniformly reports a missing
    * actor, a page that was never written, *and* a blocked-either-direction viewer as this one
    * code — same reasoning as `POST_NOT_FOUND` (§62 — never leak which of those is true).
@@ -246,6 +252,7 @@ export const ERROR_CODE_TO_GRPC_STATUS: Readonly<Record<ErrorCode, GrpcStatus>> 
   INTERNAL_ERROR: GrpcStatus.INTERNAL,
   CLIENT_VERSION_UNSUPPORTED: GrpcStatus.FAILED_PRECONDITION,
   NOT_IMPLEMENTED: GrpcStatus.UNIMPLEMENTED,
+  DEMO_DISABLED: GrpcStatus.FAILED_PRECONDITION,
   PAGE_NOT_FOUND: GrpcStatus.NOT_FOUND,
   PAGE_FORBIDDEN: GrpcStatus.PERMISSION_DENIED,
   GUESTBOOK_ENTRY_NOT_FOUND: GrpcStatus.NOT_FOUND,

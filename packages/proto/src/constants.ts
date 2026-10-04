@@ -341,6 +341,12 @@ import type {
   UpdatePrivacyPrefsRequest,
   UpdatePrivacyPrefsResponse,
 } from './generated/patches/v1/privacy.js';
+import type {
+  RequestInviteRequest,
+  RequestInviteResponse,
+  StartDemoRequest,
+  StartDemoResponse,
+} from './generated/patches/v1/onboarding.js';
 import { getProtoDir } from './proto-path.js';
 
 /**
@@ -386,6 +392,7 @@ export const SERVICE_NAMES = Object.freeze({
   label: 'LabelService',
   appeal: 'AppealService',
   privacy: 'PrivacyService',
+  onboarding: 'OnboardingService',
 } as const);
 
 /** gRPC metadata keys used across every call (spec §44). */
@@ -690,6 +697,12 @@ export interface AppealGrpcClient extends Client {
   createAppeal: GrpcUnaryCall<CreateAppealRequest, CreateAppealResponse>;
   getAppeal: GrpcUnaryCall<GetAppealRequest, GetAppealResponse>;
   listMyAppeals: GrpcUnaryCall<ListMyAppealsRequest, ListMyAppealsResponse>;
+}
+
+/** `patches.v1.OnboardingService` as seen by a raw grpc-js client. */
+export interface OnboardingGrpcClient extends Client {
+  startDemo: GrpcUnaryCall<StartDemoRequest, StartDemoResponse>;
+  requestInvite: GrpcUnaryCall<RequestInviteRequest, RequestInviteResponse>;
 }
 
 /** `patches.v1.PrivacyService` as seen by a raw grpc-js client. */

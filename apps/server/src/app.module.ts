@@ -29,6 +29,7 @@ import { ModerationModule } from './modules/moderation/moderation.module.js';
 import { NotificationsModule } from './modules/notifications/notification.module.js';
 import { WebVitalsModule } from './modules/observability/web-vitals.module.js';
 import { PagesModule } from './modules/pages/pages.module.js';
+import { OnboardingModule } from './modules/onboarding/onboarding.module.js';
 import { PostModule } from './modules/posts/post.module.js';
 import { PrivacyModule } from './modules/privacy/privacy.module.js';
 import { ReactionModule } from './modules/reactions/reaction.module.js';
@@ -64,6 +65,7 @@ const federationHttpEnabled = validateEnv(process.env).FEDERATION_ENABLED;
     AuthModule,
     CommunitiesModule,
     PostModule,
+    OnboardingModule,
     ActorModule,
     FeedModule,
     GraphModule,

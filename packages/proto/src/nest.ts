@@ -634,3 +634,17 @@ export {
   PRIVACY_SERVICE_NAME,
   PrivacyServiceControllerMethods,
 } from './generated/patches/v1/privacy.js';
+
+export type {
+  DemoFriend,
+  OnboardingServiceClient,
+  OnboardingServiceController,
+  RequestInviteRequest,
+  RequestInviteResponse,
+  StartDemoRequest,
+  StartDemoResponse,
+} from './generated/patches/v1/onboarding.js';
+export {
+  ONBOARDING_SERVICE_NAME,
+  OnboardingServiceControllerMethods,
+} from './generated/patches/v1/onboarding.js';

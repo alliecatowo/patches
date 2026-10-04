@@ -38,6 +38,7 @@ export * from './generated-es/patches/v1/filter_lists_pb.js';
 export * from './generated-es/patches/v1/labels_pb.js';
 export * from './generated-es/patches/v1/appeals_pb.js';
 export * from './generated-es/patches/v1/privacy_pb.js';
+export * from './generated-es/patches/v1/onboarding_pb.js';
 
 import { file_patches_v1_actors } from './generated-es/patches/v1/actors_pb.js';
 import { file_patches_v1_appeals } from './generated-es/patches/v1/appeals_pb.js';
@@ -52,6 +53,7 @@ import { file_patches_v1_labels } from './generated-es/patches/v1/labels_pb.js';
 import { file_patches_v1_media } from './generated-es/patches/v1/media_pb.js';
 import { file_patches_v1_messages } from './generated-es/patches/v1/messages_pb.js';
 import { file_patches_v1_moderation } from './generated-es/patches/v1/moderation_pb.js';
+import { file_patches_v1_onboarding } from './generated-es/patches/v1/onboarding_pb.js';
 import { file_patches_v1_node } from './generated-es/patches/v1/node_pb.js';
 import { file_patches_v1_notifications } from './generated-es/patches/v1/notifications_pb.js';
 import { file_patches_v1_pages } from './generated-es/patches/v1/pages_pb.js';
@@ -96,4 +98,5 @@ export const PATCHES_V1_FILES: readonly GenFile[] = Object.freeze([
   file_patches_v1_labels,
   file_patches_v1_appeals,
   file_patches_v1_privacy,
+  file_patches_v1_onboarding,
 ]);

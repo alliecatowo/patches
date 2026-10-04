@@ -20,6 +20,7 @@ import type {
   MediaGrpcClient,
   ModerationGrpcClient,
   NodeGrpcClient,
+  OnboardingGrpcClient,
   NotificationGrpcClient,
   PageGrpcClient,
   PostGrpcClient,
@@ -270,4 +271,14 @@ export function createPrivacyClient(
   options?: ChannelOptions,
 ): PrivacyGrpcClient {
   return buildClient<PrivacyGrpcClient>(SERVICE_NAMES.privacy, target, credentials, options);
+}
+
+/** Build a `patches.v1.OnboardingService` client. See {@link createSystemClient} for the
+ * pattern. */
+export function createOnboardingClient(
+  target: string,
+  credentials: ChannelCredentials,
+  options?: ChannelOptions,
+): OnboardingGrpcClient {
+  return buildClient<OnboardingGrpcClient>(SERVICE_NAMES.onboarding, target, credentials, options);
 }

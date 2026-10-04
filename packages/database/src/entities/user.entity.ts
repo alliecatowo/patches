@@ -21,6 +21,11 @@ import { checkIn, USER_STATUSES, type UserStatus } from './enums.js';
  */
 @Entity({ name: 'users' })
 @Index(['recoveryEmailNormalized'], { unique: true })
+// ADR 0044: the purge sweep finds expired demo sandboxes with this partial index; real accounts
+// (NULL) never enter it, so it stays tiny and never costs a real-account write anything.
+@Index('idx_users_sandbox_expires_at', ['sandboxExpiresAt'], {
+  where: '"sandbox_expires_at" IS NOT NULL',
+})
 @Check('chk_users_status', checkIn('status', USER_STATUSES))
 export class User {
   @PrimaryGeneratedColumn('uuid')
@@ -54,6 +59,20 @@ export class User {
   @ManyToOne(() => Actor, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'actor_id' })
   declare actor: Actor;
+
+  /**
+   * ADR 0044: non-null only for an account that belongs to a throwaway demo sandbox (the
+   * visitor and its fake friends share one `sandbox_id`). Real accounts are NULL here for
+   * their entire life and are never touched by the sandbox sweep, which is scoped by
+   * `sandbox_expires_at IS NOT NULL`.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  declare sandboxId: string | null;
+
+  /** The instant this sandbox account dies: every token it holds stops working then, and the
+   * sweep hard-deletes it. NULL for every real account. */
+  @Column({ type: 'timestamptz', nullable: true })
+  declare sandboxExpiresAt: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   declare createdAt: Date;
