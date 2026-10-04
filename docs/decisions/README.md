@@ -61,6 +61,7 @@ deliberately does **not** authorize without owner sign-off.
 | [0038](./0038-api-versioning-policy.md)                               | API versioning policy: `patches.v1` is additive-only, a `v2` is a sibling package                     | Accepted           |
 | [0039](./0039-e2ee-only-direct-messages-and-honest-copy.md)           | E2EE-only direct messages and honest client disclosures                                               | Accepted           |
 | [0040](./0040-mcp-01-product-security-scope.md)                       | MCP-01 product and security scope                                                                     | Accepted           |
+| [0043](./0043-e2ee-client-verified-group-membership.md)               | E2EE group membership is verified by the client against the signed transcript                         | Accepted           |
 | [0041](./0041-e2ee-device-certificate-renewal.md)                     | E2EE device certificate renewal is device replacement                                                 | Accepted           |
 | [0042](./0042-e2ee-session-recovery.md)                               | E2EE session recovery: per-handshake sessions, deterministic glare, explicit reset                    | Accepted           |
 

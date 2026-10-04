@@ -72,6 +72,10 @@ export type {
 
 export {
   assertGroupControlChain,
+  assertGroupControlFieldsMatchBytes,
+  deriveGroupMembership,
+  sameMemberSet,
+  type E2eeGroupMembership,
   assertGroupControlShape,
   assertGroupControlSucceeds,
   assertGroupSizeWithinBound,
