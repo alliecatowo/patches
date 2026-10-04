@@ -66,6 +66,8 @@ describe('PublicReadGuard (owner decision 2026-08-19, PUBLIC_READ)', () => {
   it.each([
     'patches.v1.SystemService/GetServerInfo',
     'patches.v1.AuthService/Login',
+    'patches.v1.OnboardingService/StartDemo',
+    'patches.v1.OnboardingService/RequestInvite',
     'patches.v1.NodeService/GetNodeInfo',
     'patches.v1.NodeService/GetNodePolicy',
     // S-M2: suspended users must reach notices and appeals; their own guard authenticates.
