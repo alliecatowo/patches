@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type * as DemoMode from './demo-mode.js';
+
 const STATE_KEY = 'patches.web.demo.v1';
 const ACTOR_KEY = 'patches.web.actor.v1';
 const DEMO_BASE = 'https://demo.example.test';
 const CREDENTIAL_KEY = `patches.web.credentials.${DEMO_BASE}.v1`;
 
-async function loadModule(demoBase: string | undefined): Promise<typeof import('./demo-mode.js')> {
+async function loadModule(demoBase: string | undefined): Promise<typeof DemoMode> {
   vi.resetModules();
   vi.stubEnv('VITE_PATCHES_DEMO_API_BASE', demoBase ?? '');
   vi.stubEnv('VITE_PATCHES_API_BASE', 'https://primary.example.test');

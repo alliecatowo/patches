@@ -26,10 +26,8 @@ export function useDemoSeeding(session: AppSession | null): DemoSeedState {
   useEffect(() => {
     if (state !== 'running' || actorId === undefined) return;
     const plan = loadSeedPlan();
-    if (plan === undefined) {
-      setState('idle');
-      return;
-    }
+    // The plan is consumed exactly once; if it is already gone there is nothing left to seed.
+    if (plan === undefined) return;
     let cancelled = false;
     seedDemoInbox(plan, actorId)
       .then(() => {
