@@ -78,6 +78,7 @@ export function MessageThreadRoute(): JSX.Element {
   const [sendFailed, setSendFailed] = useState(false);
   const [lastDraft, setLastDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [membershipRefused, setMembershipRefused] = useState(false);
 
   const enrolled = e2eeStatus.kind === 'enrolled';
   const localUnread = useLocalUnreadCounts(
@@ -185,11 +186,24 @@ export function MessageThreadRoute(): JSX.Element {
       setSendFailed(false);
     } catch (error) {
       setSendFailed(true);
+      if (error instanceof WebE2eeUnavailableError && error.reason === 'membership') {
+        setMembershipRefused(true);
+      }
       toast.error(
         error instanceof WebE2eeUnavailableError ? error.message : WEB_E2EE_COPY.sendFailed,
       );
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleAcceptMembership(): Promise<void> {
+    try {
+      await webE2ee().acceptNodeMembership(conversationId);
+      setMembershipRefused(false);
+      toast.success('Member list accepted. You can send again.');
+    } catch {
+      toast.error(WEB_E2EE_COPY.membershipMismatch);
     }
   }
 
@@ -299,6 +313,14 @@ export function MessageThreadRoute(): JSX.Element {
               failing, reset the secure session; your next message then starts a fresh one.{' '}
               <Button variant="secondary" onClick={() => void handleResetSession()}>
                 Reset secure session
+              </Button>
+            </ThreadNotice>
+          ) : null}
+          {membershipRefused ? (
+            <ThreadNotice tone="alert" role="alert">
+              {WEB_E2EE_COPY.membershipMismatch}{' '}
+              <Button variant="danger" onClick={() => void handleAcceptMembership()}>
+                Accept the node’s member list
               </Button>
             </ThreadNotice>
           ) : null}

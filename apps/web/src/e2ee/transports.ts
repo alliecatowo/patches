@@ -33,6 +33,9 @@ import {
   type SendEnvelopesRequestLike,
 } from './runtime.js';
 import type { EnrollmentCapability, EnrollmentTransport } from './enrollment.js';
+import { verifyConversationMembership } from './membership.js';
+import { verifyActorChain } from './chain.js';
+import type { E2eeGroupControlEvent } from '@patches/proto/es';
 import { isUnverifiedReset, PeerIdentityResetError } from './peer-trust.js';
 
 /** The slice of the web app's API surface these seams bind (structural so tests can
@@ -42,6 +45,58 @@ export interface E2eeApiSurface {
 }
 
 const MAILBOX_PAGE_LIMIT = 50;
+
+/** Every signed group-control event after `afterEpoch`, oldest first (keyset pagination). */
+async function listGroupControlEvents(
+  api: E2eeApiSurface,
+  conversationId: string,
+  afterEpoch: bigint,
+): Promise<readonly E2eeGroupControlEvent[]> {
+  const events: E2eeGroupControlEvent[] = [];
+  let cursor = '';
+  let after = afterEpoch;
+  for (;;) {
+    const response = await api.e2ee.listE2eeGroupControlEvents({
+      conversationId,
+      afterEpoch: after,
+      cursor,
+      limit: 50,
+    });
+    events.push(...response.events);
+    const last = response.events.at(-1);
+    if (last !== undefined) after = last.epoch;
+    const next = response.page?.nextCursor ?? '';
+    if (next === '' || response.events.length === 0) return events;
+    cursor = next;
+  }
+}
+
+/** The signing key of an actor's ACTIVE device, only if the actor's whole chain verifies. */
+async function certifiedSigningKey(
+  api: E2eeApiSurface,
+  actorId: string,
+  deviceId: string,
+): Promise<Uint8Array | undefined> {
+  const [rootResponse, rosterResponse] = await Promise.all([
+    api.e2ee.getIdentityRoot({ actorId }),
+    api.e2ee.getDeviceRoster({ actorId }),
+  ]);
+  const rootWire = rootResponse.identityRoot;
+  const rosterWire = rosterResponse.roster;
+  if (rootWire === undefined || rosterWire === undefined) return undefined;
+  try {
+    const chain = verifyActorChain({
+      rootWire,
+      rosterWire,
+      certificatesWire: rosterResponse.certificates,
+      now: new Date(),
+    });
+    return chain.activeDevices.get(deviceId)?.signingPublicKey;
+  } catch {
+    // A chain that does not verify vouches for no key.
+    return undefined;
+  }
+}
 
 /**
  * Fetches and verifies one actor's messaging root + current device roster snapshot,
@@ -191,6 +246,19 @@ export function createWebE2eeTransports(
   return {
     async loadFanoutPlan(conversationId: string): Promise<FanoutPlan> {
       const state = await api.e2ee.getE2eeConversationState({ conversationId });
+      // The member list is the node's claim until it checks out against the signed transcript
+      // (audit P2-H3): a mismatch throws and nothing is encrypted to the extra member.
+      await verifyConversationMembership({
+        vault: options.pinVault,
+        conversationId,
+        served: {
+          epoch: state.membershipEpoch,
+          memberActorIds: (state.members ?? []).map((member) => member.actorId),
+          tipDigest: state.groupControlDigest,
+        },
+        listEvents: (afterEpoch) => listGroupControlEvents(api, conversationId, afterEpoch),
+        signerKey: (actorId, deviceId) => certifiedSigningKey(api, actorId, deviceId),
+      });
       return {
         conversationId,
         membershipEpoch: state.membershipEpoch,

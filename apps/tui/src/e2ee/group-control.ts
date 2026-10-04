@@ -9,7 +9,9 @@
  * it can never pass silently as ordinary history.
  */
 import {
+  assertGroupControlFieldsMatchBytes,
   assertGroupControlShape,
+  assertGroupControlSucceeds,
   verifyGroupControlSignature,
   type E2eeGroupControlEventView,
 } from '@patches/domain';
@@ -98,6 +100,8 @@ export async function verifyGroupControlEvents(
 
   const rows: GroupControlRow[] = [];
   let allVerified = events.length > 0;
+  // Running tip, so a gap, reorder or fork shows up as an unverified row (P2-H3).
+  let tip: { epoch: bigint; digest: Uint8Array } | null = null;
   for (const wireEvent of events) {
     const change = changeOf(wireEvent);
     if (change === undefined) {
@@ -114,6 +118,10 @@ export async function verifyGroupControlEvents(
     try {
       event = groupControlEventFromWire(wireEvent, change);
       assertGroupControlShape(event);
+      // The served convenience fields must equal what the signature actually covers.
+      assertGroupControlFieldsMatchBytes(event);
+      assertGroupControlSucceeds(tip, event);
+      tip = { epoch: event.epoch, digest: event.digest };
     } catch {
       rows.push({
         epoch: wireEvent.epoch,

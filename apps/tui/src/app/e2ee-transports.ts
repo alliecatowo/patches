@@ -29,6 +29,9 @@ import {
   savePeerIdentityPin,
   type PeerPinVaultAccess,
 } from '../e2ee/ratchet-vault.js';
+import { verifyActorChain } from '../e2ee/chain.js';
+import type { E2eeGroupControlEvent } from '../api/wire/types.js';
+import { verifyConversationMembership } from '../e2ee/membership.js';
 import {
   type ClaimedPeerBundle,
   type E2eeMailboxTransport,
@@ -55,6 +58,7 @@ export type E2eeApiSurface = Pick<
   | 'cancelDeviceLink'
   | 'revokeDevice'
   | 'getE2eeConversationState'
+  | 'listE2eeGroupControlEvents'
   | 'claimPrekeyBundles'
   | 'sendEnvelopes'
   | 'listMailboxEnvelopes'
@@ -193,6 +197,55 @@ export function createE2eeTransports(
     async loadFanoutPlan(conversationId: string): Promise<FanoutPlan> {
       const accessToken = await options.accessToken();
       const state = await api.getE2eeConversationState({ conversationId }, accessToken);
+      // The member list is the node's claim until it checks out against the signed transcript
+      // (audit P2-H3): a mismatch throws and nothing is encrypted to the extra member.
+      await verifyConversationMembership({
+        vault: options.pinVault,
+        conversationId,
+        served: {
+          epoch: state.membershipEpoch,
+          memberActorIds: (state.members ?? []).map((member) => member.actorId),
+          tipDigest: state.groupControlDigest,
+        },
+        listEvents: async (afterEpoch) => {
+          const events: E2eeGroupControlEvent[] = [];
+          let cursor = '';
+          let after = afterEpoch;
+          for (;;) {
+            const response = await api.listE2eeGroupControlEvents(
+              { conversationId, afterEpoch: after, cursor, limit: 50 },
+              await options.accessToken(),
+            );
+            events.push(...response.events);
+            const last = response.events.at(-1);
+            if (last !== undefined) after = last.epoch;
+            const next = response.page?.nextCursor ?? '';
+            if (next === '' || response.events.length === 0) return events;
+            cursor = next;
+          }
+        },
+        signerKey: async (actorId, deviceId) => {
+          const token = await options.accessToken();
+          const [rootResponse, rosterResponse] = await Promise.all([
+            api.getIdentityRoot({ actorId }, token),
+            api.getDeviceRoster({ actorId }, token),
+          ]);
+          const rootWire = rootResponse.identityRoot;
+          const rosterWire = rosterResponse.roster;
+          if (rootWire === undefined || rosterWire === undefined) return undefined;
+          try {
+            return verifyActorChain({
+              rootWire,
+              rosterWire,
+              certificatesWire: rosterResponse.certificates,
+              now: new Date(),
+            }).activeDevices.get(deviceId)?.signingPublicKey;
+          } catch {
+            // A chain that does not verify vouches for no key.
+            return undefined;
+          }
+        },
+      });
       return {
         conversationId,
         membershipEpoch: state.membershipEpoch,

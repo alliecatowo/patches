@@ -249,3 +249,84 @@ export function assertGroupControlChain(events: readonly E2eeGroupControlEventVi
     previous = { epoch: event.epoch, digest: event.digest };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Client-side membership derivation (audit P2-H3)
+// ---------------------------------------------------------------------------
+
+/**
+ * What a client has verified about one conversation's membership: the epoch, the exact member
+ * set, and the digest of the newest signed event (all-zero at epoch 1). Epoch 1 has no signed
+ * event, so the first value a client holds is trust-on-first-use (or, for a conversation it
+ * created itself, exactly what it asked for); every later value is DERIVED from signed events,
+ * never taken from the node's member list.
+ */
+export interface E2eeGroupMembership {
+  readonly epoch: bigint;
+  readonly members: readonly string[];
+  readonly tipDigest: Bytes;
+}
+
+/**
+ * Re-encodes an event's convenience fields and requires the signed `eventBytes` to match. The
+ * node serves both; only the bytes are signed, so without this a node could pair a valid
+ * signature for one event with forged `subject`/`change`/`epoch` fields.
+ */
+export function assertGroupControlFieldsMatchBytes(event: E2eeGroupControlEventView): void {
+  if (!bytesEqual(canonicalGroupControlTranscript(event), event.eventBytes)) {
+    throw new E2eeContractError('Group-control fields do not match the signed event bytes.');
+  }
+}
+
+/**
+ * Applies `events` (ascending, epochs after `from.epoch`) to a verified membership and returns
+ * the result. Every event must chain, match its signed bytes, carry a valid signature from a
+ * key `signerKeyFor` vouches for (the signer's CERTIFIED device key, never one the event
+ * names), be signed by someone who is a member at that point, and be a legal transition: an
+ * ADDED subject is not yet a member, a REMOVED subject is, and the group never exceeds the
+ * size bound. Anything else throws, so a gap, reorder, fork, forged field or non-member signer
+ * is refused rather than displayed.
+ */
+export function deriveGroupMembership(input: {
+  readonly from: E2eeGroupMembership;
+  readonly events: readonly E2eeGroupControlEventView[];
+  readonly signerKeyFor: (event: E2eeGroupControlEventView) => Bytes | undefined;
+  readonly deps: { readonly verifier: SignatureVerifier; readonly digest: DigestFunction };
+}): E2eeGroupMembership {
+  const members = new Set(input.from.members);
+  let epoch = input.from.epoch;
+  let tipDigest = input.from.tipDigest;
+  for (const event of input.events) {
+    assertGroupControlSucceeds(epoch === 1n ? null : { epoch, digest: tipDigest }, event);
+    assertGroupControlFieldsMatchBytes(event);
+    const key = input.signerKeyFor(event);
+    if (key === undefined) {
+      throw new E2eeContractError('Group-control signer has no certified device key.');
+    }
+    verifyGroupControlSignature(event, key, input.deps);
+    if (!members.has(event.signerActorId)) {
+      throw new E2eeContractError('Group-control event was signed by a non-member.');
+    }
+    if (event.change === 'ADDED') {
+      if (members.has(event.subjectActorId)) {
+        throw new E2eeContractError('Group-control event adds an existing member.');
+      }
+      members.add(event.subjectActorId);
+      assertGroupSizeWithinBound(members.size);
+    } else {
+      if (!members.delete(event.subjectActorId)) {
+        throw new E2eeContractError('Group-control event removes a non-member.');
+      }
+    }
+    epoch = event.epoch;
+    tipDigest = event.digest;
+  }
+  return { epoch, members: [...members].sort(), tipDigest };
+}
+
+/** True when two member lists name exactly the same actors. */
+export function sameMemberSet(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightSet = new Set(right);
+  return new Set(left).size === left.length && left.every((actor) => rightSet.has(actor));
+}

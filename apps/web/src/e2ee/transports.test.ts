@@ -229,6 +229,7 @@ describe('createWebE2eeTransports', () => {
     const getE2eeConversationState = vi.fn(() =>
       Promise.resolve({
         membershipEpoch: 4n,
+        groupControlDigest: new Uint8Array(32),
         members: [
           { actorId: 'actor-a', supportsE2eeV1: true, activeDeviceIds: ['d1', 'd2'] },
           { actorId: 'actor-b', supportsE2eeV1: false, activeDeviceIds: ['d3'] },

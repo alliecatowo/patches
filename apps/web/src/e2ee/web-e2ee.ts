@@ -70,6 +70,7 @@ import {
   isRenewalDue,
   renewDeviceIdentity,
 } from './renewal.js';
+import { acceptNodeMembership as acceptMembership, MembershipMismatchError } from './membership.js';
 import {
   bindConversationCreate,
   createWebE2eeTransports,
@@ -97,6 +98,10 @@ export const WEB_E2EE_COPY = {
   renewFailed: 'Renewing this device did not complete. Nothing was changed.',
   enrollFailed: 'Enrolling this browser did not complete. Nothing was half-registered.',
   sendFailed: 'The message could not be delivered.',
+  membershipMismatch:
+    'The member list the node served for this conversation does not match its signed ' +
+    'membership history, so nothing was sent. If you recognise the change, you can accept the ' +
+    'node’s current list.',
   resetFailed: 'The secure session could not be reset.',
   pollFailed: 'Could not fetch new encrypted messages.',
   createFailed: 'The conversation could not be started.',
@@ -122,9 +127,13 @@ export type WebE2eeStatus =
 
 /** Error with fixed user copy for create/send/enroll failures (content-free by rule). */
 export class WebE2eeUnavailableError extends Error {
-  constructor(copy: string) {
+  /** `membership`: the node's member list disagrees with the signed history (P2-H3). */
+  readonly reason: 'membership' | undefined;
+
+  constructor(copy: string, reason?: 'membership') {
     super(copy);
     this.name = new.target.name;
+    this.reason = reason;
   }
 }
 
@@ -524,6 +533,9 @@ class WebE2eeManager {
       } catch {
         // Ids only would still be noise here; the send error below is the actionable one.
       }
+      if (error instanceof MembershipMismatchError) {
+        throw new WebE2eeUnavailableError(WEB_E2EE_COPY.membershipMismatch, 'membership');
+      }
       if (error instanceof WebE2eeUnavailableError || error instanceof E2eeNotEnrolledError) {
         throw error;
       }
@@ -534,6 +546,20 @@ class WebE2eeManager {
     const record = { clientMessageId, body, sentAtMs, deliveryState: 'sent' } as const;
     await recordOwnMessage(vault, conversationId, record);
     return ownMessageRow(record);
+  }
+
+  /**
+   * The user explicitly accepts the node's current member list for a conversation after a
+   * mismatch refusal (P2-H3). Never called automatically.
+   */
+  async acceptNodeMembership(conversationId: string): Promise<void> {
+    const vault = this.requireVault();
+    const state = await this.api.e2ee.getE2eeConversationState({ conversationId });
+    await acceptMembership(vault, conversationId, {
+      epoch: state.membershipEpoch,
+      memberActorIds: (state.members ?? []).map((member) => member.actorId),
+      tipDigest: state.groupControlDigest,
+    });
   }
 
   /**

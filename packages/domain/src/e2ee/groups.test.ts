@@ -6,6 +6,8 @@ import {
   assertGroupControlSucceeds,
   assertGroupSizeWithinBound,
   canonicalGroupControlTranscript,
+  deriveGroupMembership,
+  sameMemberSet,
   groupControlGenesisTip,
   groupControlGenesisPreviousDigest,
   verifyGroupControlSignature,
@@ -201,5 +203,184 @@ describe('groupControlGenesisTip', () => {
     const tip = groupControlGenesisTip();
     expect(tip.epoch).toBe(1n);
     expect(tip.digest.every((byte) => byte === 0)).toBe(true);
+  });
+});
+
+describe('deriveGroupMembership (audit P2-H3)', () => {
+  const key = new Uint8Array(32).fill(5);
+  const deps = { verifier: acceptingVerifier, digest };
+
+  /** A fully consistent event: bytes re-encode from its fields, digest is over the bytes. */
+  function signedEvent(input: {
+    epoch: bigint;
+    change: E2eeGroupChangeKind;
+    subject: string;
+    signer?: string;
+    previous: Bytes;
+  }): E2eeGroupControlEventView {
+    const fields = {
+      conversationId: 'conv-1',
+      epoch: input.epoch,
+      change: input.change,
+      subjectActorId: input.subject,
+      signerActorId: input.signer ?? 'alice',
+      signerDeviceId: 'device-a',
+      previousDigest: input.previous,
+    };
+    const eventBytes = canonicalGroupControlTranscript(fields);
+    return {
+      ...fields,
+      eventBytes,
+      digest: digest(eventBytes),
+      deviceSignature: new Uint8Array(64).fill(9),
+      createdAt: new Date(0),
+    };
+  }
+
+  const genesis = {
+    epoch: 1n,
+    members: ['alice', 'bob'],
+    tipDigest: groupControlGenesisPreviousDigest(),
+  };
+
+  it('applies a signed chain of additions and removals', () => {
+    const add = signedEvent({
+      epoch: 2n,
+      change: 'ADDED',
+      subject: 'carol',
+      previous: genesis.tipDigest,
+    });
+    const remove = signedEvent({
+      epoch: 3n,
+      change: 'REMOVED',
+      subject: 'bob',
+      previous: add.digest,
+    });
+    const result = deriveGroupMembership({
+      from: genesis,
+      events: [add, remove],
+      signerKeyFor: () => key,
+      deps,
+    });
+    expect(result.epoch).toBe(3n);
+    expect(result.members).toEqual(['alice', 'carol']);
+    expect(result.tipDigest).toEqual(remove.digest);
+  });
+
+  it('refuses forged convenience fields paired with a valid signature', () => {
+    const real = signedEvent({
+      epoch: 2n,
+      change: 'ADDED',
+      subject: 'carol',
+      previous: genesis.tipDigest,
+    });
+    // The node keeps the signed bytes for "carol" but serves a subject of "mallory".
+    const forged = { ...real, subjectActorId: 'mallory' };
+    expect(() =>
+      deriveGroupMembership({ from: genesis, events: [forged], signerKeyFor: () => key, deps }),
+    ).toThrow('do not match');
+  });
+
+  it('refuses a gap, a repeat, a reorder and a fork', () => {
+    const e2 = signedEvent({
+      epoch: 2n,
+      change: 'ADDED',
+      subject: 'carol',
+      previous: genesis.tipDigest,
+    });
+    const e3 = signedEvent({ epoch: 3n, change: 'ADDED', subject: 'dave', previous: e2.digest });
+    const run = (events: E2eeGroupControlEventView[]) =>
+      deriveGroupMembership({ from: genesis, events, signerKeyFor: () => key, deps });
+    expect(() => run([e3])).toThrow();
+    expect(() => run([e2, e2])).toThrow();
+    expect(() => run([e3, e2])).toThrow();
+    const fork = signedEvent({
+      epoch: 3n,
+      change: 'ADDED',
+      subject: 'erin',
+      previous: new Uint8Array(32).fill(4),
+    });
+    expect(() => run([e2, fork])).toThrow('does not chain');
+  });
+
+  it('refuses a non-member signer, a missing key and a bad signature', () => {
+    const outsider = signedEvent({
+      epoch: 2n,
+      change: 'ADDED',
+      subject: 'carol',
+      signer: 'mallory',
+      previous: genesis.tipDigest,
+    });
+    expect(() =>
+      deriveGroupMembership({ from: genesis, events: [outsider], signerKeyFor: () => key, deps }),
+    ).toThrow('non-member');
+    const ok = signedEvent({
+      epoch: 2n,
+      change: 'ADDED',
+      subject: 'carol',
+      previous: genesis.tipDigest,
+    });
+    expect(() =>
+      deriveGroupMembership({ from: genesis, events: [ok], signerKeyFor: () => undefined, deps }),
+    ).toThrow('certified device key');
+    expect(() =>
+      deriveGroupMembership({
+        from: genesis,
+        events: [ok],
+        signerKeyFor: () => key,
+        deps: { verifier: rejectingVerifier, digest },
+      }),
+    ).toThrow('not signed');
+  });
+
+  it('refuses illegal transitions and growth past the bound', () => {
+    const addExisting = signedEvent({
+      epoch: 2n,
+      change: 'ADDED',
+      subject: 'bob',
+      previous: genesis.tipDigest,
+    });
+    expect(() =>
+      deriveGroupMembership({
+        from: genesis,
+        events: [addExisting],
+        signerKeyFor: () => key,
+        deps,
+      }),
+    ).toThrow('existing member');
+    const removeStranger = signedEvent({
+      epoch: 2n,
+      change: 'REMOVED',
+      subject: 'zed',
+      previous: genesis.tipDigest,
+    });
+    expect(() =>
+      deriveGroupMembership({
+        from: genesis,
+        events: [removeStranger],
+        signerKeyFor: () => key,
+        deps,
+      }),
+    ).toThrow('non-member');
+    const full = {
+      epoch: 1n,
+      members: ['alice', 'a', 'b', 'c', 'd', 'e', 'f', 'g'],
+      tipDigest: genesis.tipDigest,
+    };
+    const overflow = signedEvent({
+      epoch: 2n,
+      change: 'ADDED',
+      subject: 'h',
+      previous: genesis.tipDigest,
+    });
+    expect(() =>
+      deriveGroupMembership({ from: full, events: [overflow], signerKeyFor: () => key, deps }),
+    ).toThrow();
+  });
+
+  it('compares member sets exactly', () => {
+    expect(sameMemberSet(['a', 'b'], ['b', 'a'])).toBe(true);
+    expect(sameMemberSet(['a', 'b'], ['a', 'b', 'c'])).toBe(false);
+    expect(sameMemberSet(['a', 'a'], ['a', 'b'])).toBe(false);
   });
 });

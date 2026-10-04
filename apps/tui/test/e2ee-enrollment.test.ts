@@ -710,6 +710,7 @@ describe('createE2eeTransports adapter', () => {
     (api.getE2eeConversationState as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
       conversationId: 'conv-1',
       membershipEpoch: 3n,
+      groupControlDigest: new Uint8Array(32),
       members: [
         {
           actorId: ACTOR_ID,
