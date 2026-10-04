@@ -6,6 +6,7 @@ import { DataSource, IsNull, MoreThan } from 'typeorm';
 
 import { AppError } from '../../common/errors/app-error.js';
 import { extractBearerToken } from '../auth/auth.guard.js';
+import { assertSandboxNotExpired } from '../auth/sandbox-expiry.js';
 import { setSessionClaims } from '../auth/session-context.js';
 import { TokenService } from '../auth/token.service.js';
 
@@ -38,7 +39,7 @@ export class SuspensionTolerantAuthGuard implements CanActivate {
 
     const user = await this.dataSource.getRepository(User).findOne({
       where: { id: claims.userId },
-      select: { id: true, status: true, actorId: true, deletedAt: true },
+      select: { id: true, status: true, actorId: true, deletedAt: true, sandboxExpiresAt: true },
     });
     if (
       user === null ||
@@ -49,6 +50,7 @@ export class SuspensionTolerantAuthGuard implements CanActivate {
         'Your session is no longer valid. Please sign in again.',
       );
     }
+    assertSandboxNotExpired(user);
     // Deliberately no `status === 'SUSPENDED'` check — see the class doc comment.
 
     setSessionClaims(call, claims);

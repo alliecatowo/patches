@@ -43,5 +43,8 @@ import { E2eeReportEvidenceService } from './report-evidence.service.js';
     E2eeRateLimitService,
     { provide: NODE_FRANKING_KEY_RING, useClass: DatabaseNodeFrankingKeyRing },
   ],
+  // ADR 0044: the demo node mints its first franking era itself (it runs no worker, which is
+  // what normally mints eras) and asks the ring to reload so E2EE is enabled immediately.
+  exports: [NODE_FRANKING_KEY_RING],
 })
 export class E2eeModule {}

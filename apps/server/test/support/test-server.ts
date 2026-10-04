@@ -26,6 +26,8 @@ import { prepareServerEnv } from './env.js';
 export { prepareServerEnv, TEST_NODE_DOMAIN } from './env.js';
 
 export interface TestServer {
+  /** The running Nest app, for tests that need to reach a provider directly. */
+  app: INestApplication;
   url: string;
   client: SystemGrpcClient;
   /** Set only when `startTestServer({ http: true })` asked for the (now always-on-in-
@@ -116,6 +118,7 @@ export async function startTestServer(options: StartTestServerOptions = {}): Pro
   }
 
   return {
+    app,
     url,
     client,
     ...(httpUrl !== undefined ? { httpUrl } : {}),

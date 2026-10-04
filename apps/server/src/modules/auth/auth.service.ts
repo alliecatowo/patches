@@ -43,6 +43,7 @@ import { PasskeyChallengeService } from './passkey-challenge.service.js';
 import { PasskeyVerifierService } from './passkey-verifier.service.js';
 import { PasswordHasher } from './password-hasher.service.js';
 import { RateLimitService } from './rate-limit.service.js';
+import { assertSandboxNotExpired } from './sandbox-expiry.js';
 import {
   type IssuedSshChallenge,
   SshChallengeService,
@@ -682,6 +683,8 @@ export class AuthService {
           await this.tokens.revokeSession(manager, sessionId);
           throw sessionGone();
         }
+        // ADR 0044: a demo sandbox cannot be refreshed past its expiry.
+        assertSandboxNotExpired(user);
 
         const actor = await requireActor(manager, user.actorId);
         const tokens = await this.tokens.issueSession(manager, {
@@ -1984,7 +1987,7 @@ function parseSshPublicKeyForEnrollment(text: string): EnrollableSshKey {
  * the actor is inserted with a null `user_id`, then the user, then the actor is back-filled —
  * the same three steps `@patches/testkit`'s factory uses.
  */
-async function createActorAndUser(
+export async function createActorAndUser(
   manager: EntityManager,
   input: {
     handle: string;

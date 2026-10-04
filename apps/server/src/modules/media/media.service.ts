@@ -37,6 +37,12 @@ export class MediaService {
   ) {}
 
   async beginMediaUpload(input: BeginMediaUploadInput): Promise<BeginMediaUploadResult> {
+    // ADR 0044: every account on the demo node is a throwaway sandbox. No object storage is
+    // provisioned there, and uploads would be the one thing a sandbox could leave behind that
+    // the sweep cannot delete with a SQL statement.
+    if (this.config.demoMode) {
+      throw AppError.validation('Image uploads are switched off in the demo.');
+    }
     this.rateLimit.consumePeer('media_begin_upload', getRequestContext()?.peer);
     this.rateLimit.consume('media_begin_upload', input.actorId);
     validateBeginMediaUploadInput(input);

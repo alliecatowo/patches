@@ -43,6 +43,8 @@ import { AppError, isAppError } from '../errors/app-error.js';
 const ALLOWED_WHEN_CLOSED: readonly RegExp[] = [
   /^patches\.v1\.SystemService\//,
   /^patches\.v1\.AuthService\//,
+  // ADR 0044: a signed-out visitor starts the demo / asks for an invite on a closed node.
+  /^patches\.v1\.OnboardingService\//,
   /^patches\.v1\.NodeService\/GetNodeInfo$/,
   /^patches\.v1\.NodeService\/GetNodePolicy$/,
   // Audit S-M2: a suspended account must still reach its notices and the appeal flow (spec
@@ -55,6 +57,7 @@ const ALLOWED_WHEN_CLOSED: readonly RegExp[] = [
   // fallback pairing `RequestContextInterceptor`'s own `rpcPath` uses.
   /^SystemController\//,
   /^AuthController\//,
+  /^OnboardingController\//,
   /^NodeController\/getNodeInfo$/,
   /^NodeController\/getNodePolicy$/,
   /^AppealController\//,

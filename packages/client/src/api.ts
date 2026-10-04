@@ -15,6 +15,7 @@ import {
   ModerationService,
   NodeService,
   NotificationService,
+  OnboardingService,
   PageService,
   PostService,
   PrivacyService,
@@ -78,6 +79,8 @@ export interface PatchesApi {
   readonly appeals: Client<typeof AppealService>;
   /** Amendment C: privacy notice ack, discoverability prefs, export, deletion. */
   readonly privacy: Client<typeof PrivacyService>;
+  /** Landing-page onboarding: the per-visitor sandbox demo and invite requests (ADR 0044). */
+  readonly onboarding: Client<typeof OnboardingService>;
   readonly session: SessionManager;
 }
 
@@ -122,6 +125,8 @@ export function createPatchesApi(options: CreatePatchesApiOptions): PatchesApi {
     labels: bind(LabelService, UNARY_DEADLINE_MS),
     appeals: bind(AppealService, UNARY_DEADLINE_MS),
     privacy: bind(PrivacyService, UNARY_DEADLINE_MS),
+    // StartDemo seeds a sandbox (posts, follows, likes) in one call: give it the long auth budget.
+    onboarding: bind(OnboardingService, AUTH_DEADLINE_MS),
     session: new SessionManager(
       options.credentialStore === undefined
         ? { transport: options.transport }

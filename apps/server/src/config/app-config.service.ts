@@ -93,6 +93,27 @@ export class AppConfigService {
     return this.get('INVITE_ONLY');
   }
 
+  /** ADR 0044: true only on the dedicated demo node. */
+  get demoMode(): boolean {
+    return this.get('DEMO_MODE');
+  }
+
+  get demoTtlMinutes(): number {
+    return this.get('DEMO_TTL_MINUTES');
+  }
+
+  get demoStartsPerPeerPerHour(): number {
+    return this.get('DEMO_STARTS_PER_PEER_PER_HOUR');
+  }
+
+  get demoMaxLiveSandboxes(): number {
+    return this.get('DEMO_MAX_LIVE_SANDBOXES');
+  }
+
+  get demoSweepIntervalSeconds(): number {
+    return this.get('DEMO_SWEEP_INTERVAL_SECONDS');
+  }
+
   /** Canonical domain of this node (spec §163, §169). */
   get nodeDomain(): string {
     return this.get('NODE_DOMAIN');

@@ -17,5 +17,6 @@ import { ReactionsService } from './reaction.service.js';
   imports: [AuthModule, PostModule, NotificationsModule, FederationModule],
   controllers: [ReactionController],
   providers: [ReactionsService],
+  exports: [ReactionsService],
 })
 export class ReactionModule {}

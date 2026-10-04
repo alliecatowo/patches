@@ -27,6 +27,9 @@ export async function prepareServerEnv(): Promise<void> {
   process.env.NODE_DOMAIN ??= TEST_NODE_DOMAIN;
   // The reference node's alpha policy (§33), and the behaviour the suite asserts.
   process.env.INVITE_ONLY ??= 'true';
+  // ADR 0044: the suite exercises the demo sandbox (`onboarding.integration.test.ts`); the flag
+  // only enables `StartDemo` and a background sweep, and changes nothing else about auth.
+  process.env.DEMO_MODE ??= 'true';
   // Exercise the capability-gated Phase 11 community creation surface in integration tests.
   // Production retains the schema default (`false`) unless an operator opts in.
   process.env.CAN_CREATE_COMMUNITY ??= 'true';

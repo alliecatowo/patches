@@ -551,6 +551,16 @@ export type {
 } from './generated/patches/v1/privacy.js';
 export type { AccountExportStatus } from './generated/patches/v1/privacy.js';
 
+export type {
+  DemoFriend,
+  OnboardingServiceClient,
+  OnboardingServiceController,
+  RequestInviteRequest,
+  RequestInviteResponse,
+  StartDemoRequest,
+  StartDemoResponse,
+} from './generated/patches/v1/onboarding.js';
+
 export {
   ACCOUNT_EXPORT_STATUS,
   APPEAL_STATUS,
@@ -597,6 +607,7 @@ export {
   createNotificationClient,
   createPageClient,
   createPostClient,
+  createOnboardingClient,
   createPrivacyClient,
   createReactionClient,
   createSocialGraphClient,
@@ -631,6 +642,7 @@ export type {
   NotificationGrpcClient,
   PageGrpcClient,
   PostGrpcClient,
+  OnboardingGrpcClient,
   PrivacyGrpcClient,
   ReactionGrpcClient,
   SocialGraphGrpcClient,

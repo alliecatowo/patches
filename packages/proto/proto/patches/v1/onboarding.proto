@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package patches.v1;
+
+import "google/protobuf/timestamp.proto";
+import "patches/v1/auth.proto";
+
+// Pre-account onboarding (ADR 0044): the two things a signed-out visitor to the landing page
+// can do without an invite. Both are unauthenticated and both are rate-limited per peer.
+service OnboardingService {
+  // Creates a throwaway sandbox account, pre-populated with a handful of fake friends and
+  // their posts, and returns live sessions for it. Only answers on a node started with
+  // `DEMO_MODE=true` (the dedicated demo node, never the production node): anywhere else it
+  // fails with `DEMO_DISABLED` (FAILED_PRECONDITION). The sandbox and every row it owns are
+  // hard-deleted when `expires_at` passes; until then it is reachable only through the returned
+  // tokens, which stop working at that instant even if the rows are still there.
+  rpc StartDemo(StartDemoRequest) returns (StartDemoResponse);
+
+  // Records a request for an invite (landing-page form). Stored for the operator to read with
+  // `patches-admin invite-requests list`; it never creates an account, never sends mail, and
+  // is deliberately dumb so it cannot be turned into a spam relay.
+  rpc RequestInvite(RequestInviteRequest) returns (RequestInviteResponse);
+}
+
+message StartDemoRequest {}
+
+// One of the sandbox's fake friends. The session is handed to the visitor's browser so it can
+// seal the seeded direct messages with the real client E2EE runtime: the node never holds a
+// private key, so the ciphertext in the sandbox is encrypted to the visitor's own device
+// exactly like ordinary traffic. The friend accounts exist only inside this sandbox.
+message DemoFriend {
+  Session session = 1;
+}
+
+message StartDemoResponse {
+  // The visitor's own sandbox account.
+  Session session = 1;
+  repeated DemoFriend friends = 2;
+  // After this instant every token above is dead and the account is deleted.
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message RequestInviteRequest {
+  // How to reach the requester: an email address.
+  string contact = 1;
+  // Optional free text, at most 500 characters.
+  string message = 2;
+}
+
+message RequestInviteResponse {}

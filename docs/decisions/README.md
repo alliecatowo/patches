@@ -64,6 +64,7 @@ deliberately does **not** authorize without owner sign-off.
 | [0043](./0043-e2ee-client-verified-group-membership.md)               | E2EE group membership is verified by the client against the signed transcript                         | Accepted           |
 | [0041](./0041-e2ee-device-certificate-renewal.md)                     | E2EE device certificate renewal is device replacement                                                 | Accepted           |
 | [0042](./0042-e2ee-session-recovery.md)                               | E2EE session recovery: per-handshake sessions, deterministic glare, explicit reset                    | Accepted           |
+| [0044](./0044-demo-sandbox-is-its-own-node.md)                        | The per-visitor demo sandbox runs on its own node and database                                        | Accepted           |
 
 ## Template
 

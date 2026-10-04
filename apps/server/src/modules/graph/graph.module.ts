@@ -19,5 +19,6 @@ import { GraphService } from './graph.service.js';
   imports: [AuthModule, NotificationsModule, FederationModule, ActorModule],
   controllers: [GraphController],
   providers: [GraphService, FollowRequestRateLimitService],
+  exports: [GraphService],
 })
 export class GraphModule {}

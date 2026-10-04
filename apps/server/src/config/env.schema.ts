@@ -78,6 +78,29 @@ const envObjectSchema = z.object({
    */
   GRPC_REFLECTION: booleanish().default(false),
   /**
+   * ADR 0044: turns this process into the dedicated **demo node**. When true,
+   * `OnboardingService.StartDemo` creates throwaway sandbox accounts, a background sweep
+   * hard-deletes expired ones, and nothing else about auth changes (registration stays
+   * invite-gated). Default false, and it must stay false on the production node: a production
+   * database never holds a sandbox row, which is what makes the sandbox invisible to real
+   * users by construction rather than by a filter.
+   */
+  DEMO_MODE: booleanish().default(false),
+  /** Lifetime of a demo sandbox, in minutes. */
+  DEMO_TTL_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(5)
+    .max(24 * 60)
+    .default(60),
+  /** Sandboxes one peer may start per hour (IPv6 peers are aggregated to their /64). */
+  DEMO_STARTS_PER_PEER_PER_HOUR: z.coerce.number().int().min(1).max(100).default(4),
+  /** Global ceiling on live sandboxes, so a flood can never grow the database without bound. */
+  DEMO_MAX_LIVE_SANDBOXES: z.coerce.number().int().min(1).max(10_000).default(150),
+  /** How often the in-process sweep deletes expired sandboxes while the node is awake. */
+  DEMO_SWEEP_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3600).default(120),
+
+  /**
    * Trust the proxy-supplied client address (`fly-client-ip`, then the first
    * `x-forwarded-for` hop) as the caller's peer for rate limiting. Only enable behind a
    * proxy that always sets/overwrites those headers (Fly's edge does); off by default so a
