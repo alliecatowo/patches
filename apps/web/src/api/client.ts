@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { ACTIVE_API_BASE, DEMO_ACTIVE, clearDemoLocalState } from '../demo/demo-mode.js';
 import { getAccount, removeAccount as removeSavedAccount, saveAccount } from './accounts.js';
 import { LocalStorageCredentialStore } from './credentialStore.js';
+import { queryClient } from '../lib/query-client.js';
 import { clearActorSession, setActorSession } from './session.js';
 
 /**
@@ -51,6 +52,7 @@ export async function establishSession(session: Session): Promise<void> {
   if (!session.actor) return;
   const tokens = { accessToken: session.accessToken, refreshToken: session.refreshToken };
   await sessionManager.setSession(tokens);
+  queryClient.clear();
   setActorSession(session.actor);
   // A throwaway sandbox account is never added to the saved-accounts switcher.
   if (!DEMO_ACTIVE) saveAccount(session.actor, tokens);
@@ -66,6 +68,7 @@ export async function switchToAccount(userId: string): Promise<boolean> {
   const account = getAccount(userId);
   if (account === undefined) return false;
   await sessionManager.setSession(account.tokens);
+  queryClient.clear();
   setActorSession(account.actor);
   return true;
 }
@@ -74,6 +77,7 @@ export async function switchToAccount(userId: string): Promise<boolean> {
  * themselves first if they want to invalidate the refresh token server-side too. */
 export async function signOut(): Promise<void> {
   await sessionManager.clear();
+  queryClient.clear();
   clearActorSession();
 }
 
