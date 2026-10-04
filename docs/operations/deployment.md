@@ -50,6 +50,9 @@ disable the App installation itself (`gh api .../installations` needs
 `admin:org`/app-installation scope this token lacks; `flyctl` has no CLI surface for
 it — checked `flyctl apps --help`, `flyctl deploy --help`).
 
+**The demo node** (`patches-demo`, ADR 0044) deploys from the same workflow in a separate
+`deploy-demo` job after production; see [demo-node.md](./demo-node.md).
+
 **Deploying by hand in an incident** (either path failed, or both need to be
 bypassed): the exact manual sequence is still the "First deploy" transcript below —
 `flyctl deploy --config infra/fly/fly.toml --remote-only`, run from a shell with

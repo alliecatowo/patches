@@ -47,6 +47,8 @@ jobs:
         run: pnpm --filter @patches/web... build
         env:
           VITE_PATCHES_API_BASE: ${{ vars.WEB_API_BASE }}
+          # ADR 0044: where "Try the demo" sends the visitor. Unset = demo button hidden.
+          VITE_PATCHES_DEMO_API_BASE: ${{ vars.WEB_DEMO_API_BASE }}
           GITHUB_SHA: ${{ env.TARGET_SHA }}
 
       # B-168: fails the job (and therefore blocks the deploy step below) if any built
@@ -68,6 +70,7 @@ jobs:
         run: pnpm --filter @patches/web run bundle:analyze
         env:
           VITE_PATCHES_API_BASE: ${{ vars.WEB_API_BASE }}
+          VITE_PATCHES_DEMO_API_BASE: ${{ vars.WEB_DEMO_API_BASE }}
           GITHUB_SHA: ${{ env.TARGET_SHA }}
 
       - name: Upload bundle report

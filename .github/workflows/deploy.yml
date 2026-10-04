@@ -180,3 +180,84 @@ jobs:
             echo "- App: \`patches-social\` (server + worker process groups)"
             echo "- Health check: https://patches-social.fly.dev/healthz"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ADR 0044: the demo node (`patches-demo`, DEMO_MODE=true, its own Neon project) ships from the
+  # same CI-verified commit as production, after production, in its own job so a demo failure can
+  # never turn a good production deploy red. Same gates as `deploy` (`FLY_DEPLOY_ENABLED`).
+  deploy-demo:
+    name: deploy (Fly demo node)
+    needs: deploy
+    if: >-
+      always() && needs.deploy.result == 'success' && vars.FLY_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_DEMO_API_TOKEN || secrets.FLY_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.workflow_run.head_sha }}
+
+      - name: Resolve deployed commit
+        run: echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - name: Set up flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
+
+      - name: Assert fly.demo.toml is the demo node, with only the Connect edge public
+        run: |
+          python3 - <<'PY'
+          import sys
+          import tomllib
+
+          with open("infra/fly/fly.demo.toml", "rb") as f:
+              cfg = tomllib.load(f)
+
+          errors = []
+          if cfg.get("app") != "patches-demo":
+              errors.append(f"app must be patches-demo, got {cfg.get('app')!r}")
+          if cfg.get("env", {}).get("DEMO_MODE") != "true":
+              errors.append("env.DEMO_MODE must be 'true' on the demo node")
+          for svc in cfg.get("services", []):
+              if svc.get("internal_port") != 8080:
+                  errors.append(f"unexpected public service on internal_port={svc.get('internal_port')}")
+          if "worker" in cfg.get("processes", {}):
+              errors.append("the demo node must not run a worker (it could never scale to zero)")
+
+          if errors:
+              print("\n".join(errors), file=sys.stderr)
+              sys.exit(1)
+          print("fly.demo.toml OK: patches-demo, DEMO_MODE=true, Connect edge only, no worker")
+          PY
+
+      - name: Deploy to Fly (demo node)
+        run: |
+          flyctl deploy --config infra/fly/fly.demo.toml --remote-only --ha=false \
+            --depot=auto --depot-scope=org \
+            --build-arg PATCHES_BUILD_SHA="${DEPLOY_SHA}"
+
+      - name: Verify /healthz
+        run: |
+          set -euo pipefail
+          url="https://patches-demo.fly.dev/healthz"
+          for i in $(seq 1 20); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "$url" || echo 000)"
+            if [ "$code" = "200" ]; then
+              echo "healthz OK ($url -> 200) after $i attempt(s)."
+              exit 0
+            fi
+            echo "healthz attempt $i: got $code, retrying in 5s..."
+            sleep 5
+          done
+          echo "healthz did not return 200 from $url after 20 attempts." >&2
+          exit 1
+
+      - name: Deploy summary
+        if: always()
+        run: |
+          {
+            echo "## Demo node deploy"
+            echo "- Commit: \`${DEPLOY_SHA}\`"
+            echo "- App: \`patches-demo\` (server only, scale to zero)"
+            echo "- Health check: https://patches-demo.fly.dev/healthz"
+          } >> "$GITHUB_STEP_SUMMARY"
