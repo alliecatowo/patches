@@ -6,6 +6,7 @@ import { api } from '../api/client.js';
 import { GroupControlTranscript } from '../components/e2ee/GroupControlTranscript.js';
 import { SafetyNumberPanel } from '../components/e2ee/SafetyNumberPanel.js';
 import { useE2ee, useE2eeVaultAccess } from '../e2ee/use-e2ee.js';
+import { webE2ee } from '../e2ee/web-e2ee.js';
 import { useSession } from '../hooks/useSession.js';
 
 /**
@@ -54,6 +55,9 @@ export function MessageSafetyRoute(): JSX.Element {
                 targetHandle={member.actor.handle}
                 transport={transport}
                 vault={vault}
+                onResetAccepted={(accepted) =>
+                  webE2ee().clearIdentityEvent('reset-unverified', accepted)
+                }
               />
             ),
           )}

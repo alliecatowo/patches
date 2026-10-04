@@ -66,6 +66,13 @@ const IDENTITY_WRITE_BUDGETS: readonly WindowBudget[] = [
  * against. */
 const MAILBOX_POLL_PER_MINUTE = 60;
 
+/** One-time-prekey claims (audit P2-H4). A first message to a new contact claims once per target
+ * actor; retries and a handful of new conversations an hour are normal, a loop over victims is
+ * not. Per caller: 30 targets an hour. Per (caller, target): 3 an hour, which covers a lost
+ * response plus a session reset. */
+const OTK_CLAIMS_PER_CALLER_PER_HOUR = 30;
+const OTK_CLAIMS_PER_PAIR_PER_HOUR = 3;
+
 /**
  * Database-backed, per-actor **and** per-peer budgets for `E2eeService`'s abuse-sensitive
  * write paths (ADR 0020 §3/§5: "block/request/rate-limit rules still apply"; audit P1 — none
@@ -118,6 +125,27 @@ export class E2eeRateLimitService {
       MINUTE_MS,
       now,
     );
+  }
+
+  /**
+   * Whether this call may hand out a ONE-TIME prekey for `targetActorId` (audit P2-H4). Never
+   * throws: over budget the claim still serves the signed-prekey-only bundle (ADR 0020 §5's
+   * fallback), so a drain attempt costs the attacker nothing and the victim nothing, while a
+   * legitimate sender is never refused outright. Two independent hourly budgets: per caller
+   * across all targets, and per (caller, target) pair.
+   */
+  async allowOneTimePrekeyClaim(
+    actorId: string,
+    targetActorId: string,
+    now = new Date(),
+  ): Promise<boolean> {
+    const perCaller = await this.store.increment(`e2ee_otk_claim:subject:${actorId}`, HOUR_MS, now);
+    const perPair = await this.store.increment(
+      `e2ee_otk_claim:pair:${actorId}:${targetActorId}`,
+      HOUR_MS,
+      now,
+    );
+    return perCaller <= OTK_CLAIMS_PER_CALLER_PER_HOUR && perPair <= OTK_CLAIMS_PER_PAIR_PER_HOUR;
   }
 
   private async consume(

@@ -37,9 +37,18 @@ import {
   ownMessageRow,
   recordOwnMessage,
 } from '../e2ee/own-messages.js';
+import {
+  acceptPeerIdentityReset,
+  isUnverifiedReset,
+  type ServedIdentityRoot,
+} from '../e2ee/peer-trust.js';
 import { E2eeSessionRuntime } from '../e2ee/runtime-session.js';
 import type { LocalDeviceIdentity } from '../e2ee/local-identity.js';
-import { createRatchetSessionVault, type RatchetSessionVault } from '../e2ee/ratchet-vault.js';
+import {
+  createRatchetSessionVault,
+  loadPeerIdentityPin,
+  type RatchetSessionVault,
+} from '../e2ee/ratchet-vault.js';
 import { VaultCorruptionError, VaultRollbackError } from '../e2ee/vault-errors.js';
 import type { VaultAccount } from '../e2ee/vault-key-providers.js';
 import {
@@ -200,6 +209,15 @@ export interface VaultE2eeSender {
    * Requires an enrolled identity; the screen binding for it is tracked separately.
    */
   resetSession(conversationId: string): Promise<number>;
+  /** Whether `root` is an uncountersigned, strictly newer reset of this peer's pinned identity
+   * (offered for explicit acceptance); false when there is no pin or nothing to accept. */
+  peerResetPending(actorId: string, root: ServedIdentityRoot): Promise<boolean>;
+  /**
+   * Re-pins a peer whose messaging identity was reset without a countersignature (audit
+   * P2-H2). Only ever called from an explicit user confirmation after comparing the new safety
+   * number; `root` is exactly the root that number was computed from.
+   */
+  acceptPeerIdentityReset(actorId: string, root: ServedIdentityRoot): Promise<void>;
   /** This device's durable unread count for `conversationId` (issue #383); `undefined`
    * when this device has not yet set a read point here, in which case the caller falls
    * back to the server-managed `unreadCount`. Requires an open vault. */
@@ -470,6 +488,20 @@ export function createVaultE2eeSender(options: CreateVaultE2eeSenderOptions): Va
       } as const;
       await recordOwnMessage(store, conversationId, record);
       return ownMessageRow(record);
+    },
+    async peerResetPending(actorId: string, root: ServedIdentityRoot): Promise<boolean> {
+      const store = await ensureOpen();
+      const pin = await loadPeerIdentityPin(store, actorId);
+      return pin !== undefined && isUnverifiedReset(pin, root, (options.nowMs ?? Date.now)());
+    },
+    async acceptPeerIdentityReset(actorId: string, root: ServedIdentityRoot): Promise<void> {
+      const store = await ensureOpen();
+      await acceptPeerIdentityReset({
+        vault: store,
+        actorId,
+        root,
+        nowMs: (options.nowMs ?? Date.now)(),
+      });
     },
     async resetSession(conversationId: string): Promise<number> {
       const active = await ensureRuntime();

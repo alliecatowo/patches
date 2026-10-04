@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import {
   Actor,
   Block,
+  ConversationMember,
   E2eeDeviceIdentity as E2eeDeviceIdentityEntity,
   E2eeIdentityRoot as E2eeIdentityRootEntity,
   E2eeOneTimePrekey as E2eeOneTimePrekeyEntity,
@@ -284,6 +285,24 @@ export class E2eePrekeyService {
               .filter((actor) => actor.deletedAt === null)
               .map((actor) => actor.id);
 
+      // One-time prekeys are a drainable resource (audit P2-H4): only a caller who shares the
+      // named conversation with the target may spend one, and only inside the per-caller and
+      // per-pair budgets. Everyone else still gets a valid signed-prekey-only bundle, which the
+      // protocol treats as the normal fallback, so denying the one-time key discloses nothing
+      // and leaves the victim's inventory alone.
+      const memberActorIds = new Set<string>();
+      if (request.conversationId !== '') {
+        const memberRows = await manager.getRepository(ConversationMember).find({
+          where: {
+            conversationId: request.conversationId,
+            actorId: In([actorId, ...targetActorIds]),
+            leftAt: IsNull(),
+          },
+        });
+        for (const row of memberRows) memberActorIds.add(row.actorId);
+      }
+      const callerIsMember = memberActorIds.has(actorId);
+
       const bundles: E2eePrekeyBundle[] = [];
       const rosters: ClaimPrekeyBundlesResponse['rosters'] = [];
 
@@ -303,6 +322,10 @@ export class E2eePrekeyService {
         );
         if (activeEntries.length === 0) continue;
         rosters.push(toProtoRoster(rosterRow, decoded.entries, decoded.rootGeneration));
+        const mayClaimOneTime =
+          callerIsMember &&
+          memberActorIds.has(targetActorId) &&
+          (await this.rateLimits.allowOneTimePrekeyClaim(actorId, targetActorId));
 
         const devices = await manager.getRepository(E2eeDeviceIdentityEntity).find({
           where: activeEntries.map((entry) => ({
@@ -318,7 +341,9 @@ export class E2eePrekeyService {
           });
           if (signedPrekey === null) continue;
 
-          const oneTimePrekey = await this.claimOneOneTimePrekey(manager, device.id);
+          const oneTimePrekey = mayClaimOneTime
+            ? await this.claimOneOneTimePrekey(manager, device.id)
+            : null;
           bundles.push(
             buildBundle(
               targetActorId,

@@ -23,6 +23,7 @@ import { grpcStatusCode } from '../api/errors.js';
 import type { PatchesApi } from '../api/client.js';
 import type { EnrollmentCapability, EnrollmentTransport } from '../e2ee/enrollment.js';
 import type { LocalDeviceIdentity } from '../e2ee/local-identity.js';
+import { isUnverifiedReset, PeerIdentityResetError } from '../e2ee/peer-trust.js';
 import {
   loadPeerIdentityPin,
   savePeerIdentityPin,
@@ -116,15 +117,23 @@ async function loadVerifiedRoster(
     if (bytesEqual(wireRoot.rootBytes, pin.rootBytes)) {
       root = pinnedRoot;
     } else {
-      root = verifyMessagingRoot({
-        rootBytes: wireRoot.rootBytes,
-        selfSignature: wireRoot.selfSignature,
-        ...(wireRoot.previousRootSignature.length === 0
-          ? {}
-          : { previousRootSignature: wireRoot.previousRootSignature }),
-        previousRoot: pinnedRoot,
-        nowMs,
-      });
+      try {
+        root = verifyMessagingRoot({
+          rootBytes: wireRoot.rootBytes,
+          selfSignature: wireRoot.selfSignature,
+          ...(wireRoot.previousRootSignature.length === 0
+            ? {}
+            : { previousRootSignature: wireRoot.previousRootSignature }),
+          previousRoot: pinnedRoot,
+          nowMs,
+        });
+      } catch (error) {
+        // Not a countersigned successor. A self-signed reset at a higher generation is what an
+        // account that lost its old key publishes: surface it for an explicit, user-confirmed
+        // re-trust (`peer-trust.ts`) instead of failing opaquely. Never trusted silently.
+        if (isUnverifiedReset(pin, wireRoot, nowMs)) throw new PeerIdentityResetError(actorId);
+        throw error;
+      }
     }
   }
   const rosterResponse = await api.getDeviceRoster({ actorId }, token);
