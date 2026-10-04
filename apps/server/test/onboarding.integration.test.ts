@@ -25,7 +25,7 @@ import {
   createTestUser,
 } from '@patches/testkit';
 import type { DataSource } from 'typeorm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { DemoSandboxService } from '../src/modules/onboarding/demo-sandbox.service.js';
 import { createServerTestDataSource } from './support/database.js';
@@ -42,6 +42,13 @@ import {
  * claims: a visitor gets a seeded, working account; the expiry holds even before the sweep runs;
  * and the sweep leaves no row behind while never touching a real account.
  */
+
+// Must run before the Nest config module is evaluated (imports are hoisted above ordinary
+// statements, `vi.hoisted` is not): `DEMO_MODE` is read once, at config-module load. Scoped to
+// this file so no other integration suite boots with the demo sweep or its franking-key bootstrap.
+vi.hoisted(() => {
+  process.env.DEMO_MODE = 'true';
+});
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 if (testDatabaseUrl === undefined || testDatabaseUrl.length === 0) {
@@ -104,6 +111,11 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
 
       expect(demo.session?.actor?.handle).toMatch(/^you_[0-9a-f]{6}$/);
       expect(demo.friends).toHaveLength(3);
+      // The node mints its own franking era (it runs no worker), which is what turns E2EE on.
+      const eras = await dataSource.query<Array<{ n: string }>>(
+        'SELECT COUNT(*) AS n FROM e2ee_node_franking_keys',
+      );
+      expect(Number(eras[0]?.n)).toBeGreaterThanOrEqual(1);
       expect(demo.expiresAt).toBeDefined();
       const accessToken = demo.session?.accessToken ?? '';
 

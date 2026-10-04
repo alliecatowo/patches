@@ -19,8 +19,8 @@ new paid infrastructure is added.
 
 1. **The sandbox lives on a second node (`patches-demo`, `DEMO_MODE=true`) with its own database, not in the
    production database behind a filter.** The demo node runs the same image, the same migrations and the same
-   server code, against a separate Postgres database (a second database inside the existing Neon project, so
-   no new Neon project or plan). The production node never holds a sandbox row, and the demo node never holds
+   server code, against its own Neon project (`patches-demo`, free plan, own role and password), so the demo
+   node holds no credential that can reach the production database. The production node never holds a sandbox row, and the demo node never holds
    a real one. "Invisible to real users" and "cannot reach or message them" are therefore properties of where
    the data lives, not of a predicate that every present and future query must remember. The alternative
    (a `sandbox_id` cohort column checked in each search, feed, thread, follow, mention, notification and E2EE
@@ -52,8 +52,10 @@ new paid infrastructure is added.
 
 ## Consequences
 
-- One more Fly app (`patches-demo`, scale to zero, no volume) and one more database in the existing Neon
-  project. A stopped Fly machine costs only its root filesystem; no new paid plan is needed.
+- One more Fly app (`patches-demo`, scale to zero, no volume) and one more free Neon project. A stopped Fly
+  machine costs only its root filesystem; no new paid plan is needed.
+- The demo node runs no worker, which is what normally mints the franking-key era that turns E2EE on, so it
+  mints era 1 itself on first boot (`ensureFrankingKey`) and reloads its key ring.
 - The demo node needs its own secrets (JWT signing keys, auth-code and franking keys). Tokens issued by one
   node are never valid on the other, by design.
 - `.github/workflows/deploy.yml` deploys both apps from the same CI-verified commit; `web.yml` builds the web

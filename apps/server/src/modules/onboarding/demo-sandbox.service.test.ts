@@ -21,6 +21,7 @@ function build(config: Partial<Record<string, unknown>>, query = vi.fn()) {
     {} as never,
     {} as never,
     {} as never,
+    {},
   );
   return { service, store, query };
 }

@@ -1,13 +1,14 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import {
+  Inject,
   Injectable,
   Logger,
   type OnApplicationBootstrap,
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import { Actor, User } from '@patches/database';
+import { Actor, latestNodeFrankingKey, rotateNodeFrankingKey, User } from '@patches/database';
 import { type DataSource, type EntityManager } from 'typeorm';
 
 import { getRequestContext } from '../../common/context/request-context.js';
@@ -18,6 +19,7 @@ import { toActorSummary, type SessionEnvelope } from '../auth/auth.dto.js';
 import { createActorAndUser } from '../auth/auth.service.js';
 import { DbRateLimitStore } from '../auth/db-rate-limit-store.service.js';
 import { TokenService } from '../auth/token.service.js';
+import { NODE_FRANKING_KEY_RING } from '../e2ee/node-franking-key-ring.js';
 import { GraphService } from '../graph/graph.service.js';
 import { PostService } from '../posts/post.service.js';
 import { ReactionsService } from '../reactions/reaction.service.js';
@@ -83,10 +85,13 @@ export class DemoSandboxService implements OnApplicationBootstrap, OnModuleDestr
     private readonly posts: PostService,
     private readonly graph: GraphService,
     private readonly reactions: ReactionsService,
+    @Inject(NODE_FRANKING_KEY_RING)
+    private readonly frankingKeys: { refresh?: () => Promise<void> },
   ) {}
 
   onApplicationBootstrap(): void {
     if (!this.config.demoMode) return;
+    void this.ensureFrankingKey();
     const run = (): void => {
       void this.sweep();
     };
@@ -95,6 +100,30 @@ export class DemoSandboxService implements OnApplicationBootstrap, OnModuleDestr
     // Never keep a node awake just to sweep: the sandbox expiry is enforced on every request,
     // so a sleeping node loses nothing, and the next boot sweeps first thing.
     this.sweepTimer.unref();
+  }
+
+  /**
+   * E2EE is enabled on a node only once it holds a franking signing key (ADR 0036), and eras
+   * are normally minted by the worker's rotation job. The demo node runs no worker (it must
+   * scale to zero and a worker has no ingress to wake it), so it mints the first era itself,
+   * once, then asks the key ring to reload. The key persists; later boots find it and do nothing.
+   */
+  async ensureFrankingKey(): Promise<void> {
+    try {
+      const minted = await this.dataSource.transaction(async (manager) => {
+        if ((await latestNodeFrankingKey(manager)) !== undefined) return false;
+        await rotateNodeFrankingKey(manager);
+        return true;
+      });
+      if (minted) {
+        this.logger.log('minted the demo node franking key (era 1)');
+        await this.frankingKeys.refresh?.();
+      }
+    } catch (error) {
+      // Another boot raced us to era 1 (unique violation) or the database is not ready; either
+      // way the existing key (or the next boot) covers it.
+      this.logger.warn(`demo franking key bootstrap skipped: ${String(error)}`);
+    }
   }
 
   onModuleDestroy(): void {

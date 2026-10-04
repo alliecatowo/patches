@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module.js';
+import { E2eeModule } from '../e2ee/e2ee.module.js';
 import { GraphModule } from '../graph/graph.module.js';
 import { PostModule } from '../posts/post.module.js';
 import { ReactionModule } from '../reactions/reaction.module.js';
@@ -12,7 +13,7 @@ import { OnboardingController } from './onboarding.controller.js';
  * invite requests. The sandbox only does anything when `DEMO_MODE=true`.
  */
 @Module({
-  imports: [AuthModule, PostModule, GraphModule, ReactionModule],
+  imports: [AuthModule, E2eeModule, PostModule, GraphModule, ReactionModule],
   controllers: [OnboardingController],
   providers: [DemoSandboxService],
 })
