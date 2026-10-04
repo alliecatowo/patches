@@ -242,11 +242,17 @@ async function resolveActorRules(
 
   const idByRawValue = new Map<string, string>();
   for (const actor of resolvedById) idByRawValue.set(actor.id, actor.id);
+  // O(M + N) hash map lookup instead of O(M * N) array search in loop
+  const actorIdByNormalizedHandle = new Map<string, string>();
+  for (const actor of resolvedByHandle) {
+    actorIdByNormalizedHandle.set(actor.handleNormalized, actor.id);
+  }
   for (let i = 0; i < handleValues.length; i += 1) {
     const raw = handleValues[i];
     const normalized = normalizedHandles[i];
-    const actor = resolvedByHandle.find((row) => row.handleNormalized === normalized);
-    if (raw !== undefined && actor !== undefined) idByRawValue.set(raw, actor.id);
+    const actorId =
+      normalized !== undefined ? actorIdByNormalizedHandle.get(normalized) : undefined;
+    if (raw !== undefined && actorId !== undefined) idByRawValue.set(raw, actorId);
   }
 
   const resolved: EffectiveFilterRule[] = [];
