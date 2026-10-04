@@ -1,32 +1,18 @@
-import { useEffect, useState, type JSX } from 'react';
+import { lazy, Suspense, useEffect, useState, type JSX } from 'react';
 
 import { leaveDemo } from '../api/client.js';
-import { useSession } from '../hooks/useSession.js';
 import { activeDemo, DEMO_ACTIVE, loadSeedPlan } from '../demo/demo-mode.js';
-import { useDemoSeeding } from '../demo/useDemoSeeding.js';
 import styles from './DemoBanner.module.css';
+
+/** The seeder pulls in the whole E2EE runtime; only a freshly started sandbox needs it, so it
+ * stays out of the main chunk. */
+const SeedStatus = lazy(() => import('./DemoSeedStatus.js'));
 
 /** "57 minutes", "4 minutes", "under a minute". */
 export function formatRemaining(ms: number): string {
   const minutes = Math.ceil(ms / 60_000);
   if (minutes <= 1) return 'under a minute';
   return `${String(minutes)} minutes`;
-}
-
-function SeedStatus(): JSX.Element | null {
-  const state = useDemoSeeding(useSession());
-  if (state === 'running') {
-    return <span role="status"> Sealing your encrypted inbox…</span>;
-  }
-  if (state === 'failed') {
-    return (
-      <span role="status">
-        {' '}
-        The sample messages could not be set up, but everything else works.
-      </span>
-    );
-  }
-  return null;
 }
 
 /**
@@ -60,7 +46,12 @@ export function DemoBanner(): JSX.Element | null {
     <aside className={styles['banner']} aria-label="Demo sandbox">
       <p>
         <strong>Demo sandbox.</strong> Everything here is fake and is deleted in{' '}
-        {formatRemaining(state.expiresAtMs - now)}.{seeding ? <SeedStatus /> : null}
+        {formatRemaining(state.expiresAtMs - now)}.
+        {seeding ? (
+          <Suspense fallback={null}>
+            <SeedStatus />
+          </Suspense>
+        ) : null}
       </p>
       <button type="button" className={styles['leave']} onClick={leaveDemo}>
         Leave demo
