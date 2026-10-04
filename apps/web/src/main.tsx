@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { StrictMode, useEffect, useState, type ReactElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
@@ -11,10 +11,10 @@ import './lib/theme.js';
 import { useSessionKeepAlive } from './hooks/useSessionKeepAlive.js';
 import { installGlobalCollectors } from './lib/diagnosticsReporter.js';
 import { log } from './lib/log.js';
-import { queryRetryDelay, shouldRetryQuery } from './lib/queryRetry.js';
 import { initWebVitals } from './lib/webVitals.js';
 import { registerServiceWorker } from './pwa/serviceWorkerRegistration.js';
 import { router } from './router.js';
+import { queryClient } from './lib/query-client.js';
 
 /**
  * B-157: dynamic `import()` (not a static import of `@tanstack/react-query-devtools`)
@@ -63,17 +63,6 @@ Object.assign(window, {
 log('info', 'patches web boot', {
   version: __PATCHES_WEB_VERSION__,
   builtAt: __PATCHES_WEB_BUILT_AT__,
-});
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: shouldRetryQuery,
-      retryDelay: queryRetryDelay,
-      staleTime: 15_000,
-      refetchOnWindowFocus: false,
-    },
-  },
 });
 
 const container = document.getElementById('root');
