@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { ConversationSecurityMode } from '@patches/proto/es';
@@ -252,14 +252,23 @@ export function MessageThreadRoute(): JSX.Element {
             <ThreadNotice>{requiredConversationDisclosure('E2EE_V1')}</ThreadNotice>
           ) : null}
 
-          {memberIdentityEvents.map((event) => (
-            <ThreadNotice key={event.kind + event.actorId} tone="warning">
-              {event.kind === 'first-seen'
-                ? 'This is the first message to this identity on this device — it is not verified yet. ' +
-                  'Confirm it with them out-of-band before trusting this conversation.'
-                : 'This member rotated their messaging identity. The rotation was verified against their previous key.'}
-            </ThreadNotice>
-          ))}
+          {memberIdentityEvents.map((event) =>
+            event.kind === 'reset-unverified' ? (
+              <ThreadNotice key={event.kind + event.actorId} tone="alert" role="alert">
+                This contact reset their messaging identity without a signature from their previous
+                key, so messages with them are paused. Compare safety numbers with them, then accept
+                the new identity on the{' '}
+                <Link to={`/messages/${conversationId}/safety`}>verification page</Link>.
+              </ThreadNotice>
+            ) : (
+              <ThreadNotice key={event.kind + event.actorId} tone="warning">
+                {event.kind === 'first-seen'
+                  ? 'This is the first message to this identity on this device — it is not verified yet. ' +
+                    'Confirm it with them out-of-band before trusting this conversation.'
+                  : 'This member rotated their messaging identity. The rotation was verified against their previous key.'}
+              </ThreadNotice>
+            ),
+          )}
 
           {peerSecurityStatus.status === 'identityChanged' ? (
             <ThreadNotice tone="alert" role="alert">

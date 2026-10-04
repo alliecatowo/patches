@@ -1,9 +1,16 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 
-import { safetyNumber } from '@patches/crypto';
+import { generateSigningKeyPair, safetyNumber } from '@patches/crypto';
 
-import { enrollThisDevice } from '../../e2ee/enrollment.js';
+import {
+  buildIdentityRootWire,
+  buildRosterWire,
+  enrollRequestFromRecord,
+  enrollThisDevice,
+  generateEnrollment,
+} from '../../e2ee/enrollment.js';
+import { loadPeerIdentityPin, savePeerIdentityPin } from '../../e2ee/vault.js';
 import { createFakeE2eeNode, fakeTransport, memoryVault } from '../../e2ee/test-support.js';
 import { SafetyNumberPanel } from './SafetyNumberPanel.js';
 
@@ -81,5 +88,80 @@ describe('SafetyNumberPanel', () => {
     );
 
     expect(await screen.findByText(/Could not retrieve identity keys/u)).toBeInTheDocument();
+  });
+
+  it('offers an explicit, user-confirmed re-trust after an uncountersigned reset (P2-H2)', async () => {
+    const node = createFakeE2eeNode();
+    const transportA = fakeTransport({ actorId: ACTOR_A, node });
+    const vaultA = memoryVault();
+    await enrollThisDevice({
+      actorId: ACTOR_A,
+      transport: transportA,
+      vault: vaultA,
+      nowMs: Date.now,
+    });
+    const transportB = fakeTransport({ actorId: ACTOR_B, node });
+    await enrollThisDevice({
+      actorId: ACTOR_B,
+      transport: transportB,
+      vault: memoryVault(),
+      nowMs: Date.now,
+    });
+
+    // A pinned B's first identity.
+    const firstRoot = node.rootByActor.get(ACTOR_B);
+    const firstRoster = node.rosterByActor.get(ACTOR_B)?.roster;
+    if (firstRoot === undefined || firstRoster === undefined) throw new Error('setup');
+    await savePeerIdentityPin(vaultA, ACTOR_B, {
+      rootBytes: firstRoot.rootBytes,
+      selfSignature: firstRoot.selfSignature,
+      rosterSequence: Number(firstRoster.sequence),
+      rosterDigest: firstRoster.digest,
+    });
+
+    // B loses its key and resets: a generation-2 root, self-signed only.
+    const nowMs = Date.now();
+    const reset = generateEnrollment({
+      actorId: ACTOR_B,
+      nowMs,
+      root: { ...generateSigningKeyPair(), createdAtMs: nowMs - 1000, generation: 2 },
+    }).record;
+    node.rootByActor.set(ACTOR_B, buildIdentityRootWire(reset.identity.ownRoster.root));
+    const resetCertificate = enrollRequestFromRecord(reset).certificate;
+    if (resetCertificate === undefined) throw new Error('setup');
+    node.rosterByActor.set(ACTOR_B, {
+      roster: buildRosterWire(reset.identity.ownRoster),
+      certificates: [resetCertificate],
+    });
+
+    const accepted = vi.fn();
+    render(
+      <SafetyNumberPanel
+        myActorId={ACTOR_A}
+        targetActorId={ACTOR_B}
+        targetHandle="bee"
+        transport={transportA}
+        vault={vaultA}
+        onResetAccepted={accepted}
+      />,
+    );
+
+    const accept = await screen.findByRole('button', { name: 'Accept new identity' });
+    // Never silent, never one click: the box must be ticked first.
+    expect(accept).toBeDisabled();
+    fireEvent.click(accept);
+    expect(accepted).not.toHaveBeenCalled();
+    expect((await loadPeerIdentityPin(vaultA, ACTOR_B))?.rootBytes).toEqual(firstRoot.rootBytes);
+
+    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Accept new identity' }));
+    await waitFor(() => expect(accepted).toHaveBeenCalledWith(ACTOR_B));
+    expect((await loadPeerIdentityPin(vaultA, ACTOR_B))?.rootBytes).toEqual(
+      reset.identity.ownRoster.root.rootBytes,
+    );
+    // Once accepted the reset prompt is gone.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Accept new identity' })).not.toBeInTheDocument(),
+    );
   });
 });

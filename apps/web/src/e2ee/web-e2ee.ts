@@ -205,6 +205,13 @@ class WebE2eeManager {
     for (const listener of this.listeners) listener();
   }
 
+  /** Drops a disclosure once the user has acted on it (e.g. after accepting a peer's reset). */
+  clearIdentityEvent(kind: PeerIdentityEvent['kind'], actorId: string): void {
+    if (!this.identityEvents.delete(`${kind}:${actorId}`)) return;
+    this.identityEventsSnapshot = [...this.identityEvents.values()];
+    for (const listener of this.listeners) listener();
+  }
+
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
     return () => {
