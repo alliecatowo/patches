@@ -1,0 +1,34 @@
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+}
+
+.banner p {
+  margin: 0;
+}
+
+.leave {
+  appearance: none;
+  border: 1px solid currentcolor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0.2rem 0.75rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.leave:hover,
+.leave:focus-visible {
+  background: var(--accent-fg);
+  color: var(--accent);
+}

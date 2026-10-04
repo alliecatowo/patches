@@ -4,6 +4,7 @@ import { createPatchesApi, isDefinitiveAuthFailure, SessionManager } from '@patc
 import { AuthService, type Session } from '@patches/proto/es';
 import { toast } from 'sonner';
 
+import { ACTIVE_API_BASE, DEMO_ACTIVE, clearDemoLocalState } from '../demo/demo-mode.js';
 import { getAccount, removeAccount as removeSavedAccount, saveAccount } from './accounts.js';
 import { LocalStorageCredentialStore } from './credentialStore.js';
 import { clearActorSession, setActorSession } from './session.js';
@@ -11,9 +12,10 @@ import { clearActorSession, setActorSession } from './session.js';
 /**
  * Connect protocol base URL. Dev proxies `/api` to the live node (vite.config.ts)
  * to sidestep CORS not yet being configured server-side for a web origin;
- * production sets `VITE_PATCHES_API_BASE` to the real node's public origin.
+ * production sets `VITE_PATCHES_API_BASE` to the real node's public origin. Inside a demo
+ * sandbox (ADR 0044) this is the demo node instead — see `demo/demo-mode.ts`.
  */
-const BASE_URL = (import.meta.env['VITE_PATCHES_API_BASE'] as string | undefined) ?? '/api';
+const BASE_URL = ACTIVE_API_BASE;
 const CLIENT_NAME = 'web';
 const CLIENT_VERSION = '0.1.0';
 
@@ -50,7 +52,8 @@ export async function establishSession(session: Session): Promise<void> {
   const tokens = { accessToken: session.accessToken, refreshToken: session.refreshToken };
   await sessionManager.setSession(tokens);
   setActorSession(session.actor);
-  saveAccount(session.actor, tokens);
+  // A throwaway sandbox account is never added to the saved-accounts switcher.
+  if (!DEMO_ACTIVE) saveAccount(session.actor, tokens);
 }
 
 /**
@@ -89,7 +92,15 @@ export async function logoutCurrentSession(): Promise<void> {
     if (refreshToken !== undefined) await api.auth.logout({ refreshToken });
   } finally {
     await signOut();
+    // Leaving a sandbox means leaving its node too, which only a fresh page load can do.
+    if (DEMO_ACTIVE) leaveDemo();
   }
+}
+
+/** Ends the demo sandbox locally and reloads onto the landing page (the real node). */
+export function leaveDemo(): void {
+  clearDemoLocalState();
+  window.location.assign('/');
 }
 
 /**
@@ -101,6 +112,11 @@ export async function logoutCurrentSession(): Promise<void> {
  * the sign-out visible immediately instead of silently.
  */
 function notifySessionExpired(): void {
+  if (DEMO_ACTIVE) {
+    // The sandbox ended (its tokens die at the expiry): back to the landing page.
+    leaveDemo();
+    return;
+  }
   toast.error('Your session has expired. Please sign in again.');
   window.location.assign('/login');
 }
