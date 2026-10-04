@@ -190,6 +190,20 @@ describe('ProfileMenu', () => {
     fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(lastLink);
 
+    // Parent re-render with new onClose inline arrow should NOT steal focus back to firstLink
+    const registerLink = screen.getByRole('link', { name: 'Register' });
+    registerLink.focus();
+    expect(document.activeElement).toBe(registerLink);
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ProfileMenu isOpen={true} onClose={() => {}} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(document.activeElement).toBe(registerLink);
+
     // Focus restoration on close
     rerender(
       <QueryClientProvider client={new QueryClient()}>

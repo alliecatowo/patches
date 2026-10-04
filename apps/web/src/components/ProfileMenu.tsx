@@ -29,6 +29,11 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const menuRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -49,7 +54,7 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
 
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
-        onClose();
+        onCloseRef.current();
       } else if (e.key === 'Tab' && menuRef.current) {
         const focusables = menuRef.current.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
@@ -75,7 +80,7 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
       window.removeEventListener('keydown', handleKeyDown);
       previousActiveElement?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
