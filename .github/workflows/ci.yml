@@ -51,7 +51,7 @@ jobs:
       full-ci: ${{ steps.decide.outputs.full-ci }}
       turbo-filter: ${{ steps.decide.outputs.turbo-filter }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: '0'
       - id: decide
@@ -93,7 +93,7 @@ jobs:
     steps:
       # actions/checkout must run before a local composite action (`./...`) can be
       # resolved — it doesn't exist on the runner until the repo is checked out.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: '0'
       - uses: ./.github/actions/setup
@@ -114,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       # buf breaking needs `main`'s history available to diff against.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: '0'
       - uses: ./.github/actions/setup
@@ -149,7 +149,7 @@ jobs:
     needs: plan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: '0'
       - uses: ./.github/actions/setup
@@ -213,7 +213,7 @@ jobs:
       # guaranteed to have a coverage provider configured yet). Never fails the job.
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: coverage
           path: '**/coverage/**'
@@ -262,7 +262,7 @@ jobs:
       # TEST_DATABASE_URL_SERVER like every other server-integration test.
       TEST_DATABASE_URL_FED_B: postgres://patches:patches@localhost:5432/patches_test_fed_b
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup
         with:
           cache-scope: build-test
@@ -336,32 +336,29 @@ jobs:
     name: docker-build (image builds, not pushed)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: infra/docker/Dockerfile
-          push: false
-          build-args: PATCHES_BUILD_SHA=${{ github.sha }}
-          # No gha layer cache on purpose: the Dockerfile's `pnpm install --offline` relies on
-          # BuildKit cache *mounts* (pnpm metadata), which are not part of cached layers. A layer
-          # cache hit on the fetch step leaves the mounts empty on a fresh runner and the offline
-          # install fails with ERR_PNPM_NO_OFFLINE_META. Always build cold.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Plain `docker build` (BuildKit is the runner's default builder), no buildx/build-push
+      # actions: nothing here needs them.
+      - name: Build the production image (not pushed)
+        run: docker build -f infra/docker/Dockerfile --build-arg PATCHES_BUILD_SHA=${{ github.sha }} .
+        # No gha layer cache on purpose: the Dockerfile's `pnpm install --offline` relies on
+        # BuildKit cache *mounts* (pnpm metadata), which are not part of cached layers. A layer
+        # cache hit on the fetch step leaves the mounts empty on a fresh runner and the offline
+        # install fails with ERR_PNPM_NO_OFFLINE_META. Always build cold.
 
   actionlint:
     name: actionlint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: jdx/mise-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
         with:
           version: 2026.8.1
           install: true
-          cache: true
-        env:
           # Only need the actionlint binary here — no workspace install, no Node/pnpm.
-          MISE_DISABLE_TOOLS: node,pnpm,docker-compose
+          install_args: actionlint
+          cache: true
+          env: false
       - run: actionlint .github/workflows/*.yml
 
   ci-ok:

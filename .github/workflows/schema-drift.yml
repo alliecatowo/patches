@@ -75,7 +75,7 @@ jobs:
       # `pnpm db:migrate` (TypeORM) and the drift script (atlas).
       DATABASE_URL: postgres://patches:patches@localhost:5432/patches_drift
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup
 
       # Not in mise.toml (single-purpose CI tool), so pin it here: exact
@@ -126,7 +126,7 @@ jobs:
     env:
       DATABASE_URL: postgres://patches:patches@localhost:5432/patches_drift
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - uses: ./.github/actions/setup
 
       - name: Install atlas (community edition, pinned)
