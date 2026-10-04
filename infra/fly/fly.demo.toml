@@ -48,6 +48,9 @@ kill_timeout = "30s"
   EMAIL_PROVIDER = "console"
   EMAIL_FROM = "Patches demo <noreply@patches-demo.fly.dev>"
   DEMO_MODE = "true"
+  # StartDemo seeds a visitor, three friends, follows, posts and likes over many round trips to
+  # Neon; measured live it exceeds the default 10s RPC deadline, so allow a minute.
+  RPC_TIMEOUT_MS = "60000"
   DEMO_TTL_MINUTES = "60"
   DEMO_STARTS_PER_PEER_PER_HOUR = "4"
   DEMO_MAX_LIVE_SANDBOXES = "150"
