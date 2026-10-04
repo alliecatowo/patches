@@ -43,6 +43,7 @@ import { FollowRequest } from './follow-request.entity.js';
 import { GuestbookEntry } from './guestbook-entry.entity.js';
 import { InboxActivity } from './inbox-activity.entity.js';
 import { Invite } from './invite.entity.js';
+import { InviteRequest } from './invite-request.entity.js';
 import { Label } from './label.entity.js';
 import { Labeler } from './labeler.entity.js';
 import { LabelerSubscription } from './labeler-subscription.entity.js';
@@ -99,6 +100,7 @@ export const ALL_ENTITIES = [
   SshLoginChallenge,
   WebauthnChallenge,
   Invite,
+  InviteRequest,
   OutboxJob,
   Media,
   Post,

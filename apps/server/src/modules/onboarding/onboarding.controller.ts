@@ -10,9 +10,9 @@ import {
   type StartDemoResponse,
 } from '@patches/proto/nest';
 
-import { AppError } from '../../common/errors/app-error.js';
 import { toProtoSession } from '../auth/auth.mapper.js';
 import { DemoSandboxService } from './demo-sandbox.service.js';
+import { InviteRequestService } from './invite-request.service.js';
 
 /**
  * Transport adapter for `patches.v1.OnboardingService` (ADR 0044). Both RPCs are
@@ -21,7 +21,10 @@ import { DemoSandboxService } from './demo-sandbox.service.js';
 @Controller()
 @OnboardingServiceControllerMethods()
 export class OnboardingController implements OnboardingServiceController {
-  constructor(private readonly demo: DemoSandboxService) {}
+  constructor(
+    private readonly demo: DemoSandboxService,
+    private readonly inviteRequests: InviteRequestService,
+  ) {}
 
   async startDemo(@Payload() _request: StartDemoRequest): Promise<StartDemoResponse> {
     const sandbox = await this.demo.start();
@@ -32,9 +35,8 @@ export class OnboardingController implements OnboardingServiceController {
     };
   }
 
-  requestInvite(@Payload() _request: RequestInviteRequest): Promise<RequestInviteResponse> {
-    return Promise.reject(
-      new AppError('NOT_IMPLEMENTED', 'Invite requests are not available yet.'),
-    );
+  async requestInvite(@Payload() request: RequestInviteRequest): Promise<RequestInviteResponse> {
+    await this.inviteRequests.request(request.contact, request.message);
+    return {};
   }
 }
