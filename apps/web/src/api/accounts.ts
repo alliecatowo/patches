@@ -2,6 +2,8 @@ import { create, fromJson, toJson, type JsonValue } from '@bufbuild/protobuf';
 import type { StoredSession } from '@patches/client';
 import { ActorSchema, type Actor } from '@patches/proto/es';
 
+import { ACTIVE_API_BASE } from '../demo/demo-mode.js';
+
 /**
  * Client-side multi-account registry (#345) — lets a signed-in user hold several locally
  * saved accounts for the current node and switch between them without re-entering
@@ -26,7 +28,7 @@ import { ActorSchema, type Actor } from '@patches/proto/es';
  */
 
 /** The node origin this registry keys credentials against (mirrors `client.ts`'s BASE_URL). */
-const NODE_ORIGIN = (import.meta.env['VITE_PATCHES_API_BASE'] as string | undefined) ?? '/api';
+const NODE_ORIGIN = ACTIVE_API_BASE;
 const STORAGE_KEY = `patches.web.accounts.${NODE_ORIGIN}.v1`;
 
 /** Secret-free profile metadata — the only account data render code ever sees. */

@@ -31,10 +31,17 @@ vi.mock('../hooks/useSession.js', () => ({
   useSession: mockUseSession,
 }));
 
+// The landing page is its own lazy chunk with its own tests; here only the routing decision
+// (who sees it, where) is under test.
+vi.mock('./LandingRoute.js', () => ({
+  LandingRoute: () => <h1>Landing page</h1>,
+}));
+
 const { RootLayout } = await import('./RootLayout.js');
 
 function renderLayout(
   routeContent: ReactElement = <p>Route content</p>,
+  initialPath = '/search',
 ): ReturnType<typeof render> {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // `createMemoryRouter`/`RouterProvider` (matching `router.tsx`'s real object-route
@@ -53,7 +60,7 @@ function renderLayout(
         ],
       },
     ],
-    { initialEntries: ['/'] },
+    { initialEntries: [initialPath] },
   );
   const tree: ReactElement = (
     <QueryClientProvider client={queryClient}>
@@ -82,6 +89,35 @@ describe('RootLayout', () => {
     mockGetUnreadCount.mockReset();
     mockSignOut.mockReset();
     mockUseSession.mockReset();
+  });
+
+  it('shows signed-out visitors the landing page at the root, without the app shell', async () => {
+    mockUseSession.mockReturnValue(null);
+    renderLayout(<p>Route content</p>, '/');
+
+    expect(await screen.findByRole('heading', { name: 'Landing page' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
+    expect(screen.queryByText('Route content')).toBeNull();
+    expect(mockGetUnreadCount).not.toHaveBeenCalled();
+  });
+
+  it('shows signed-out visitors the app, not the landing page, on every other path', () => {
+    mockUseSession.mockReturnValue(null);
+    renderLayout(<p>Route content</p>, '/search');
+
+    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
+    expect(screen.getByText('Route content')).toBeInTheDocument();
+  });
+
+  it('shows signed-in people the app at the root', () => {
+    mockUseSession.mockReturnValue({
+      actor: { id: 'actor-1', handle: 'allie' } as unknown as Actor,
+    });
+    mockGetUnreadCount.mockResolvedValue({ count: 0 });
+    renderLayout(<p>Route content</p>, '/');
+
+    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
+    expect(screen.getByText('Route content')).toBeInTheDocument();
   });
 
   it('keeps the complete anonymous destination set reachable', () => {

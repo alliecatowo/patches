@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { useShakeToReport } from '../hooks/useShakeToReport.js';
 
-import { useMemo, useRef, useState, type JSX } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { lazy, Suspense, useMemo, useRef, useState, type JSX } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { api, logoutCurrentSession } from '../api/client.js';
+import { DemoBanner } from '../components/DemoBanner.js';
 import { HeaderBar } from '../components/HeaderBar.js';
 import {
   BellIcon,
@@ -31,7 +32,34 @@ import styles from './RootLayout.module.css';
 const NAV_LINK_CLASS = ({ isActive }: { isActive: boolean }): string =>
   isActive ? `${styles['navLink']} ${styles['active']}` : (styles['navLink'] ?? '');
 
+/** The landing page is its own lazy chunk (`LandingRoute.tsx`): the signed-in app never loads it. */
+const LandingRoute = lazy(() =>
+  import('./LandingRoute.js').then((module) => ({ default: module.LandingRoute })),
+);
+
+/** Self-hosted nodes that want the public timeline at `/` for signed-out visitors can build with
+ * `VITE_PATCHES_LANDING=off` (docs/operations/web.md). */
+const LANDING_ENABLED = (import.meta.env['VITE_PATCHES_LANDING'] as string | undefined) !== 'off';
+
+/**
+ * Signed-out visitors at `/` get the landing page, full-bleed without the app shell; everyone
+ * else (and every other path) gets the app. The decision uses only local state, so it renders
+ * with no network round trip.
+ */
 export function RootLayout(): JSX.Element {
+  const session = useSession();
+  const { pathname } = useLocation();
+  if (LANDING_ENABLED && session === null && pathname === '/') {
+    return (
+      <Suspense fallback={null}>
+        <LandingRoute />
+      </Suspense>
+    );
+  }
+  return <AppShell />;
+}
+
+function AppShell(): JSX.Element {
   useShakeToReport();
   const session = useSession();
   const navigate = useNavigate();
@@ -306,6 +334,7 @@ export function RootLayout(): JSX.Element {
       <ProfileMenu isOpen={profileMenuOpen} onClose={() => setProfileMenuOpen(false)} />
 
       <main className={styles['main']}>
+        <DemoBanner />
         <PrivacyNoticeBanner />
         {outlet}
       </main>

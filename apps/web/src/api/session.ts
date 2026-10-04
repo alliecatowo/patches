@@ -1,5 +1,10 @@
+// Evaluated first: an expired demo sandbox is dropped before the cached actor is read below.
+import '../demo/demo-mode.js';
+
 import { create, fromJson, toJson, type JsonValue } from '@bufbuild/protobuf';
 import { ActorSchema, type Actor } from '@patches/proto/es';
+
+import { ACTOR_STORAGE_KEY } from './storage-keys.js';
 
 /**
  * The signed-in actor, cached in `localStorage` purely so UI (nav bar, `ProtectedRoute`,
@@ -20,7 +25,7 @@ export interface AppSession {
   readonly actor: Actor;
 }
 
-const STORAGE_KEY = 'patches.web.actor.v1';
+const STORAGE_KEY = ACTOR_STORAGE_KEY;
 
 type Listener = () => void;
 
