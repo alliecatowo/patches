@@ -30,6 +30,16 @@ export async function runInviteCommand(
   }
 }
 
+/** The shareable `/register?invite=CODE` link (the web register form prefills and validates
+ * the code from it). `PATCHES_WEB_URL` overrides the default public web client. */
+export function inviteLink(code: string): string {
+  const base = (process.env['PATCHES_WEB_URL'] ?? 'https://patches-web.pages.dev').replace(
+    /\/+$/,
+    '',
+  );
+  return `${base}/register?invite=${encodeURIComponent(code)}`;
+}
+
 async function createInvite(args: ParsedArgs, context: AdminContext): Promise<void> {
   const maxUses = optionalIntOption(args.options, 'max-uses') ?? 1;
   const expiresRaw = optionalStringOption(args.options, 'expires');
@@ -68,6 +78,7 @@ async function createInvite(args: ParsedArgs, context: AdminContext): Promise<vo
     printJson({
       id: invite.id,
       code,
+      link: inviteLink(code),
       maxUses: invite.maxUses,
       expiresAt: invite.expiresAt === null ? null : invite.expiresAt.toISOString(),
     });
@@ -75,6 +86,7 @@ async function createInvite(args: ParsedArgs, context: AdminContext): Promise<vo
   }
 
   process.stdout.write(`Invite code (shown once): ${code}\n`);
+  process.stdout.write(`Invite link: ${inviteLink(code)}\n`);
   printTable([
     { id: invite.id, maxUses: invite.maxUses, expiresAt: invite.expiresAt } satisfies Row,
   ]);

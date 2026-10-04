@@ -2,11 +2,24 @@ import { describeError } from '@patches/client';
 import { PasswordAuthMode } from '@patches/proto/es';
 import { useQuery } from '@tanstack/react-query';
 import { useState, type ChangeEvent, type FormEvent, type JSX } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { api, establishSession } from '../api/client.js';
 import { useAbortableMutation } from '../hooks/useAbortableMutation.js';
 import styles from './AuthForm.module.css';
+
+/** Same bounds the server applies to an opaque code (`opaqueCodeSchema`), plus the URL-safe
+ * alphabet `patches-admin invite create` mints, so a mangled or truncated link is caught before
+ * the round trip. Returns an error message, or `null` when the code looks well formed. */
+export function validateInviteCode(raw: string): string | null {
+  const code = raw.trim();
+  if (code.length === 0) return 'Enter the invite code you were sent.';
+  if (code.length > 200) return 'That invite code is too long.';
+  if (!/^[A-Za-z0-9_-]+$/.test(code)) {
+    return 'Invite codes only use letters, numbers, dashes and underscores. Check the link you were sent.';
+  }
+  return null;
+}
 
 /** `/register` — this node is invite-only (spec §33), so `inviteCode` is required.
  * The privacy notice is shown before submit, never after (spec §197.1) — the
@@ -14,13 +27,18 @@ import styles from './AuthForm.module.css';
  * record the acknowledgement server-side via `PrivacyService.AcknowledgePrivacyNotice`. */
 export function RegisterRoute(): JSX.Element {
   const navigate = useNavigate();
+  // `/register?invite=CODE` is the shareable invite link `patches-admin invite create` prints.
+  const [searchParams] = useSearchParams();
+  const linkedInvite = searchParams.get('invite')?.trim() ?? '';
   const [form, setForm] = useState({
     email: '',
     handle: '',
     displayName: '',
     password: '',
-    inviteCode: '',
+    inviteCode: linkedInvite,
   });
+  const [inviteTouched, setInviteTouched] = useState(linkedInvite.length > 0);
+  const inviteError = inviteTouched ? validateInviteCode(form.inviteCode) : null;
   const [noticeAcknowledged, setNoticeAcknowledged] = useState(false);
 
   const policyQuery = useQuery({
@@ -95,7 +113,26 @@ export function RegisterRoute(): JSX.Element {
       <form onSubmit={onSubmit}>
         <div className={styles['field']}>
           <label htmlFor="reg-invite">Invite code</label>
-          <input id="reg-invite" value={form.inviteCode} onChange={set('inviteCode')} required />
+          <input
+            id="reg-invite"
+            value={form.inviteCode}
+            onChange={set('inviteCode')}
+            onBlur={() => setInviteTouched(true)}
+            autoComplete="off"
+            spellCheck={false}
+            aria-invalid={inviteError !== null}
+            aria-describedby={inviteError !== null ? 'reg-invite-error' : undefined}
+            required
+          />
+          {inviteError !== null ? (
+            <p id="reg-invite-error" className={styles['error']} role="alert">
+              {inviteError}
+            </p>
+          ) : linkedInvite.length > 0 && form.inviteCode === linkedInvite ? (
+            <p style={{ fontSize: '0.85rem', color: 'var(--fg-muted)' }}>
+              Filled in from your invite link.
+            </p>
+          ) : null}
         </div>
         <div className={styles['field']}>
           <label htmlFor="reg-handle">Handle</label>
@@ -167,7 +204,12 @@ export function RegisterRoute(): JSX.Element {
         <button
           type="submit"
           className={styles['submit']}
-          disabled={mutation.isPending || !noticeAcknowledged || passwordAuthOff}
+          disabled={
+            mutation.isPending ||
+            !noticeAcknowledged ||
+            passwordAuthOff ||
+            validateInviteCode(form.inviteCode) !== null
+          }
         >
           {mutation.isPending ? 'Creating account…' : 'Create account'}
         </button>
