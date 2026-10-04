@@ -39,7 +39,7 @@ jobs:
     name: doctor (server + worker)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0 # required for scope:changed (merge-base vs base branch)
       - uses: RoloBits/nestjs-doctor@bfc83dafb95b59d45d879d8756f01c1cf89054ab # v1

@@ -142,7 +142,7 @@ jobs:
           [ "$pr_state" = "OPEN" ] || { echo "PR #$PR_NUMBER is $pr_state; refusing to deploy a preview for it." >&2; exit 1; }
           echo "PR_HEAD_SHA=${state##* }" >> "$GITHUB_ENV"
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The exact PR head commit — on dispatch github.sha is the default branch.
           ref: ${{ env.PR_HEAD_SHA || github.event.pull_request.head.sha }}
@@ -595,11 +595,15 @@ jobs:
       - name: Set up flyctl
         uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # v1.6
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: pnpm/setup@v3
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
         with:
-          runtime: node@24.19.0
+          version: 2026.8.1
+          install: true
+          install_args: node pnpm
+          cache: true
+          env: false
 
       # Best-effort per resource, honest in aggregate (B-204, fixing B-154's silent
       # swallow): each step records an `outcome` output (destroyed/deleted |

@@ -1,6 +1,6 @@
 name: Setup toolchain
 description: >
-  Install Node + pnpm (pnpm/setup@v3), install buf (bufbuild/buf-action), then
+  Install Node, pnpm and buf through jdx/mise-action (versions from mise.toml), then
   `pnpm install --frozen-lockfile`. Also restores the Turborepo local cache.
   Used by every CI/CD job that needs the workspace installed.
 
@@ -18,20 +18,26 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Install Node + pnpm
-      uses: pnpm/setup@v3
+    # Node, pnpm and buf come from mise.toml (the same pins as local dev and the Dockerfile),
+    # via jdx/mise-action. `install_args` limits it to what CI needs (mise.toml also lists
+    # dev-only tools), and `env: false` keeps mise.toml's [env] (local-build escape hatch,
+    # turbo cache dir) out of CI so deploy builds still hit the production-build gates.
+    - name: Install Node, pnpm and buf (mise)
+      uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4
       with:
-        runtime: node@24.19.0
+        version: 2026.8.1
+        install: true
+        install_args: node pnpm buf
         cache: true
+        env: false
 
-    - name: Install buf
-      uses: bufbuild/buf-action@v1
+    - name: Restore pnpm store
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
-        setup_only: true
-        # Pinned to mise.toml's `buf` (and the Dockerfile's BUF_VERSION). An unpinned
-        # install floated to the newest buf, whose bundled google/protobuf well-known
-        # types differ from the committed generated code and broke `proto` on main.
-        version: 1.72.0
+        path: ~/.local/share/pnpm/store
+        key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          pnpm-store-${{ runner.os }}-
 
     - name: Install dependencies
       shell: bash
@@ -52,7 +58,7 @@ runs:
         echo "CACHE_SCOPE=${scope:-${{ github.job }}}" >> "$GITHUB_ENV"
 
     - name: Restore turbo cache
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
         path: .turbo
         key: turbo-${{ runner.os }}-${{ env.CACHE_SCOPE }}-${{ github.sha }}

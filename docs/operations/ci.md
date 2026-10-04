@@ -138,29 +138,21 @@ config — see the git history of this file for the pre-B-012 version of this se
 `.github/actions/setup/action.yml` (checkout happens in the calling job, not here —
 see "Workflows" above):
 
-1. `pnpm/setup@v3` installs Node 24.19.0 + pnpm (version read from this repo's
-   `packageManager` field, `pnpm@11.22.0`, matching `mise.toml`).
-2. `jdx/mise-action@v4` installs `buf` and `actionlint` from `mise.toml`'s pins, with
-   `MISE_DISABLE_TOOLS: node,pnpm,docker-compose` so mise doesn't also try to install
-   node/pnpm (redundant with step 1) or docker-compose (not needed in CI — Postgres
-   runs as a native GitHub Actions `services:` container, not via compose).
-3. `pnpm install --frozen-lockfile`.
-4. Restores the Turborepo local cache (see "Caching" below).
+1. `jdx/mise-action` (pinned to a SHA) installs Node, pnpm and buf from `mise.toml`'s pins
+   (`install_args: node pnpm buf`), so CI, local dev and the Dockerfile share one set of
+   versions. `env: false` keeps `mise.toml`'s `[env]` (the local-build escape hatch and the
+   shared turbo cache dir) out of CI. There is no `setup-node`, `pnpm/setup`, buildx or
+   `buf-action` step and no version-check job. The `actionlint` job uses the same action with
+   `install_args: actionlint`; Postgres runs as a native `services:` container, not compose.
+2. `pnpm install --frozen-lockfile`.
+3. Restores the pnpm store and the Turborepo local cache (see "Caching" below).
 
-**Why not install everything through `mise-action` alone?** `jdx/mise-action` can install
-Node and pnpm from `mise.toml` directly, which would be one fewer action in the setup
-path. This workflow uses `pnpm/setup@v3` for Node + pnpm instead, per
-`docs/research/monorepo-toolchain.md` §7's guidance that `pnpm/setup@v3` is the simpler,
-more current path for pnpm 11+, and because installing pnpm through mise in CI has a
-reputation for flakiness in some setups. Nobody has yet observed a concrete mise-action
-pnpm failure _in this repo's own CI_ (no run has happened yet) — if a future run shows
-mise-action's pnpm install working fine, this split can be collapsed back to a single
-`mise-action` step. Until then, treat the split as the safer default.
+Every third-party action in `.github/` is pinned to a commit SHA with the tag in a trailing
+comment (Dependabot keeps both current).
 
 ## Caching
 
-- **pnpm store** — via `pnpm/setup@v3`'s `cache: true`, keyed on the lockfile
-  automatically.
+- **pnpm store** — `actions/cache` on `pnpm store path`, keyed on `pnpm-lock.yaml`.
 - **mise tool cache** — via `jdx/mise-action`'s `cache: true`.
 - **Turbo local cache** — `actions/cache@v4` on `.turbo`, key
   `turbo-<runner.os>-<scope>-<sha>`, restore-keys `turbo-<runner.os>-<scope>-`, where
