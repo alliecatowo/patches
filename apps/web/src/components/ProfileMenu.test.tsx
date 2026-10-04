@@ -167,4 +167,39 @@ describe('ProfileMenu', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('manages focus when opening and traps focus on Tab', () => {
+    mockUseSession.mockReturnValue(null);
+    const button = document.createElement('button');
+    document.body.appendChild(button);
+    button.focus();
+
+    const { rerender } = renderMenu(<ProfileMenu isOpen={true} onClose={vi.fn()} />);
+
+    const firstLink = screen.getByRole('link', { name: 'Sign in' });
+    expect(document.activeElement).toBe(firstLink);
+
+    // Tab trap
+    const lastLink = screen.getByRole('link', { name: 'Moderation Log' });
+    lastLink.focus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(document.activeElement).toBe(firstLink);
+
+    // Shift+Tab trap
+    firstLink.focus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(lastLink);
+
+    // Focus restoration on close
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ProfileMenu isOpen={false} onClose={vi.fn()} />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(document.activeElement).toBe(button);
+
+    document.body.removeChild(button);
+  });
 });

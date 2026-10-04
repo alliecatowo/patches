@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, type JSX } from 'react';
+import { useEffect, useRef, type JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 import { logoutCurrentSession, removeAccount, switchToAccount } from '../api/client.js';
@@ -28,12 +28,43 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
   const accounts = useAccounts();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    if (menuRef.current) {
+      const firstFocusable = menuRef.current.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (firstFocusable) {
+        firstFocusable.focus();
+      } else {
+        menuRef.current.focus();
+      }
+    }
+
     const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+      } else if (e.key === 'Tab' && menuRef.current) {
+        const focusables = menuRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (first === undefined || last === undefined) return;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
 
     document.body.style.overflow = 'hidden';
@@ -42,6 +73,7 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
     return () => {
       document.body.style.overflow = '';
       window.removeEventListener('keydown', handleKeyDown);
+      previousActiveElement?.focus();
     };
   }, [isOpen, onClose]);
 
@@ -81,9 +113,11 @@ export function ProfileMenu({ isOpen, onClose }: ProfileMenuProps): JSX.Element 
       aria-label="Account & settings menu"
     >
       <div
+        ref={menuRef}
         className={styles['menu']}
         onClick={(e) => e.stopPropagation()}
         id="profile-dropdown-menu"
+        tabIndex={-1}
       >
         <div className={styles['handle']} />
 
