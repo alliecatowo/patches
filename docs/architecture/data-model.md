@@ -885,6 +885,28 @@ list` admin commands); shape inferred from those requirements.
 
 ---
 
+## `invite_requests`
+
+**Status: implemented** (ADR 0044)
+
+Landing-page requests for an invite, written by `OnboardingService.RequestInvite` and read with
+`patches-admin invite-requests list`. Never creates an account and never sends mail.
+
+| Column               | Type          | Nullable | Notes                                                        |
+| -------------------- | ------------- | -------- | ------------------------------------------------------------ |
+| `id`                 | `uuid`        | no       | PK                                                           |
+| `contact`            | `text`        | no       | email address as entered (trimmed)                           |
+| `contact_normalized` | `text`        | no       | lowercased `contact`; unique while pending                   |
+| `message`            | `text`        | yes      | optional, at most 500 characters, control characters removed |
+| `peer_hash`          | `text`        | no       | SHA-256 of the rate-limit bucket; no raw IP address is kept  |
+| `created_at`         | `timestamptz` | no       |                                                              |
+| `handled_at`         | `timestamptz` | yes      | set by `invite-requests handle <id>`; NULL while pending     |
+
+**Indexes**: `invite_requests(contact_normalized)` UNIQUE WHERE `handled_at IS NULL`;
+`invite_requests(created_at)`.
+
+---
+
 ## `outbox_jobs`
 
 **Status: implemented**

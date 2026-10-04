@@ -29,6 +29,7 @@ export {
 export type { WebauthnChallengePurpose } from './entities/webauthn-challenge.entity.js';
 export { Credential } from './entities/credential.entity.js';
 export { Invite } from './entities/invite.entity.js';
+export { InviteRequest } from './entities/invite-request.entity.js';
 export { OutboxJob } from './entities/outbox-job.entity.js';
 export { Media } from './entities/media.entity.js';
 export { Post } from './entities/post.entity.js';

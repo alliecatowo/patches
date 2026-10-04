@@ -50,6 +50,7 @@ import { ActorBannerMedia1787912351805 } from './1787912351805-ActorBannerMedia.
 import { DropLegacyProfileBannerUrl1787913902978 } from './1787913902978-DropLegacyProfileBannerUrl.js';
 import { SchemaDriftFixes1787920000000 } from './1787920000000-SchemaDriftFixes.js';
 import { DemoSandboxUsers1787930000000 } from './1787930000000-DemoSandboxUsers.js';
+import { InviteRequests1787940000000 } from './1787940000000-InviteRequests.js';
 
 /**
  * Every migration, imported explicitly and listed in chronological order — not globbed.
@@ -116,4 +117,5 @@ export const ALL_MIGRATIONS = [
   DropLegacyProfileBannerUrl1787913902978,
   SchemaDriftFixes1787920000000,
   DemoSandboxUsers1787930000000,
+  InviteRequests1787940000000,
 ];

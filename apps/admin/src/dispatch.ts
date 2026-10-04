@@ -4,6 +4,7 @@ import { runAppealCommand } from './commands/appeal.js';
 import { runAuditLogCommand } from './commands/audit-log.js';
 import { runDomainCommand } from './commands/domain.js';
 import { runInviteCommand } from './commands/invite.js';
+import { runInviteRequestsCommand } from './commands/invite-requests.js';
 import { runJobsCommand } from './commands/jobs.js';
 import { runLabelerCommand } from './commands/labeler.js';
 import { runPostCommand } from './commands/post.js';
@@ -24,6 +25,8 @@ export async function dispatch(
   switch (group) {
     case 'invite':
       return runInviteCommand(action, args, context);
+    case 'invite-requests':
+      return runInviteRequestsCommand(action, args, context);
     case 'user':
       return runUserCommand(action, args, context);
     case 'report':
@@ -54,6 +57,9 @@ Usage: patches-admin <group> <action> [args] [--flag value] [--as <handle>] [--j
   invite create [--max-uses N] [--expires <iso>]
   invite list
   invite revoke <id>
+
+  invite-requests list
+  invite-requests handle <id>
 
   user list
   user show <handle>

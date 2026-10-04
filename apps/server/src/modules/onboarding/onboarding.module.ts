@@ -6,6 +6,7 @@ import { GraphModule } from '../graph/graph.module.js';
 import { PostModule } from '../posts/post.module.js';
 import { ReactionModule } from '../reactions/reaction.module.js';
 import { DemoSandboxService } from './demo-sandbox.service.js';
+import { InviteRequestService } from './invite-request.service.js';
 import { OnboardingController } from './onboarding.controller.js';
 
 /**
@@ -15,6 +16,6 @@ import { OnboardingController } from './onboarding.controller.js';
 @Module({
   imports: [AuthModule, E2eeModule, PostModule, GraphModule, ReactionModule],
   controllers: [OnboardingController],
-  providers: [DemoSandboxService],
+  providers: [DemoSandboxService, InviteRequestService],
 })
 export class OnboardingModule {}

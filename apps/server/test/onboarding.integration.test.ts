@@ -13,6 +13,8 @@ import {
   type NotificationGrpcClient,
   type OnboardingGrpcClient,
   type RefreshSessionRequest,
+  type RequestInviteRequest,
+  type RequestInviteResponse,
   type RefreshSessionResponse,
   type StartDemoRequest,
   type StartDemoResponse,
@@ -250,6 +252,31 @@ describe.skipIf(testDatabaseUrl === undefined || testDatabaseUrl.length === 0)(
       // DEMO_STARTS_PER_PEER_PER_HOUR defaults to 4 and the earlier tests already spent some.
       expect(outcomes).toContain(GrpcStatus.RESOURCE_EXHAUSTED);
       expect(outcomes[outcomes.length - 1]).toBe(GrpcStatus.RESOURCE_EXHAUSTED);
+    });
+
+    it('records an invite request once per address and keeps no raw peer address', async () => {
+      const ask = (contact: string, message = ''): Promise<RequestInviteResponse> =>
+        callUnary<RequestInviteRequest, RequestInviteResponse>(
+          onboarding.requestInvite.bind(onboarding),
+          { contact, message },
+        );
+      await ask('Someone@Example.test', 'terminal \u001b[31mperson');
+      await ask('someone@example.test', 'again');
+      const rows = await dataSource.query<
+        Array<{ contact: string; message: string; peer_hash: string }>
+      >(`SELECT contact, message, peer_hash FROM invite_requests WHERE contact_normalized = $1`, [
+        'someone@example.test',
+      ]);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.contact).toBe('Someone@Example.test');
+      expect(rows[0]?.message).toBe('terminal [31mperson');
+      expect(rows[0]?.peer_hash).toMatch(/^[0-9a-f]{64}$/);
+
+      const bad = await expectRejection<RequestInviteRequest, RequestInviteResponse>(
+        onboarding.requestInvite.bind(onboarding),
+        { contact: 'nope', message: '' },
+      );
+      expect(bad.code).toBe(GrpcStatus.INVALID_ARGUMENT);
     });
   },
 );
