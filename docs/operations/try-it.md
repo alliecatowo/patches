@@ -35,6 +35,10 @@ The node is **invite-only**. Mint invites with the admin CLI against the product
 DATABASE_URL="<neon string>" DATABASE_SSL=true mise run admin -- invite create --by allie --max-uses 5
 ```
 
+The command prints the code and a shareable link (`https://patches-web.pages.dev/register?invite=<code>`;
+set `PATCHES_WEB_URL` to point it at another web client). Opening the link prefills and validates the
+invite code on the web register form.
+
 Register and use the TUI:
 
 ```bash
