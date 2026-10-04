@@ -507,4 +507,34 @@ describe('MessagesScreen', () => {
     await flush();
     expect(stripSgr(lastFrame() ?? '')).not.toContain('unread');
   });
+
+  it('resets the session only after a second R press, and any movement cancels (P2-H1)', async () => {
+    const api = fakeApi();
+    const existing = conversation('conversation-1');
+    api.listConversations.mockResolvedValue(
+      create(ListConversationsResponseSchema, { conversations: [existing] }),
+    );
+    const onResetSession = vi.fn(() => Promise.resolve());
+
+    const { lastFrame, stdin } = render(
+      <MessagesScreen api={api} isActive onResetSession={onResetSession} />,
+    );
+    await waitForFrame(lastFrame, '@alice');
+
+    stdin.write('R');
+    await waitForFrame(lastFrame, 'Press R again to reset the session');
+    expect(onResetSession).not.toHaveBeenCalled();
+
+    // Moving the cursor disarms: a later single R arms again instead of resetting.
+    stdin.write('j');
+    await flush();
+    stdin.write('R');
+    await waitForFrame(lastFrame, 'Press R again');
+    expect(onResetSession).not.toHaveBeenCalled();
+
+    stdin.write('R');
+    await waitForFrame(lastFrame, 'Session reset.');
+    expect(onResetSession).toHaveBeenCalledTimes(1);
+    expect(onResetSession).toHaveBeenCalledWith('conversation-1');
+  });
 });

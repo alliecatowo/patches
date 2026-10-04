@@ -668,6 +668,37 @@ export function App({
       setE2eeVaultFault(sender.fault());
     }
   }
+  /** "Reset secure session" (audit P2-H1) for one conversation; run on a second `R` press. */
+  async function resetSecureSessionFor(conversationId: string): Promise<void> {
+    if (session === undefined) return;
+    const sender = e2eeSenderFor(session);
+    try {
+      await sender.resetSession(conversationId);
+    } finally {
+      setE2eeVaultFault(sender.fault());
+    }
+  }
+  /** Whether `root` is an uncountersigned reset of the peer's pinned identity (audit P2-H2). */
+  async function peerResetPendingFor(
+    actorId: string,
+    root: { readonly rootBytes: Uint8Array; readonly selfSignature: Uint8Array },
+  ): Promise<boolean> {
+    if (session === undefined) return false;
+    return e2eeSenderFor(session).peerResetPending(actorId, root);
+  }
+  /** Re-pins the peer's reset identity after the viewer confirmed the new safety number. */
+  async function acceptPeerResetFor(
+    actorId: string,
+    root: { readonly rootBytes: Uint8Array; readonly selfSignature: Uint8Array },
+  ): Promise<void> {
+    if (session === undefined) return;
+    const sender = e2eeSenderFor(session);
+    try {
+      await sender.acceptPeerIdentityReset(actorId, root);
+    } finally {
+      setE2eeVaultFault(sender.fault());
+    }
+  }
   /** ADR 0037 §1 step 1 — `LinkThisDeviceScreen`'s "link" choice. */
   async function beginDeviceLinkForCurrentAccount(): Promise<{
     readonly linkId: string;
@@ -2353,6 +2384,8 @@ export function App({
             ensureAccessToken={ensureAccessToken}
             verified={verifiedPeers.has(target.targetActorId)}
             onMarkVerified={() => markPeerVerified(target.targetActorId)}
+            onCheckResetPending={(root) => peerResetPendingFor(target.targetActorId, root)}
+            onAcceptReset={(root) => acceptPeerResetFor(target.targetActorId, root)}
             onBack={back}
           />
         );
@@ -2565,6 +2598,7 @@ export function App({
             onOpenSafetyNumber={(actorId) =>
               setStack((s) => push(s, { screen: 'safetyNumber', targetActorId: actorId }))
             }
+            onResetSession={resetSecureSessionFor}
             onReadStateChanged={() => setUnreadNonce((current) => current + 1)}
             refreshToken={feedNonce}
           />
