@@ -1,0 +1,103 @@
+# Fly.io app configuration for the Patches DEMO node (ADR 0044).
+#
+# A second, independent app built from the same image as production: `DEMO_MODE=true`
+# turns on `OnboardingService.StartDemo` (throwaway per-visitor sandboxes, deleted after an
+# hour) and the node runs against its OWN Neon project, so it holds no credential that can
+# reach the production database and no real account ever lives here. Registration stays
+# invite-gated; nobody holds an invite, so the only way in is "Try the demo".
+#
+# Deploy from the repo root (CI does this from .github/workflows/deploy.yml, job deploy-demo):
+#   flyctl deploy --config infra/fly/fly.demo.toml --remote-only --ha=false
+#
+# Differences from infra/fly/fly.toml, all deliberate:
+#   - one process group (`server`): no worker. The worker normally mints the E2EE franking-key
+#     era; the demo node mints era 1 itself on first boot (`DemoSandboxService.ensureFrankingKey`).
+#     A worker also has no ingress, so it could never autostop: it would be the always-on floor.
+#   - no gRPC ingress and no metrics service: only the Connect HTTP edge on :443/:80.
+#   - no [mounts]: uploads are refused in demo mode, so there is no scratch volume to pay for.
+#   - scale to zero: `auto_stop_machines = "stop"`, `min_machines_running = 0`.
+#
+# Secrets (set once with `flyctl secrets set -a patches-demo ...`, names only):
+#   DATABASE_URL (Neon project `patches-demo`, direct endpoint), DATABASE_SSL,
+#   JWT_PRIVATE_KEY, JWT_PUBLIC_KEY, AUTH_CODE_DELIVERY_ACTIVE_KEY_ID, AUTH_CODE_DELIVERY_KEYS.
+# Not set on purpose: R2_*, RESEND_API_KEY, FEDERATION_KEY_ENCRYPTION_KEY.
+app = "patches-demo"
+primary_region = "iad"
+
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[build]
+  dockerfile = "../docker/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  LOG_LEVEL = "info"
+  INSTANCE_NAME = "patches demo"
+  GRPC_HOST = "0.0.0.0"
+  GRPC_PORT = "50051"
+  HTTP_PORT = "8080"
+  METRICS_PORT = "9090"
+  PUBLIC_ORIGIN = "https://patches-demo.fly.dev"
+  NODE_DOMAIN = "patches-demo.fly.dev"
+  WEB_ORIGINS = "https://patches-web.pages.dev"
+  INVITE_ONLY = "true"
+  PUBLIC_READ = "false"
+  FEDERATION_ENABLED = "false"
+  TRUST_PROXY_HEADERS = "true"
+  EMAIL_PROVIDER = "console"
+  EMAIL_FROM = "Patches demo <noreply@patches-demo.fly.dev>"
+  DEMO_MODE = "true"
+  DEMO_TTL_MINUTES = "60"
+  DEMO_STARTS_PER_PEER_PER_HOUR = "4"
+  DEMO_MAX_LIVE_SANDBOXES = "150"
+  # Published, unauthenticated copy (NodeService.GetNodePolicy): keep it true for THIS node.
+  PRIVACY_NOTICE_SUMMARY = "This is a throwaway demo node. Everything in your sandbox, the account, its posts and its messages, is deleted one hour after you start. Do not enter real personal data. Direct messages here are end-to-end encrypted: this node cannot read message bodies, but it can still see who messages whom and when. Nothing on this node is shared with the real Patches network."
+  TERMS_URL = "https://github.com/alliecatowo/patches/blob/main/docs/product/privacy.md"
+  APPEAL_INSTRUCTIONS = "There is nothing to appeal on the demo node: accounts are deleted automatically after an hour."
+  OPERATOR_CONTACT = "Operated by Allison Coleman (allisonemilycoleman@gmail.com) as a demo of Patches."
+  DATA_LOCATION = "App: Fly.io (iad, US). Database: Neon Postgres (aws-us-east-2, US). No media is stored."
+
+[processes]
+  server = "node server/dist/main.js"
+
+# Migrations run against the demo Neon project before the new machine takes traffic.
+[deploy]
+  release_command = "node server/migrate.mjs"
+
+[deploy.release_command_vm]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# Connect HTTP edge (ADR 0016): the only public ingress. Scale to zero.
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+  processes = ["server"]
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+[checks]
+  [checks.healthz]
+    type = "http"
+    port = 8080
+    method = "get"
+    path = "/healthz"
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "10s"
+    processes = ["server"]
+
+[[vm]]
+  process_group = "server"
+  size = "shared-cpu-1x"
+  memory = "1024mb"
