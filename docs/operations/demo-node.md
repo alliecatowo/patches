@@ -25,7 +25,9 @@ The same image and migrations as production, with `DEMO_MODE=true`:
 - No worker: the node mints its own franking-key era 1 on first boot so E2EE is enabled. No uploads (no
   object storage), no email (`EMAIL_PROVIDER=console`).
 - The seeded direct messages are sealed in the visitor's browser with the real E2EE runtime; the node never
-  holds a private key.
+  holds a private key. A full-screen "Setting up your sandbox" screen shows the real steps (account, keys,
+  friends n/3, ready). Sealing is idempotent: progress is kept in `sessionStorage`, so a hard reload or a
+  retry resumes and never opens a second conversation with the same friend.
 
 ## Secrets (names only)
 

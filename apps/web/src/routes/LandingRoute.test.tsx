@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,7 +17,13 @@ vi.mock('../demo/demo-mode.js', () => ({
 }));
 
 vi.mock('../demo/start-demo.js', () => {
-  class DemoUnavailableError extends Error {}
+  class DemoUnavailableError extends Error {
+    readonly rateLimited: boolean;
+    constructor(message: string, options: { rateLimited?: boolean } = {}) {
+      super(message);
+      this.rateLimited = options.rateLimited ?? false;
+    }
+  }
   return { startDemo: mockStartDemo, DemoUnavailableError };
 });
 
@@ -76,13 +82,48 @@ describe('LandingRoute', () => {
     expect(screen.getByRole('link', { name: 'Request an invite' })).toBeInTheDocument();
   });
 
-  it('starts the demo and shows progress, then the failure copy when it cannot start', async () => {
+  it('opens the full-screen setup on click and shows the failure with a retry', async () => {
     mockStartDemo.mockRejectedValue(new DemoUnavailableError('The demo server is waking up.'));
     renderLanding();
     fireEvent.click(screen.getByRole('button', { name: 'Try the demo' }));
     expect(mockStartDemo).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: /setting up your sandbox/i })).toBeInTheDocument();
     expect(await screen.findByRole('alert')).toHaveTextContent('The demo server is waking up.');
-    expect(screen.getByRole('button', { name: 'Try the demo' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(mockStartDemo).toHaveBeenCalledTimes(2);
+  });
+
+  it('moves to the keys step once the account exists', async () => {
+    mockStartDemo.mockImplementation((onAccountCreated: () => void) => {
+      onAccountCreated();
+      return new Promise(() => undefined);
+    });
+    renderLanding();
+    fireEvent.click(screen.getByRole('button', { name: 'Try the demo' }));
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole('list', { name: 'Setup progress' }))
+          .getByText(/generating your encryption keys/i)
+          .closest('li'),
+      ).toHaveAttribute('aria-current', 'step');
+    });
+  });
+
+  it('shows the friendly rate-limit message without a retry, and can go back', async () => {
+    mockStartDemo.mockRejectedValue(
+      new DemoUnavailableError(
+        'Too many demos from your connection. Try again in a little while.',
+        {
+          rateLimited: true,
+        },
+      ),
+    );
+    renderLanding();
+    fireEvent.click(screen.getByRole('button', { name: 'Try the demo' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/too many demos/i);
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the landing page' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('copies the install command', async () => {
