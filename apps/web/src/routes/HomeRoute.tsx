@@ -95,6 +95,7 @@ function ViewsBar({
               type="button"
               className={styles['viewChipAction']}
               aria-label={`Rename ${view.name}`}
+              title={`Rename ${view.name}`}
               onClick={() => {
                 setRenamingId(view.id);
                 setRenameValue(view.name);
@@ -106,6 +107,7 @@ function ViewsBar({
               type="button"
               className={styles['viewChipAction']}
               aria-label={`Delete ${view.name}`}
+              title={`Delete ${view.name}`}
               onClick={() => {
                 if (activeId === view.id) setActiveId(undefined);
                 remove(view.id);

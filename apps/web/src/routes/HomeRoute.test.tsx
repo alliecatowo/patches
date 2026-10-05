@@ -67,6 +67,25 @@ describe('HomeRoute (B-044)', () => {
     expect(screen.queryByText(/invite-only/i)).not.toBeInTheDocument();
   });
 
+  it('renders title tooltips on saved view action buttons when saved views are present', async () => {
+    mockGetNodeInfo.mockResolvedValue({ publicRead: true } as unknown as GetNodeInfoResponse);
+    mockListLocalFeed.mockResolvedValue({ posts: [], page: undefined });
+
+    // Pre-populate saved views using createSavedView to populate in-memory state
+    const { createSavedView, deleteSavedView } = await import('../lib/savedViews.js');
+    const created = createSavedView('Tech', { kind: 'tag', tag: 'tech' });
+
+    renderHome();
+
+    const renameBtn = await screen.findByRole('button', { name: /rename tech/i });
+    const deleteBtn = screen.getByRole('button', { name: /delete tech/i });
+
+    expect(renameBtn).toHaveAttribute('title', 'Rename Tech');
+    expect(deleteBtn).toHaveAttribute('title', 'Delete Tech');
+
+    if (created) deleteSavedView(created.id);
+  });
+
   it('never renders blank when node-info fails: falls through to the local timeline', async () => {
     mockGetNodeInfo.mockRejectedValue(new ConnectError('cold', Code.Unavailable));
     mockListLocalFeed.mockResolvedValue({ posts: [], page: undefined });
