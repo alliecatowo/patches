@@ -1,12 +1,8 @@
-import { lazy, Suspense, useEffect, useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 
 import { leaveDemo } from '../api/client.js';
-import { activeDemo, DEMO_ACTIVE, loadSeedPlan } from '../demo/demo-mode.js';
+import { activeDemo, DEMO_ACTIVE } from '../demo/demo-mode.js';
 import styles from './DemoBanner.module.css';
-
-/** The seeder pulls in the whole E2EE runtime; only a freshly started sandbox needs it, so it
- * stays out of the main chunk. */
-const SeedStatus = lazy(() => import('./DemoSeedStatus.js'));
 
 /** "57 minutes", "4 minutes", "under a minute". */
 export function formatRemaining(ms: number): string {
@@ -21,8 +17,6 @@ export function formatRemaining(ms: number): string {
  */
 export function DemoBanner(): JSX.Element | null {
   const [now, setNow] = useState(() => Date.now());
-  // Evaluated once per mount: the seeder must only be mounted for a freshly started sandbox.
-  const [seeding] = useState(() => loadSeedPlan() !== undefined);
 
   useEffect(() => {
     if (!DEMO_ACTIVE) return undefined;
@@ -47,11 +41,6 @@ export function DemoBanner(): JSX.Element | null {
       <p>
         <strong>Demo sandbox.</strong> Everything here is fake and is deleted in{' '}
         {formatRemaining(state.expiresAtMs - now)}.
-        {seeding ? (
-          <Suspense fallback={null}>
-            <SeedStatus />
-          </Suspense>
-        ) : null}
       </p>
       <button type="button" className={styles['leave']} onClick={leaveDemo}>
         Leave demo

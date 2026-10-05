@@ -14,6 +14,7 @@ import { ACTOR_STORAGE_KEY } from '../api/storage-keys.js';
 
 const DEMO_STATE_KEY = 'patches.web.demo.v1';
 const SEED_PLAN_KEY = 'patches.web.demo.seed.v1';
+const SEED_PROGRESS_KEY = 'patches.web.demo.seed-progress.v1';
 
 /** Where the demo sandbox lives; unset in builds without a demo node (the button then hides). */
 const rawDemoBase = import.meta.env['VITE_PATCHES_DEMO_API_BASE'] as string | undefined;
@@ -64,6 +65,7 @@ export function clearDemoLocalState(): void {
   local?.removeItem(ACTOR_STORAGE_KEY);
   if (DEMO_API_BASE !== undefined) local?.removeItem(credentialKey(DEMO_API_BASE));
   safeStorage('session')?.removeItem(SEED_PLAN_KEY);
+  safeStorage('session')?.removeItem(SEED_PROGRESS_KEY);
 }
 
 /**
@@ -129,4 +131,48 @@ export function loadSeedPlan(): DemoSeedPlan | undefined {
 
 export function clearSeedPlan(): void {
   safeStorage('session')?.removeItem(SEED_PLAN_KEY);
+  safeStorage('session')?.removeItem(SEED_PROGRESS_KEY);
+}
+
+/**
+ * How far sealing got, so a hard reload resumes instead of starting over (starting over is what
+ * created duplicate conversations). `conversations` maps a friend key to the conversation that
+ * friend already opened and how many scripted messages it has sent; `done` lists finished
+ * friends. Holds ids and counters only, never a key or a message body.
+ */
+export interface DemoSeedProgress {
+  readonly visitorEnrolled: boolean;
+  readonly done: readonly string[];
+  readonly conversations: Readonly<Record<string, { readonly id: string; readonly sent: number }>>;
+}
+
+export const EMPTY_SEED_PROGRESS: DemoSeedProgress = {
+  visitorEnrolled: false,
+  done: [],
+  conversations: {},
+};
+
+export function saveSeedProgress(progress: DemoSeedProgress): void {
+  safeStorage('session')?.setItem(SEED_PROGRESS_KEY, JSON.stringify(progress));
+}
+
+export function loadSeedProgress(): DemoSeedProgress {
+  const raw = safeStorage('session')?.getItem(SEED_PROGRESS_KEY) ?? null;
+  if (raw === null) return EMPTY_SEED_PROGRESS;
+  try {
+    const parsed = JSON.parse(raw) as Partial<DemoSeedProgress> | null;
+    if (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      typeof parsed.visitorEnrolled === 'boolean' &&
+      Array.isArray(parsed.done) &&
+      typeof parsed.conversations === 'object' &&
+      parsed.conversations !== null
+    ) {
+      return parsed as DemoSeedProgress;
+    }
+  } catch {
+    // Corrupt progress is the same as none.
+  }
+  return EMPTY_SEED_PROGRESS;
 }

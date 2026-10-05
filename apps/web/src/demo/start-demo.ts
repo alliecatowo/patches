@@ -6,9 +6,12 @@ import { DEMO_API_BASE, markDemoActive, saveSeedPlan } from './demo-mode.js';
 
 /** Thrown with copy that is safe to show as-is. */
 export class DemoUnavailableError extends Error {
-  constructor(message: string) {
+  /** True when the node refused because this connection started too many sandboxes. */
+  readonly rateLimited: boolean;
+  constructor(message: string, options: { readonly rateLimited?: boolean } = {}) {
     super(message);
     this.name = new.target.name;
+    this.rateLimited = options.rateLimited ?? false;
   }
 }
 
@@ -20,7 +23,7 @@ export class DemoUnavailableError extends Error {
  * seeded direct messages are sealed after the reload by `useDemoSeeding`, using the friend
  * sessions saved here.
  */
-export async function startDemo(): Promise<never> {
+export async function startDemo(onAccountCreated?: () => void): Promise<never> {
   if (DEMO_API_BASE === undefined) {
     throw new DemoUnavailableError('The demo is not available in this build.');
   }
@@ -34,7 +37,7 @@ export async function startDemo(): Promise<never> {
   try {
     response = await demoApi.onboarding.startDemo({}, { timeoutMs: 60_000 });
   } catch (error) {
-    throw new DemoUnavailableError(demoFailureCopy(error));
+    throw new DemoUnavailableError(demoFailureCopy(error), { rateLimited: errorCode(error) === 8 });
   }
 
   const visitor = response.session;
@@ -67,6 +70,8 @@ export async function startDemo(): Promise<never> {
     }),
   });
   markDemoActive(Number(expiresAt.seconds) * 1000);
+  // The account exists; the next step (keys) runs on the reloaded page.
+  onAccountCreated?.();
   window.location.assign('/');
   // The assignment navigates away; never resolve so callers cannot act on a dying page.
   return new Promise<never>(() => undefined);
@@ -75,11 +80,15 @@ export async function startDemo(): Promise<never> {
 /** Fixed, content-free copy per failure kind. */
 function demoFailureCopy(error: unknown): string {
   const name = error instanceof Error ? error.name : '';
-  const code = (error as { code?: number } | null)?.code;
+  const code = errorCode(error);
   // Connect codes: 8 resource_exhausted, 14 unavailable, 4 deadline_exceeded.
   if (code === 8) return 'Too many demos from your connection. Try again in a little while.';
   if (code === 14 || code === 4 || name === 'AbortError') {
     return 'The demo server is waking up. Give it a few seconds and try again.';
   }
   return 'The demo could not start. Try again in a moment.';
+}
+
+function errorCode(error: unknown): number | undefined {
+  return (error as { code?: number } | null)?.code;
 }

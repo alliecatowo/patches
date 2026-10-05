@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { useShakeToReport } from '../hooks/useShakeToReport.js';
 
-import { lazy, Suspense, useMemo, useRef, useState, type JSX } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState, type JSX } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { api, logoutCurrentSession } from '../api/client.js';
 import { DemoBanner } from '../components/DemoBanner.js';
+import { DEMO_ACTIVE, loadSeedPlan } from '../demo/demo-mode.js';
 import { HeaderBar } from '../components/HeaderBar.js';
 import {
   BellIcon,
@@ -39,6 +40,9 @@ const LandingRoute = lazy(() =>
 
 /** Self-hosted nodes that want the public timeline at `/` for signed-out visitors can build with
  * `VITE_PATCHES_LANDING=off` (docs/operations/web.md). */
+/** The sandbox setup screen pulls in the E2EE runtime, so only a fresh sandbox loads it. */
+const DemoSetupGate = lazy(() => import('../components/DemoSetupGate.js'));
+
 const LANDING_ENABLED = (import.meta.env['VITE_PATCHES_LANDING'] as string | undefined) !== 'off';
 
 /**
@@ -49,6 +53,21 @@ const LANDING_ENABLED = (import.meta.env['VITE_PATCHES_LANDING'] as string | und
 export function RootLayout(): JSX.Element {
   const session = useSession();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
+  // Decided once per page load: a fresh sandbox still has its seed plan, and a reload while it
+  // is being sealed lands back on the setup screen, which resumes rather than starting over.
+  const [settingUp, setSettingUp] = useState(() => DEMO_ACTIVE && loadSeedPlan() !== undefined);
+  const finishSetUp = useCallback(() => {
+    setSettingUp(false);
+    void navigate('/messages', { replace: true });
+  }, [navigate]);
+  if (settingUp && session !== null) {
+    return (
+      <Suspense fallback={null}>
+        <DemoSetupGate onFinished={finishSetUp} />
+      </Suspense>
+    );
+  }
   if (LANDING_ENABLED && session === null && pathname === '/') {
     return (
       <Suspense fallback={null}>

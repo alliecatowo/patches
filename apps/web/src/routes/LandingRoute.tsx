@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 
 import { api } from '../api/client.js';
 import { DEMO_API_BASE } from '../demo/demo-mode.js';
+import { DemoSetupScreen, type SetupPhase } from '../components/DemoSetupScreen.js';
 import { DemoUnavailableError, startDemo } from '../demo/start-demo.js';
 import styles from './LandingRoute.module.css';
 
@@ -172,20 +173,26 @@ function useWakeDemoNode(): void {
   }, []);
 }
 
+type DemoStart =
+  | { readonly kind: 'idle' }
+  | { readonly kind: 'starting'; readonly phase: SetupPhase }
+  | { readonly kind: 'error'; readonly message: string; readonly rateLimited: boolean };
+
 function DemoCallToAction(): JSX.Element {
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const [start, setStart] = useState<DemoStart>({ kind: 'idle' });
 
   function begin(): void {
-    setStarting(true);
-    setError(undefined);
-    startDemo().catch((caught: unknown) => {
-      setStarting(false);
-      setError(
-        caught instanceof DemoUnavailableError
-          ? caught.message
-          : 'The demo could not start. Try again in a moment.',
-      );
+    setStart({ kind: 'starting', phase: 'account' });
+    startDemo(() => {
+      // Sandbox created. The page reloads next and the setup screen carries on from "keys".
+      setStart({ kind: 'starting', phase: 'keys' });
+    }).catch((caught: unknown) => {
+      const unavailable = caught instanceof DemoUnavailableError;
+      setStart({
+        kind: 'error',
+        message: unavailable ? caught.message : 'The demo could not start. Try again in a moment.',
+        rateLimited: unavailable && caught.rateLimited,
+      });
     });
   }
 
@@ -197,20 +204,27 @@ function DemoCallToAction(): JSX.Element {
             type="button"
             className={styles['demoButton']}
             onClick={begin}
-            disabled={starting}
             aria-describedby="demo-note"
           >
-            {starting ? 'Starting your sandbox…' : 'Try the demo'}
+            Try the demo
           </button>
-          <p id="demo-note" className={styles['note']} role="status">
-            {starting
-              ? 'Waking the demo server and filling the sandbox. This can take up to half a minute.'
-              : 'A throwaway account with fake friends, posts and encrypted messages. No sign-up; it is deleted after an hour.'}
+          <p id="demo-note" className={styles['note']}>
+            A throwaway account with fake friends, posts and encrypted messages. No sign-up; it is
+            deleted after an hour.
           </p>
-          {error === undefined ? null : (
-            <p className={styles['error']} role="alert">
-              {error}
-            </p>
+          {start.kind === 'idle' ? null : (
+            <DemoSetupScreen
+              phase={start.kind === 'starting' ? start.phase : 'account'}
+              friendsDone={0}
+              friendsTotal={3}
+              error={start.kind === 'error' ? start.message : undefined}
+              canRetry={start.kind === 'error' && !start.rateLimited}
+              onRetry={begin}
+              onLeave={() => {
+                setStart({ kind: 'idle' });
+              }}
+              leaveLabel="Back to the landing page"
+            />
           )}
         </>
       )}
