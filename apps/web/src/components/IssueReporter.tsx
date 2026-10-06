@@ -107,6 +107,39 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
   const [screenshotNote, setScreenshotNote] = useState<string | undefined>(undefined);
   const [state, setState] = useState<SubmitState>({ status: 'idle' });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        onClose();
+      } else if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (first === undefined || last === undefined) return;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      previousActiveElement?.focus();
+    };
+  }, [onClose]);
 
   /**
    * Attach path: the device's own image picker (photo library on iOS PWA, files on
@@ -171,12 +204,14 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
   }
 
   return (
-    <div className={styles.backdrop} role="presentation">
+    <div className={styles.backdrop} role="presentation" onClick={onClose}>
       <div
+        ref={dialogRef}
         className={styles.modal}
         role="dialog"
         aria-modal="true"
         aria-labelledby="report-issue-title"
+        onClick={(event) => event.stopPropagation()}
       >
         <h2 id="report-issue-title" className={styles.title}>
           Report an issue

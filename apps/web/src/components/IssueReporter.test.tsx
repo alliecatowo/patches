@@ -219,4 +219,22 @@ describe('IssueReporter', () => {
       expect(screen.getByText('the image could not be read')).toBeInTheDocument(),
     );
   });
+
+  it('closes the modal when pressing Escape key', () => {
+    renderReporter();
+    fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('closes the modal when clicking the backdrop', () => {
+    renderReporter();
+    fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    const backdrop = document.querySelector('[role="presentation"]');
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
