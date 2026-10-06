@@ -558,8 +558,19 @@ export function ComposeRoute(): JSX.Element {
 
         <div className={styles['submitRow']}>
           {/* Radial progress character counter */}
-          <div className={styles['counterWrap']}>
-            <svg className={styles['ringSvg']} width="26" height="26" viewBox="0 0 36 36">
+          <div
+            className={styles['counterWrap']}
+            role="status"
+            aria-live="polite"
+            aria-label={`${maxChars - body.length} characters remaining`}
+          >
+            <svg
+              className={styles['ringSvg']}
+              width="26"
+              height="26"
+              viewBox="0 0 36 36"
+              aria-hidden="true"
+            >
               <path
                 className={styles['ringBg']}
                 d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
