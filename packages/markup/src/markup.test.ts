@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  extractMentions,
   looksLikeHtml,
   parseInline,
   parseMarkup,
@@ -188,5 +189,18 @@ describe('AST shape', () => {
   it('returns an empty array for empty/whitespace-only input', () => {
     expect(parseMarkup('')).toEqual([]);
     expect(parseMarkup('   \n  ')).toEqual([]);
+  });
+});
+
+describe('extractMentions and looksLikeHtml fast paths', () => {
+  it('returns false for looksLikeHtml when no HTML tags or < character exist', () => {
+    expect(looksLikeHtml('Just plain text without angle brackets')).toBe(false);
+    expect(looksLikeHtml('Some math 1 < 2 and 3 > 2')).toBe(false);
+    expect(looksLikeHtml('<b>HTML paragraph</b>')).toBe(true);
+  });
+
+  it('extracts mentions correctly or returns empty array when no @ present', () => {
+    expect(extractMentions('No mention here')).toEqual([]);
+    expect(extractMentions('Hello @alice and @bob!')).toEqual(['alice', 'bob']);
   });
 });

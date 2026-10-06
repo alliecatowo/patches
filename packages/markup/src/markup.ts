@@ -216,6 +216,10 @@ export function parseInline(text: string): InlineNode[] {
 
 /** Every distinct `@handle` in a body, lowercased, in first-appearance order. */
 export function extractMentions(text: string): string[] {
+  // Optimization (Bolt): Fast path check for absence of '@' character.
+  // Avoids running sanitizer, regex matchAll scan, and array allocations when no mentions exist.
+  if (!text.includes('@')) return [];
+
   const handles: string[] = [];
   for (const match of sanitizeForTerminal(text).matchAll(MENTION_PATTERN)) {
     const handle = (match[1] ?? '').toLowerCase();
@@ -235,6 +239,10 @@ const TAG_PATTERN_HTML = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^'">])*
 
 /** True when the source carries at least one tag from the supported subset. */
 export function looksLikeHtml(source: string): boolean {
+  // Optimization (Bolt): Fast path check for absence of HTML tag start character '<'.
+  // Bypasses regex matchAll iteration and string allocations for non-HTML text.
+  if (!source.includes('<')) return false;
+
   for (const match of source.matchAll(TAG_PATTERN_HTML)) {
     const name = (match[1] ?? '').toLowerCase();
     if (INLINE_TAGS.has(name) || BLOCK_TAGS.has(name)) return true;
