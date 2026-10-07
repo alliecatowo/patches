@@ -221,6 +221,11 @@ export async function attachReportEvidence(
     throw new AppError('REPORT_NOT_FOUND', 'Report not found.');
   }
 
+  // B-049: evidence can only be attached to E2EE_MESSAGE reports
+  if (report.subjectType !== 'E2EE_MESSAGE') {
+    throw AppError.validation('Report evidence can only be attached to E2EE message reports.');
+  }
+
   // ADR 0020 §9 requires conversation authorization before evidence is marked verified: a
   // reporter must actually have been a participant in `request.conversationId`, not merely own
   // the report row (ADR 0024 B-054). `ConversationMember` rows are never deleted on leave — only

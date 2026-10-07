@@ -186,7 +186,11 @@ function reportEvidenceItem(overrides: Partial<Row> = {}): Row {
   };
 }
 
-const REPORT_ROW: Row = { id: 'report-1', reporterActorId: 'reporter-actor' };
+const REPORT_ROW: Row = {
+  id: 'report-1',
+  reporterActorId: 'reporter-actor',
+  subjectType: 'E2EE_MESSAGE',
+};
 
 /** The commitment context an accepted row implies (ADR 0025 §6). Matches `acceptedMessage`. */
 function contextFor(
@@ -469,7 +473,7 @@ describe('attachReportEvidence (ADR 0020 §9, P13-009)', () => {
 
   it('refuses to attach evidence to another actor’s report (no existence oracle)', async () => {
     const { manager } = fakeManager({
-      report: { id: 'report-1', reporterActorId: 'someone-else' },
+      report: { id: 'report-1', reporterActorId: 'someone-else', subjectType: 'E2EE_MESSAGE' },
       existingEvidence: null,
       logicalMessages: new Map(),
       envelopesByMessage: new Map(),
@@ -488,6 +492,29 @@ describe('attachReportEvidence (ADR 0020 §9, P13-009)', () => {
         fakeKeyRing(),
       ),
     ).rejects.toMatchObject({ code: 'REPORT_NOT_FOUND' });
+  });
+
+  it('refuses evidence for a report whose subject type is not E2EE_MESSAGE (B-049)', async () => {
+    const { manager } = fakeManager({
+      report: { id: 'report-1', reporterActorId: 'reporter-actor', subjectType: 'POST' },
+      existingEvidence: null,
+      logicalMessages: new Map(),
+      envelopesByMessage: new Map(),
+    });
+
+    await expect(
+      attachReportEvidence(
+        manager,
+        'reporter-actor',
+        {
+          reportId: 'report-1',
+          conversationId: 'conv-1',
+          reporterConsented: true,
+          items: [reportEvidenceItem()],
+        } as never,
+        fakeKeyRing(),
+      ),
+    ).rejects.toThrow('Report evidence can only be attached to E2EE message reports.');
   });
 
   it('refuses evidence for a conversation the reporter was never a member of (ADR 0024 B-054)', async () => {
