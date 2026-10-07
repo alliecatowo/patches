@@ -107,6 +107,43 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
   const [screenshotNote, setScreenshotNote] = useState<string | undefined>(undefined);
   const [state, setState] = useState<SubmitState>({ status: 'idle' });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const previousActiveElement =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    textareaRef.current?.focus();
+
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        onClose();
+      } else if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        );
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (first === undefined || last === undefined) return;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+      previousActiveElement?.focus();
+    };
+  }, [onClose]);
 
   /**
    * Attach path: the device's own image picker (photo library on iOS PWA, files on
@@ -171,9 +208,11 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
   }
 
   return (
-    <div className={styles.backdrop} role="presentation">
+    <div className={styles.backdrop} onClick={onClose} role="presentation">
       <div
+        ref={dialogRef}
         className={styles.modal}
+        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="report-issue-title"
@@ -190,6 +229,7 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
           What happened — bug, jank, or idea? (optional)
         </label>
         <textarea
+          ref={textareaRef}
           id="report-issue-description"
           className={styles.textarea}
           rows={4}
