@@ -118,7 +118,7 @@ function pushMark(marks: Mark[], mark: Mark): void {
 }
 
 /** Fast-path trigger pattern to bypass parsing overhead for plain text without markup markers. */
-const INLINE_MARKUP_TRIGGER = /[`*_\\[@#]|https?:/iu;
+const INLINE_MARKUP_TRIGGER = /[`*_\x5b\\@#]|https?:/iu;
 
 /**
  * Splits already-sanitized text into styled runs: emphasis, code spans, links,
