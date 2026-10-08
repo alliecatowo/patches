@@ -21,6 +21,7 @@ export function SafeExternalLink({
   return (
     <a href={safe} target="_blank" rel="noopener noreferrer ugc">
       {children ?? safe}
+      <span className="visually-hidden"> (opens in a new tab)</span>
     </a>
   );
 }
