@@ -34,6 +34,14 @@ export function detectColorSupport(env: NodeJS.ProcessEnv = process.env): ColorS
   return '256';
 }
 
+// Optimization (Bolt): Pre-computed lookup tables for byte string conversions (0..255),
+// color cube quantization, and 256-color SGR escape sequences. Eliminates thousands of
+// integer-to-string allocations and math operations per frame during terminal art rendering.
+const BYTE_STRINGS: readonly string[] = Array.from({ length: 256 }, (_, i) => String(i));
+const CUBE_5: readonly number[] = Array.from({ length: 256 }, (_, i) => Math.round((i / 255) * 5));
+const ANSI_256_FG: readonly string[] = Array.from({ length: 256 }, (_, i) => `\x1b[38;5;${i}m`);
+const ANSI_256_BG: readonly string[] = Array.from({ length: 256 }, (_, i) => `\x1b[48;5;${i}m`);
+
 /**
  * Nearest xterm 256-colour palette index (16-231 colour cube, 232-255 greyscale
  * ramp) for a truecolor RGB triple. Matches the rounding convention used by chalk's
@@ -47,7 +55,10 @@ export function rgbToAnsi256(r: number, g: number, b: number): number {
     return Math.round(((r - 8) / 247) * 24) + 232;
   }
   return (
-    16 + 36 * Math.round((r / 255) * 5) + 6 * Math.round((g / 255) * 5) + Math.round((b / 255) * 5)
+    16 +
+    36 * (CUBE_5[r] ?? Math.round((r / 255) * 5)) +
+    6 * (CUBE_5[g] ?? Math.round((g / 255) * 5)) +
+    (CUBE_5[b] ?? Math.round((b / 255) * 5))
   );
 }
 
@@ -59,14 +70,24 @@ export const RESET_ALL = '\x1b[0m';
 
 /** `\x1b[38;2;r;g;bm` (truecolor) or `\x1b[38;5;<n>m` (256-colour quantized). */
 export function fgColor(r: number, g: number, b: number, support: 'truecolor' | '256'): string {
-  return support === 'truecolor'
-    ? `\x1b[38;2;${String(r)};${String(g)};${String(b)}m`
-    : `\x1b[38;5;${String(rgbToAnsi256(r, g, b))}m`;
+  if (support === 'truecolor') {
+    const sr = BYTE_STRINGS[r] ?? String(r);
+    const sg = BYTE_STRINGS[g] ?? String(g);
+    const sb = BYTE_STRINGS[b] ?? String(b);
+    return `\x1b[38;2;${sr};${sg};${sb}m`;
+  }
+  const idx = rgbToAnsi256(r, g, b);
+  return ANSI_256_FG[idx] ?? `\x1b[38;5;${idx}m`;
 }
 
 /** `\x1b[48;2;r;g;bm` (truecolor) or `\x1b[48;5;<n>m` (256-colour quantized). */
 export function bgColor(r: number, g: number, b: number, support: 'truecolor' | '256'): string {
-  return support === 'truecolor'
-    ? `\x1b[48;2;${String(r)};${String(g)};${String(b)}m`
-    : `\x1b[48;5;${String(rgbToAnsi256(r, g, b))}m`;
+  if (support === 'truecolor') {
+    const sr = BYTE_STRINGS[r] ?? String(r);
+    const sg = BYTE_STRINGS[g] ?? String(g);
+    const sb = BYTE_STRINGS[b] ?? String(b);
+    return `\x1b[48;2;${sr};${sg};${sb}m`;
+  }
+  const idx = rgbToAnsi256(r, g, b);
+  return ANSI_256_BG[idx] ?? `\x1b[48;5;${idx}m`;
 }
