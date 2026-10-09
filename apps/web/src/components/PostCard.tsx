@@ -458,6 +458,7 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
               type="button"
               className={styles['actionButton']}
               onClick={() => onReply(post)}
+              title="Reply"
               aria-label={`Reply to @${post.author?.handle ?? 'unknown'} (${counts?.replies ?? 0} replies)`}
             >
               <MessageSquareIcon size={17} />
@@ -467,6 +468,7 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
             <Link
               to={`/p/${post.id}`}
               className={styles['actionButton']}
+              title="View thread and replies"
               aria-label={`View thread and replies (${counts?.replies ?? 0} replies)`}
             >
               <MessageSquareIcon size={17} />
@@ -480,6 +482,7 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
               viewerState?.reposted ? styles['onRepost'] : ''
             } ${repostPopping ? styles['popping'] : ''}`}
             onClick={() => void toggleRepost()}
+            title={viewerState?.reposted ? 'Undo repost' : 'Repost'}
             aria-label={viewerState?.reposted ? 'Undo repost' : 'Repost'}
           >
             <RepeatIcon size={17} />
@@ -492,6 +495,7 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
               viewerState?.liked ? styles['onLike'] : ''
             } ${likePopping ? styles['popping'] : ''}`}
             onClick={() => void toggleLike()}
+            title={viewerState?.liked ? 'Unlike' : 'Like'}
             aria-label={viewerState?.liked ? 'Unlike' : 'Like'}
           >
             <HeartIcon size={17} filled={viewerState?.liked ?? false} />
@@ -504,6 +508,7 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
               viewerState?.bookmarked ? styles['onBookmark'] : ''
             }`}
             onClick={() => void toggleBookmark()}
+            title={viewerState?.bookmarked ? 'Remove bookmark' : 'Bookmark'}
             aria-label={viewerState?.bookmarked ? 'Remove bookmark' : 'Bookmark'}
           >
             <BookmarkIcon size={17} />
@@ -512,6 +517,7 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
           <Link
             to={`/compose?quote=${post.id}`}
             className={styles['actionButton']}
+            title="Quote post"
             aria-label="Quote post"
           >
             <EditIcon size={16} />
@@ -521,6 +527,7 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
             type="button"
             className={styles['actionButton']}
             onClick={() => void handleShare()}
+            title="Share post"
             aria-label="Share post"
           >
             <ShareIcon size={17} />
