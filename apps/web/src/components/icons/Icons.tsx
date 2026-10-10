@@ -126,13 +126,18 @@ export function UserIcon({ size = 20, strokeWidth = 2, ...props }: IconProps): J
   );
 }
 
-export function BookmarkIcon({ size = 20, strokeWidth = 2, ...props }: IconProps): JSX.Element {
+export function BookmarkIcon({
+  size = 20,
+  strokeWidth = 2,
+  filled = false,
+  ...props
+}: IconProps & { filled?: boolean }): JSX.Element {
   return (
     <svg
       width={size}
       height={size}
       viewBox="0 0 24 24"
-      fill="none"
+      fill={filled ? 'currentColor' : 'none'}
       stroke="currentColor"
       strokeWidth={strokeWidth}
       strokeLinecap="round"
