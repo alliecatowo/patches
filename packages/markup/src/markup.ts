@@ -235,6 +235,8 @@ const TAG_PATTERN_HTML = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:"[^"]*"|'[^']*'|[^'">])*
 
 /** True when the source carries at least one tag from the supported subset. */
 export function looksLikeHtml(source: string): boolean {
+  // Fast path (Bolt): HTML tags require '<'. Avoid regex iteration when no '<' is present.
+  if (!source.includes('<')) return false;
   for (const match of source.matchAll(TAG_PATTERN_HTML)) {
     const name = (match[1] ?? '').toLowerCase();
     if (INLINE_TAGS.has(name) || BLOCK_TAGS.has(name)) return true;
