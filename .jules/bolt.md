@@ -1,0 +1,4 @@
+## 2026-10-12 - Dual Markup Parsers & Trigger Fast-Paths
+
+**Learning:** The TUI app (`apps/tui/src/format/markup.ts`) intentionally duplicates the post body markup parser AST logic from `@patches/markup` (`packages/markup/src/markup.ts`) rather than importing it directly, to isolate TUI terminal-cell layout and word-wrapping from package dependencies. When optimizing markup parsing in this codebase, performance improvements to `parseInline` or `sanitizeForTerminal` must be mirrored in both locations to ensure uniform performance characteristics and behavior across web, server, and TUI clients.
+**Action:** Always check both `packages/markup/src/markup.ts` and `apps/tui/src/format/markup.ts` when applying markup parser optimizations or fixes.
