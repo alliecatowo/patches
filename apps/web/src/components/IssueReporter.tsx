@@ -108,6 +108,14 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
   const [state, setState] = useState<SubmitState>({ status: 'idle' });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   /**
    * Attach path: the device's own image picker (photo library on iOS PWA, files on
    * desktop) — the only screenshot source that works on every platform AND the only
@@ -171,12 +179,13 @@ function IssueReportModal({ onClose }: { onClose: () => void }): JSX.Element {
   }
 
   return (
-    <div className={styles.backdrop} role="presentation">
+    <div className={styles.backdrop} role="presentation" onClick={onClose}>
       <div
         className={styles.modal}
         role="dialog"
         aria-modal="true"
         aria-labelledby="report-issue-title"
+        onClick={(event) => event.stopPropagation()}
       >
         <h2 id="report-issue-title" className={styles.title}>
           Report an issue
