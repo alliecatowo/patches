@@ -26,7 +26,7 @@ describe('ReportPostControl', () => {
       </QueryClientProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'report' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Report post' }));
     fireEvent.change(screen.getByLabelText('Report reason'), {
       target: { value: String(ReportReason.HARASSMENT) },
     });
@@ -54,10 +54,10 @@ describe('ReportPostControl', () => {
       </QueryClientProvider>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'report' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Report post' }));
     expect(screen.getByRole('form', { name: 'Report post' })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    expect(screen.getByRole('button', { name: 'report' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Report post' })).toBeInTheDocument();
   });
 });
