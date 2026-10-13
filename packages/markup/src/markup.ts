@@ -216,6 +216,7 @@ export function parseInline(text: string): InlineNode[] {
 
 /** Every distinct `@handle` in a body, lowercased, in first-appearance order. */
 export function extractMentions(text: string): string[] {
+  if (!text.includes('@')) return [];
   const handles: string[] = [];
   for (const match of sanitizeForTerminal(text).matchAll(MENTION_PATTERN)) {
     const handle = (match[1] ?? '').toLowerCase();
