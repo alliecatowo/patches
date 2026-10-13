@@ -230,7 +230,7 @@ describe('PostCard', () => {
       renderPostCard(mockPost);
 
       fireEvent.click(screen.getByRole('button', { name: /more options/i }));
-      fireEvent.click(screen.getByRole('button', { name: 'report' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Report post' }));
 
       // Regression: the dropdown used to close on this click and unmount the form.
       expect(screen.getByRole('form', { name: /report post/i })).toBeInTheDocument();
