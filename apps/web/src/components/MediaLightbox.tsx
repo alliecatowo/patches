@@ -136,7 +136,7 @@ export function MediaLightbox({
       aria-label="Image lightbox"
     >
       <div className={styles['topBar']} onClick={(e) => e.stopPropagation()}>
-        <span className={styles['counter']}>
+        <span className={styles['counter']} aria-live="polite" aria-atomic="true">
           {currentIndex + 1} / {images.length}
         </span>
         <button
