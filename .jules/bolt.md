@@ -1,0 +1,4 @@
+## 2025-05-18 - Keep duplicated post body AST parsers in sync with fast-path optimizations
+
+**Learning:** Post body markup parsing is duplicated in `apps/tui/src/format/markup.ts` and `@patches/markup` to decouple TUI layout from package dependencies. `parseInline` executes up to 7 regex matchAll operations and string masking overhead per string; adding a fast-path trigger check (`INLINE_MARKUP_TRIGGER = /[`*_\\[@#]|https?:/iu`) reduces execution time for plain text by ~20x (from ~2030ms to ~90ms for 500k calls).
+**Action:** Whenever performance optimizations or regex grammar changes are made to `@patches/markup`, mirror them immediately in `apps/tui/src/format/markup.ts` and verify across both packages.
