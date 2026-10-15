@@ -252,4 +252,18 @@ describe('ComposeRoute', () => {
     view.unmount();
     expect(capturedSignal?.aborted).toBe(true);
   });
+
+  it('updates aria-label and live region attributes on the character counter', () => {
+    renderCompose();
+    const textarea = screen.getByPlaceholderText("What's on your mind?");
+
+    // Initially 500 characters remaining
+    const counter = screen.getByLabelText('500 characters remaining');
+    expect(counter).toHaveAttribute('aria-live', 'polite');
+    expect(counter).toHaveAttribute('aria-atomic', 'true');
+
+    // Over limit by 5 characters (505 chars typed, max 500)
+    fireEvent.change(textarea, { target: { value: 'a'.repeat(505) } });
+    expect(screen.getByLabelText('5 characters over limit')).toBeInTheDocument();
+  });
 });
