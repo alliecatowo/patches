@@ -126,7 +126,7 @@ catalog:
   '@tanstack/react-query-devtools': ^5.104.0
   web-vitals: ^6.2.2
   fake-indexeddb: ^6.2.5
-  storybook: 10.6.1
+  storybook: 10.6.2
   '@storybook/react-vite': 10.6.1
   '@storybook/addon-vitest': 10.6.2
   '@storybook/addon-a11y': 10.6.1
