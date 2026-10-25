@@ -37,7 +37,7 @@ catalog:
   # data
   typeorm: ^1.1.1
   pg: ^8.23.1
-  zod: ^4.6.5
+  zod: ^4.6.6
   # tui
   ink: ^7.1.1
   '@inkjs/ui': ^2.0.0

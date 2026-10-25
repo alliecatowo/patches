@@ -361,8 +361,8 @@ catalogs:
       specifier: ^4.146.0
       version: 4.146.0
     zod:
-      specifier: ^4.6.5
-      version: 4.6.5
+      specifier: ^4.6.6
+      version: 4.6.7
 
 overrides:
   brace-expansion@<1.1.21: ^1.1.21
@@ -484,7 +484,7 @@ importers:
         version: 1.1.1(pg@8.23.1)(supports-color@10.2.2)
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.7
     devDependencies:
       '@patches/testkit':
         specifier: workspace:*
@@ -663,7 +663,7 @@ importers:
         version: 1.1.1(pg@8.23.1)(supports-color@10.2.2)
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.7
     devDependencies:
       '@connectrpc/connect-node':
         specifier: 'catalog:'
@@ -730,7 +730,7 @@ importers:
         version: 8.3.0
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.7
     devDependencies:
       '@grpc/grpc-js':
         specifier: 'catalog:'
@@ -930,7 +930,7 @@ importers:
         version: 1.1.1(pg@8.23.1)(supports-color@10.2.2)
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.7
     devDependencies:
       '@nestjs/cli':
         specifier: 'catalog:'
@@ -1017,7 +1017,7 @@ importers:
     dependencies:
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.7
     devDependencies:
       tsup:
         specifier: 'catalog:'
@@ -1064,7 +1064,7 @@ importers:
         version: 1.1.1(pg@8.23.1)(supports-color@10.2.2)
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.7
     devDependencies:
       '@types/pg':
         specifier: 'catalog:'
@@ -1080,7 +1080,7 @@ importers:
     dependencies:
       zod:
         specifier: 'catalog:'
-        version: 4.6.5
+        version: 4.6.7
     devDependencies:
       fast-check:
         specifier: 'catalog:'
@@ -10736,6 +10736,9 @@ packages:
 
   zod@4.6.5:
     resolution: {integrity: sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q==}
+
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -21281,5 +21284,7 @@ snapshots:
   zod@3.25.76: {}
 
   zod@4.6.5: {}
+
+  zod@4.6.7: {}
 
   zwitch@2.0.4: {}
