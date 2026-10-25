@@ -59,7 +59,7 @@ catalog:
   grpc-health-check: ^2.1.0
   '@node-rs/argon2': ^2.2.1
   jose: ^6.2.12
-  nodemailer: ^10.0.13
+  nodemailer: ^10.1.4
   resend: ^6.32.0
   '@types/nodemailer': ^8.0.2
   '@napi-rs/keyring': ^2.1.0
