@@ -253,8 +253,8 @@ catalogs:
       specifier: ^5.2.1
       version: 5.2.1
     nodemailer:
-      specifier: ^10.0.13
-      version: 10.0.13
+      specifier: ^10.1.4
+      version: 10.2.1
     pg:
       specifier: ^8.23.1
       version: 8.23.1
@@ -639,7 +639,7 @@ importers:
         version: 5.2.1(@nestjs/common@12.1.2(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@10.2.2))(@nestjs/core@12.1.2)(pino-http@11.0.0)(pino@10.3.1)(rxjs@7.8.2)
       nodemailer:
         specifier: 'catalog:'
-        version: 10.0.13
+        version: 10.2.1
       pg:
         specifier: 'catalog:'
         version: 8.23.1
@@ -903,7 +903,7 @@ importers:
         version: link:../../packages/observability
       nodemailer:
         specifier: 'catalog:'
-        version: 10.0.13
+        version: 10.2.1
       pg:
         specifier: 'catalog:'
         version: 8.23.1
@@ -8533,8 +8533,8 @@ packages:
     resolution: {integrity: sha512-kQK9LGGFiHtrWiNhZtA7Qbw17AQz+dmsEKODRIVTXA9+e5MS/2gZEBhYJt13GrAz5/IOZKddH/0Z3TP/Zgo+yw==}
     engines: {node: '>=18'}
 
-  nodemailer@10.0.13:
-    resolution: {integrity: sha512-SzG86OlvcW/NNhUFC6uROMwRTL4n7MswfQqC/T8mhkmnY1YVa23zUEMYi4ijSeXSl9GLz9ZeTJDUatEDuY5FeQ==}
+  nodemailer@10.2.1:
+    resolution: {integrity: sha512-ZrDNsPFoDMwefNs7sJwrYiEJ/CG4ClJWDZv05iNJsEBWa8GRDry1QJHTJxsuTAY9eDDKjX4k+q3SxslXJOao7w==}
     engines: {node: '>=20.0.0'}
 
   normalize-url@8.1.1:
@@ -18828,7 +18828,7 @@ snapshots:
 
   node-releases@2.0.57: {}
 
-  nodemailer@10.0.13: {}
+  nodemailer@10.2.1: {}
 
   normalize-url@8.1.1: {}
 
