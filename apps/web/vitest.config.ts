@@ -9,6 +9,11 @@ export default defineProject({
     globals: false,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    // React DOM / jsdom tests drive asynchronous state updates, timer delays, and DOM assertions.
+    // Running test files concurrently in this package causes CPU contention that can lead to
+    // occasional `waitFor` or timer resolution flakes (B-127). Disabling file parallelism ensures
+    // deterministic execution across the test suite without inter-file race conditions.
+    fileParallelism: false,
     // #302: overridable so scripts/bounded.sh can cap worker pools under concurrent agent load.
     maxWorkers: process.env.VITEST_MAX_WORKERS ? Number(process.env.VITEST_MAX_WORKERS) : '50%',
   },
