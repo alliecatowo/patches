@@ -56,7 +56,12 @@ export function ReportPostControl({
   if (sent) return wrap(<span role="status">Report sent.</span>);
   if (!open) {
     return wrap(
-      <button type="button" className={className} onClick={() => setOpen(true)}>
+      <button
+        type="button"
+        className={className}
+        onClick={() => setOpen(true)}
+        aria-label="Report post"
+      >
         report
       </button>,
     );
