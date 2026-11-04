@@ -21,7 +21,10 @@ describe('MediaLightbox', () => {
     render(<MediaLightbox images={images} isOpen={true} onClose={onClose} />);
 
     expect(screen.getByRole('dialog', { name: 'Image lightbox' })).toBeInTheDocument();
-    expect(screen.getByText('1 / 2')).toBeInTheDocument();
+    const counter = screen.getByText('1 / 2');
+    expect(counter).toBeInTheDocument();
+    expect(counter).toHaveAttribute('aria-live', 'polite');
+    expect(counter).toHaveAttribute('aria-atomic', 'true');
     expect(screen.getByText('Photo 1')).toBeInTheDocument();
 
     const nextBtn = screen.getByRole('button', { name: 'Next image' });
