@@ -558,8 +558,23 @@ export function ComposeRoute(): JSX.Element {
 
         <div className={styles['submitRow']}>
           {/* Radial progress character counter */}
-          <div className={styles['counterWrap']}>
-            <svg className={styles['ringSvg']} width="26" height="26" viewBox="0 0 36 36">
+          <div
+            className={styles['counterWrap']}
+            aria-live="polite"
+            aria-atomic="true"
+            aria-label={
+              isOverLimit
+                ? `${body.length - maxChars} characters over limit`
+                : `${maxChars - body.length} characters remaining`
+            }
+          >
+            <svg
+              className={styles['ringSvg']}
+              width="26"
+              height="26"
+              viewBox="0 0 36 36"
+              aria-hidden="true"
+            >
               <path
                 className={styles['ringBg']}
                 d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
@@ -578,7 +593,10 @@ export function ComposeRoute(): JSX.Element {
               />
             </svg>
             {isNearLimit || isOverLimit ? (
-              <span className={`${styles['charCount']} ${isOverLimit ? styles['overLimit'] : ''}`}>
+              <span
+                className={`${styles['charCount']} ${isOverLimit ? styles['overLimit'] : ''}`}
+                aria-hidden="true"
+              >
                 {maxChars - body.length}
               </span>
             ) : null}
