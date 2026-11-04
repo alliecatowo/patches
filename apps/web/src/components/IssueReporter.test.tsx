@@ -219,4 +219,32 @@ describe('IssueReporter', () => {
       expect(screen.getByText('the image could not be read')).toBeInTheDocument(),
     );
   });
+
+  it('dismisses the modal on Escape key press', () => {
+    renderReporter();
+    fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('dismisses the modal when clicking the backdrop, but not when clicking inside modal content', () => {
+    renderReporter();
+    fireEvent.click(screen.getByRole('button', { name: 'Report an issue' }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+
+    // Clicking inside the modal does not close it
+    fireEvent.click(dialog);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    // Clicking the backdrop closes it
+    const backdrop = dialog.parentElement;
+    expect(backdrop).not.toBeNull();
+    if (backdrop) {
+      fireEvent.click(backdrop);
+    }
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
