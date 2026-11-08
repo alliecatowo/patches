@@ -11,5 +11,8 @@ export default defineProject({
     include: ['src/**/*.test.{ts,tsx}'],
     // #302: overridable so scripts/bounded.sh can cap worker pools under concurrent agent load.
     maxWorkers: process.env.VITEST_MAX_WORKERS ? Number(process.env.VITEST_MAX_WORKERS) : '50%',
+    // B-127: Disable file parallelism to prevent timing flakes in React Testing Library / jsdom
+    // tests under heavy CPU contention when running test files concurrently.
+    fileParallelism: false,
   },
 });
