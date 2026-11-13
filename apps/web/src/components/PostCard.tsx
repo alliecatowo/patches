@@ -506,7 +506,7 @@ function PostCardImpl({ post, focused = false, onReply }: PostCardProps): JSX.El
             onClick={() => void toggleBookmark()}
             aria-label={viewerState?.bookmarked ? 'Remove bookmark' : 'Bookmark'}
           >
-            <BookmarkIcon size={17} />
+            <BookmarkIcon size={17} filled={viewerState?.bookmarked ?? false} />
           </button>
 
           <Link

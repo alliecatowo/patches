@@ -61,6 +61,27 @@ describe('PostCard', () => {
     expect(screen.getByRole('link', { name: 'Quote post' })).toBeInTheDocument();
   });
 
+  it('renders filled bookmark icon when post is bookmarked and outlined when not', () => {
+    const unbookmarkedPost = {
+      ...mockPost,
+      viewerState: { bookmarked: false, liked: false, reposted: false },
+    } as unknown as Post;
+    const { unmount } = renderPostCard(unbookmarkedPost);
+    const bookmarkBtn = screen.getByRole('button', { name: 'Bookmark' });
+    const svgUnbookmarked = bookmarkBtn.querySelector('svg');
+    expect(svgUnbookmarked).toHaveAttribute('fill', 'none');
+    unmount();
+
+    const bookmarkedPost = {
+      ...mockPost,
+      viewerState: { bookmarked: true, liked: false, reposted: false },
+    } as unknown as Post;
+    renderPostCard(bookmarkedPost);
+    const removeBookmarkBtn = screen.getByRole('button', { name: 'Remove bookmark' });
+    const svgBookmarked = removeBookmarkBtn.querySelector('svg');
+    expect(svgBookmarked).toHaveAttribute('fill', 'currentColor');
+  });
+
   it('navigates to thread when card is clicked', () => {
     renderPostCard(mockPost);
     const card = screen.getByRole('article', { name: /Post by @allie/ });
